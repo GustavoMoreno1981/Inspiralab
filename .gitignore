@@ -33,6 +33,14 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# editable site content
+/data/content.json
+/data/tasks.json
+/data/accounting.json
+/data/auth.json
+/public/uploads/*
+!/public/uploads/.gitkeep
+
 # vercel
 .vercel
 
