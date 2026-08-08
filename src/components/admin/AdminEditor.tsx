@@ -4,8 +4,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { GalleryAdminSection } from "@/components/admin/GalleryAdminSection";
-import { WorkshopsAdminSection } from "@/components/admin/WorkshopsAdminSection";
 import { AdminFooter } from "@/components/admin/AdminFooter";
+import { useToast } from "@/components/admin/AdminToast";
 import type { Dictionary, Locale, SiteContent } from "@/lib/i18n/dictionaries";
 
 function Field({
@@ -70,6 +70,7 @@ export function AdminEditor() {
   const [content, setContent] = useState<SiteContent | null>(null);
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     void fetch("/api/content", { cache: "no-store" })
@@ -87,7 +88,13 @@ export function AdminEditor() {
       body: JSON.stringify(content),
     });
     setSaving(false);
-    setStatus(res.ok ? "Cambios guardados" : "Error al guardar");
+    if (res.ok) {
+      setStatus("Cambios guardados");
+      toast.success("Cambios del sitio guardados");
+    } else {
+      setStatus("Error al guardar");
+      toast.error("Error al guardar los cambios del sitio");
+    }
   }
 
   async function logout() {
@@ -297,7 +304,21 @@ export function AdminEditor() {
           ))}
         </Section>
 
-        <WorkshopsAdminSection content={content} locale={locale} setContent={setContent} />
+        <section className="border border-[color:var(--line)] bg-white p-5 md:p-6">
+          <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--ink)]">
+            Talleres
+          </h2>
+          <p className="mt-2 text-sm text-[color:var(--muted)]">
+            Los talleres de las tres flores se gestionan en su propio módulo para
+            organizarlos y publicarlos en la página principal.
+          </p>
+          <Link
+            href="/admin/talleres"
+            className="mt-4 inline-flex bg-[color:var(--accent)] px-4 py-2.5 text-sm font-semibold text-white"
+          >
+            Ir a Talleres
+          </Link>
+        </section>
 
         <Section title="Impact">
           <Field

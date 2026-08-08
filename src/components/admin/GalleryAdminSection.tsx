@@ -3,6 +3,7 @@
 import { useState, type Dispatch, type SetStateAction } from "react";
 import type { Dictionary, Locale, SiteContent } from "@/lib/i18n/dictionaries";
 import { createWorkshopId } from "@/lib/media/youtube";
+import { useToast } from "@/components/admin/AdminToast";
 
 function Field({
   label,
@@ -67,6 +68,7 @@ function updateOne(
 
 export function GalleryAdminSection({ content, locale, setContent }: Props) {
   const t = content[locale];
+  const toast = useToast();
   const [uploadingId, setUploadingId] = useState<string | null>(null);
 
   async function uploadImage(itemId: string, file: File) {
@@ -76,7 +78,7 @@ export function GalleryAdminSection({ content, locale, setContent }: Props) {
       form.append("file", file);
       const res = await fetch("/api/upload", { method: "POST", body: form });
       if (!res.ok) {
-        alert(locale === "es" ? "Error al subir la imagen" : "Image upload failed");
+        toast.error(locale === "es" ? "Error al subir la imagen" : "Image upload failed");
         return;
       }
       const data = (await res.json()) as { url: string };
@@ -88,6 +90,7 @@ export function GalleryAdminSection({ content, locale, setContent }: Props) {
             })
           : prev,
       );
+      toast.success(locale === "es" ? "Imagen de galería actualizada" : "Gallery image updated");
     } finally {
       setUploadingId(null);
     }

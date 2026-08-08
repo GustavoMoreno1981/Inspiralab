@@ -68,6 +68,17 @@ export function Workshops() {
                         <h4 className="font-[family-name:var(--font-display)] text-base font-semibold text-[color:var(--ink)]">
                           {workshop.title}
                         </h4>
+                        {(workshop.duration || workshop.level || workshop.coach) && (
+                          <p className="mt-1.5 text-xs font-medium text-[color:var(--accent)]">
+                            {[
+                              workshop.duration || null,
+                              workshop.level ? `Nivel ${workshop.level}` : null,
+                              workshop.coach || null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        )}
                         <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)]">
                           {workshop.text}
                         </p>

@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import type { Task, TasksBoard, TeamMember } from "@/lib/tasks/types";
+import type { Activity, TasksBoard, TeamMember } from "@/lib/tasks/types";
 
 function escapeHtml(value: string) {
   return value
@@ -47,20 +47,20 @@ function initials(name: string) {
 
 type MemberWorkload = {
   member: TeamMember;
-  tasks: Task[];
+  activities: Activity[];
 };
 
 function getInProgressByMember(board: TasksBoard): MemberWorkload[] {
   return board.members
     .map((member) => ({
       member,
-      tasks: board.tasks.filter(
-        (task) =>
-          task.status === "in_progress" &&
-          (task.assigneeIds || []).includes(member.id),
+      activities: board.activities.filter(
+        (activity) =>
+          activity.status === "in_progress" &&
+          (activity.assigneeIds || []).includes(member.id),
       ),
     }))
-    .filter((row) => row.tasks.length > 0)
+    .filter((row) => row.activities.length > 0)
     .sort((a, b) => a.member.name.localeCompare(b.member.name));
 }
 
@@ -74,10 +74,17 @@ function MemberPhoto({
   size?: "md" | "lg";
 }) {
   const box = size === "lg" ? "h-16 w-16" : "h-12 w-12";
-  if (photo) {
+  const [broken, setBroken] = useState(false);
+  const src = (photo || "").trim();
+  if (src && !broken) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={photo} alt={name} className={`${box} shrink-0 object-cover`} />
+      <img
+        src={src}
+        alt={name}
+        className={`${box} shrink-0 object-cover`}
+        onError={() => setBroken(true)}
+      />
     );
   }
   return (
@@ -100,7 +107,7 @@ export function AdminDailyBriefing({
     () => (board ? getInProgressByMember(board) : []),
     [board],
   );
-  const totalTasks = rows.reduce((acc, row) => acc + row.tasks.length, 0);
+  const totalActivities = rows.reduce((acc, row) => acc + row.activities.length, 0);
   const todayLabel = formatDayLabel();
 
   function exportPdf() {
@@ -112,15 +119,15 @@ export function AdminDailyBriefing({
               ? `<img class="photo" src="${escapeHtml(photo)}" alt="${escapeHtml(row.member.name)}" />`
               : `<div class="photo placeholder">${escapeHtml(initials(row.member.name) || "?")}</div>`;
 
-            const tasksHtml = row.tasks
+            const activitiesHtml = row.activities
               .map(
-                (task) => `
+                (activity) => `
                 <li>
-                  <strong>${escapeHtml(task.title)}</strong>
-                  <span class="meta">Inicio ${escapeHtml(formatShort(task.date))} · Fin ${escapeHtml(formatShort(task.finishedDate))}</span>
+                  <strong>${escapeHtml(activity.title)}</strong>
+                  <span class="meta">Inicio ${escapeHtml(formatShort(activity.date))} · Fin ${escapeHtml(formatShort(activity.finishedDate))}</span>
                   ${
-                    task.processUrl
-                      ? `<span class="meta">Proceso: <a href="${escapeHtml(task.processUrl)}">${escapeHtml(task.processUrl)}</a></span>`
+                    activity.processUrl
+                      ? `<span class="meta">Proceso: <a href="${escapeHtml(activity.processUrl)}">${escapeHtml(activity.processUrl)}</a></span>`
                       : ""
                   }
                 </li>`,
@@ -136,11 +143,11 @@ export function AdminDailyBriefing({
                     <p class="role">${escapeHtml(row.member.role || "Integrante")}</p>
                   </div>
                 </div>
-                <ul>${tasksHtml}</ul>
+                <ul>${activitiesHtml}</ul>
               </article>`;
           })
           .join("")
-      : `<p class="empty">Hoy no hay tareas en proceso asignadas al equipo.</p>`;
+      : `<p class="empty">Hoy no hay actividades en proceso asignadas al equipo.</p>`;
 
     const html = `<!DOCTYPE html>
 <html lang="es">
@@ -193,11 +200,11 @@ export function AdminDailyBriefing({
     <p class="brand">Inspiralab</p>
     <p class="salute">Don Saul,</p>
     <p class="motto">La excelencia está en el orden ✨</p>
-    <p class="intro">Este es un informe diario de las tareas en que el equipo está trabajando.</p>
+    <p class="intro">Este es un informe diario de las actividades en que el equipo está trabajando.</p>
     <p class="date">${escapeHtml(todayLabel)} · Solo actividades en proceso</p>
   </div>
   ${peopleHtml}
-  <p class="footer">Inspiralab · Informe diario del equipo · ${rows.length} integrante${rows.length === 1 ? "" : "s"} · ${totalTasks} tarea${totalTasks === 1 ? "" : "s"} en proceso</p>
+  <p class="footer">Inspiralab · Informe diario del equipo · ${rows.length} integrante${rows.length === 1 ? "" : "s"} · ${totalActivities} actividad${totalActivities === 1 ? "" : "es"} en proceso</p>
 </body>
 </html>`;
 
@@ -258,11 +265,11 @@ export function AdminDailyBriefing({
 
       {rows.length === 0 ? (
         <div className="border border-[color:var(--line)] bg-white px-4 py-8 text-center text-sm text-[color:var(--muted)]">
-          Nadie tiene tareas en proceso en este momento.
+          Nadie tiene actividades en proceso en este momento.
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
-          {rows.map(({ member, tasks }) => (
+          {rows.map(({ member, activities }) => (
             <article
               key={member.id}
               className="border border-[color:var(--line)] bg-white p-4"
@@ -274,18 +281,18 @@ export function AdminDailyBriefing({
                     {member.name}
                   </p>
                   <p className="truncate text-xs text-[color:var(--muted)]">
-                    {member.role || "Integrante"} · {tasks.length} en proceso
+                    {member.role || "Integrante"} · {activities.length} en proceso
                   </p>
                 </div>
               </div>
               <ul className="mt-4 space-y-2 border-t border-[color:var(--line)] pt-3">
-                {tasks.map((task) => (
-                  <li key={task.id}>
+                {activities.map((activity) => (
+                  <li key={activity.id}>
                     <p className="text-sm font-semibold text-[color:var(--ink)]">
-                      {task.title}
+                      {activity.title}
                     </p>
                     <p className="text-xs text-[color:var(--muted)]">
-                      {formatShort(task.date)} → {formatShort(task.finishedDate)}
+                      {formatShort(activity.date)} → {formatShort(activity.finishedDate)}
                     </p>
                   </li>
                 ))}

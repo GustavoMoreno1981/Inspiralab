@@ -4,29 +4,30 @@ import { useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-function EyeIcon({ open }: { open: boolean }) {
-  if (open) {
+/** visible=true → ojo abierto (texto visible); visible=false → ojo tachado (asteriscos). */
+function EyeIcon({ visible }: { visible: boolean }) {
+  if (visible) {
     return (
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
         <path
-          d="M3 3l18 18M10.5 10.6a2.5 2.5 0 003.5 3.5M9.9 5.1A10.5 10.5 0 0112 5c5 0 9.3 3.1 11 7-.5 1.2-1.3 2.3-2.2 3.2M6.1 6.1C4.5 7.3 3.3 8.9 2.5 10.7c1.7 3.9 6 7 9.5 7 1.1 0 2.2-.2 3.2-.6"
+          d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"
           stroke="currentColor"
           strokeWidth="1.8"
-          strokeLinecap="round"
           strokeLinejoin="round"
         />
+        <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
       </svg>
     );
   }
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
       <path
-        d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"
+        d="M3 3l18 18M10.5 10.6a2.5 2.5 0 003.5 3.5M9.9 5.1A10.5 10.5 0 0112 5c5 0 9.3 3.1 11 7-.5 1.2-1.3 2.3-2.2 3.2M6.1 6.1C4.5 7.3 3.3 8.9 2.5 10.7c1.7 3.9 6 7 9.5 7 1.1 0 2.2-.2 3.2-.6"
         stroke="currentColor"
         strokeWidth="1.8"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
     </svg>
   );
 }
@@ -35,7 +36,7 @@ export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -95,10 +96,16 @@ export function LoginForm() {
             <button
               type="button"
               onClick={() => setShowPassword((prev) => !prev)}
-              className="absolute top-1/2 right-3 -translate-y-1/2 text-[color:var(--muted)] hover:text-[color:var(--ink)]"
+              className={`absolute top-1/2 right-3 -translate-y-1/2 ${
+                showPassword
+                  ? "text-[color:var(--accent)]"
+                  : "text-[color:var(--muted)] hover:text-[color:var(--ink)]"
+              }`}
               aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+              aria-pressed={showPassword}
+              title={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
             >
-              <EyeIcon open={showPassword} />
+              <EyeIcon visible={showPassword} />
             </button>
           </div>
         </div>

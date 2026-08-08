@@ -3,10 +3,15 @@ import path from "path";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/admin";
 import {
+  createId,
   emptyBoard,
-  normalizeSubtaskStatus,
+  normalizeItemStatus,
   type AccessRole,
+  type Activity,
+  type ReviewMessage,
+  type Subtask,
   type Task,
+  type TaskNote,
   type TasksBoard,
   type TeamMember,
 } from "./types";
@@ -14,17 +19,29 @@ import {
 const DATA_DIR = path.join(process.cwd(), "data");
 const TASKS_PATH = path.join(DATA_DIR, "tasks.json");
 
-type TaskRow = {
+type ActivityRow = {
   id: string;
   title: string;
   date: string;
   finished_date: string | null;
   process_url: string;
   deliverable_url: string;
-  status: Task["status"];
+  status: Activity["status"];
   assignee_ids: string[] | null;
+  notes?: unknown;
+  review_messages?: unknown;
   created_at: string;
   updated_at: string;
+};
+
+type TaskRow = {
+  id: string;
+  activity_id: string;
+  title: string;
+  status?: string | null;
+  done: boolean;
+  url?: string | null;
+  position: number;
 };
 
 type SubtaskRow = {
@@ -43,6 +60,8 @@ type MemberRow = {
   role: string;
   email: string;
   photo: string | null;
+  phone_country_code?: string | null;
+  phone?: string | null;
   created_at: string;
   access_role?: string | null;
   can_login?: boolean | null;
@@ -53,11 +72,21 @@ type StoredMember = TeamMember & { passwordHash: string };
 
 type StoredBoard = {
   members: StoredMember[];
-  tasks: Task[];
+  activities: Activity[];
 };
 
 function normalizeAccessRole(value: unknown): AccessRole {
   return value === "admin" ? "admin" : "member";
+}
+
+function normalizePhoneCountryCode(value: unknown) {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) return "+57";
+  return raw.startsWith("+") ? raw : `+${raw.replace(/\D/g, "")}`;
+}
+
+function normalizePhoneNumber(value: unknown) {
+  return typeof value === "string" ? value.replace(/\D/g, "") : "";
 }
 
 function toPublicMember(member: StoredMember): TeamMember {
@@ -67,6 +96,8 @@ function toPublicMember(member: StoredMember): TeamMember {
     role: member.role || "",
     email: member.email || "",
     photo: member.photo || "",
+    phoneCountryCode: normalizePhoneCountryCode(member.phoneCountryCode),
+    phone: normalizePhoneNumber(member.phone),
     createdAt: member.createdAt,
     accessRole: normalizeAccessRole(member.accessRole),
     canLogin: Boolean(member.canLogin),
@@ -77,7 +108,7 @@ function toPublicMember(member: StoredMember): TeamMember {
 function toPublicBoard(board: StoredBoard): TasksBoard {
   return {
     members: board.members.map(toPublicMember),
-    tasks: board.tasks,
+    activities: board.activities,
   };
 }
 
@@ -90,6 +121,8 @@ function normalizeStoredMember(
     role: member.role || "",
     email: (member.email || "").trim().toLowerCase(),
     photo: member.photo || "",
+    phoneCountryCode: normalizePhoneCountryCode(member.phoneCountryCode),
+    phone: normalizePhoneNumber(member.phone),
     createdAt: member.createdAt || new Date().toISOString(),
     accessRole: normalizeAccessRole(member.accessRole),
     canLogin: Boolean(member.canLogin),
@@ -98,50 +131,193 @@ function normalizeStoredMember(
   };
 }
 
-function normalizeTasks(tasks: Task[]): Task[] {
-  return (tasks || []).map((task) => ({
-    ...task,
-    finishedDate: task.finishedDate || "",
-    processUrl: task.processUrl || "",
-    deliverableUrl: task.deliverableUrl || "",
-    assigneeIds: task.assigneeIds || [],
-    subtasks: (task.subtasks || []).map((subtask) => {
-      const status = normalizeSubtaskStatus(subtask.status, subtask.done);
+function normalizeNotes(notes: unknown): TaskNote[] {
+  if (!Array.isArray(notes)) return [];
+  return notes
+    .map((note) => {
+      if (!note || typeof note !== "object") return null;
+      const item = note as Partial<TaskNote>;
+      if (!item.id || typeof item.text !== "string") return null;
       return {
-        id: subtask.id,
-        title: subtask.title || "",
-        status,
-        done: status === "done",
-        url: subtask.url || "",
+        id: String(item.id),
+        text: item.text,
+        createdAt: item.createdAt || new Date().toISOString(),
       };
-    }),
+    })
+    .filter((note): note is TaskNote => Boolean(note));
+}
+
+function normalizeReviewMessages(messages: unknown): ReviewMessage[] {
+  if (!Array.isArray(messages)) return [];
+  return messages
+    .map((message) => {
+      if (!message || typeof message !== "object") return null;
+      const item = message as Partial<ReviewMessage>;
+      if (!item.id || typeof item.fullText !== "string") return null;
+      return {
+        id: String(item.id),
+        recipientIds: Array.isArray(item.recipientIds)
+          ? item.recipientIds.map(String)
+          : [],
+        recipientNames: Array.isArray(item.recipientNames)
+          ? item.recipientNames.map(String)
+          : [],
+        body: typeof item.body === "string" ? item.body : "",
+        url: typeof item.url === "string" ? item.url : "",
+        fullText: item.fullText,
+        createdAt: item.createdAt || new Date().toISOString(),
+        channel: item.channel === "copied" ? "copied" : "whatsapp",
+      };
+    })
+    .filter((message): message is ReviewMessage => Boolean(message));
+}
+
+function normalizeSubtask(subtask: Partial<Subtask> & { id: string }): Subtask {
+  const status = normalizeItemStatus(subtask.status, subtask.done);
+  return {
+    id: subtask.id,
+    title: subtask.title || "",
+    status,
+    done: status === "done",
+    url: subtask.url || "",
+  };
+}
+
+function normalizeTask(task: Partial<Task> & { id: string; activityId: string }): Task {
+  const status = normalizeItemStatus(task.status, task.done);
+  return {
+    id: task.id,
+    activityId: task.activityId,
+    title: task.title || "",
+    status,
+    done: status === "done",
+    url: task.url || "",
+    subtasks: (task.subtasks || []).map((item) =>
+      normalizeSubtask({ ...item, id: item.id || createId("sub") }),
+    ),
+  };
+}
+
+function normalizeActivities(activities: Activity[]): Activity[] {
+  return (activities || []).map((activity) => ({
+    ...activity,
+    finishedDate: activity.finishedDate || "",
+    processUrl: activity.processUrl || "",
+    deliverableUrl: activity.deliverableUrl || "",
+    assigneeIds: activity.assigneeIds || [],
+    notes: normalizeNotes(activity.notes),
+    reviewMessages: normalizeReviewMessages(activity.reviewMessages),
+    tasks: (activity.tasks || []).map((task) =>
+      normalizeTask({
+        ...task,
+        id: task.id,
+        activityId: task.activityId || activity.id,
+      }),
+    ),
   }));
 }
 
-function normalizeStoredBoard(data: Partial<StoredBoard> | null): StoredBoard {
+/** Migra JSON antiguo { tasks: [{ subtasks }] } → { activities }. */
+function migrateLegacyBoard(data: Record<string, unknown>): StoredBoard {
+  if (Array.isArray(data.activities)) {
+    return {
+      members: Array.isArray(data.members)
+        ? (data.members as StoredMember[]).map((member) =>
+            normalizeStoredMember({
+              ...member,
+              id: member.id,
+              passwordHash:
+                member.passwordHash ||
+                (member as { password_hash?: string }).password_hash ||
+                "",
+            }),
+          )
+        : [],
+      activities: normalizeActivities(data.activities as Activity[]),
+    };
+  }
+
+  const legacyTasks = Array.isArray(data.tasks) ? (data.tasks as Array<Record<string, unknown>>) : [];
+  const activities: Activity[] = legacyTasks.map((legacy) => {
+    const activityId = String(legacy.id || createId("act"));
+    const legacySubs = Array.isArray(legacy.subtasks)
+      ? (legacy.subtasks as Array<Record<string, unknown>>)
+      : [];
+    const status = normalizeItemStatus(legacy.status);
+    const tasks: Task[] =
+      legacySubs.length > 0
+        ? legacySubs.map((sub, index) =>
+            normalizeTask({
+              id: String(sub.id || `${activityId}-task-${index}`),
+              activityId,
+              title: String(sub.title || ""),
+              status: normalizeItemStatus(sub.status, Boolean(sub.done)),
+              done: Boolean(sub.done),
+              url: String(sub.url || ""),
+              subtasks: [],
+            }),
+          )
+        : [
+            normalizeTask({
+              id: `${activityId}-task`,
+              activityId,
+              title: String(legacy.title || ""),
+              status,
+              done: status === "done",
+              url: "",
+              subtasks: [],
+            }),
+          ];
+
+    return {
+      id: activityId,
+      title: String(legacy.title || ""),
+      date: String(legacy.date || ""),
+      finishedDate: String(legacy.finishedDate || ""),
+      processUrl: String(legacy.processUrl || ""),
+      deliverableUrl: String(legacy.deliverableUrl || ""),
+      status,
+      assigneeIds: Array.isArray(legacy.assigneeIds)
+        ? legacy.assigneeIds.map(String)
+        : [],
+      notes: normalizeNotes(legacy.notes),
+      reviewMessages: normalizeReviewMessages(legacy.reviewMessages),
+      tasks,
+      createdAt: String(legacy.createdAt || new Date().toISOString()),
+      updatedAt: String(legacy.updatedAt || new Date().toISOString()),
+    };
+  });
+
   return {
-    members: Array.isArray(data?.members)
-      ? data.members.map((member) =>
+    members: Array.isArray(data.members)
+      ? (data.members as StoredMember[]).map((member) =>
           normalizeStoredMember({
             ...member,
             id: member.id,
             passwordHash:
-              (member as StoredMember).passwordHash ||
+              member.passwordHash ||
               (member as { password_hash?: string }).password_hash ||
               "",
           }),
         )
       : [],
-    tasks: normalizeTasks(Array.isArray(data?.tasks) ? data.tasks : []),
+    activities: normalizeActivities(activities),
   };
+}
+
+function normalizeStoredBoard(data: unknown): StoredBoard {
+  if (!data || typeof data !== "object") {
+    return { members: [], activities: [] };
+  }
+  return migrateLegacyBoard(data as Record<string, unknown>);
 }
 
 async function readTasksLocalRaw(): Promise<StoredBoard> {
   try {
     const raw = await fs.readFile(TASKS_PATH, "utf8");
-    return normalizeStoredBoard(JSON.parse(raw) as StoredBoard);
+    return normalizeStoredBoard(JSON.parse(raw));
   } catch {
-    return { members: [], tasks: [] };
+    return { members: [], activities: [] };
   }
 }
 
@@ -153,6 +329,96 @@ async function writeTasksLocalRaw(board: StoredBoard) {
 async function readTasksSupabaseRaw(): Promise<StoredBoard> {
   const supabase = getSupabaseAdmin();
 
+  // Preferir esquema nuevo (activities). Si falla, intentar legado.
+  const activitiesProbe = await supabase.from("activities").select("id").limit(1);
+  if (activitiesProbe.error) {
+    return readLegacyTasksSupabaseRaw();
+  }
+
+  const [membersRes, activitiesRes, tasksRes, subtasksRes] = await Promise.all([
+    supabase.from("team_members").select("*").order("created_at", { ascending: true }),
+    supabase.from("activities").select("*").order("created_at", { ascending: false }),
+    supabase.from("tasks").select("*").order("position", { ascending: true }),
+    supabase.from("subtasks").select("*").order("position", { ascending: true }),
+  ]);
+
+  if (membersRes.error) throw membersRes.error;
+  if (activitiesRes.error) throw activitiesRes.error;
+  if (tasksRes.error) throw tasksRes.error;
+  if (subtasksRes.error) throw subtasksRes.error;
+
+  const members: StoredMember[] = ((membersRes.data || []) as MemberRow[]).map((row) =>
+    normalizeStoredMember({
+      id: row.id,
+      name: row.name,
+      role: row.role || "",
+      email: row.email || "",
+      photo: row.photo || "",
+      phoneCountryCode: row.phone_country_code || "+57",
+      phone: row.phone || "",
+      createdAt: row.created_at,
+      accessRole: normalizeAccessRole(row.access_role),
+      canLogin: Boolean(row.can_login),
+      passwordHash: row.password_hash || "",
+    }),
+  );
+
+  const subtasksByTask = new Map<string, Subtask[]>();
+  for (const row of (subtasksRes.data || []) as SubtaskRow[]) {
+    const list = subtasksByTask.get(row.task_id) || [];
+    list.push(
+      normalizeSubtask({
+        id: row.id,
+        title: row.title,
+        status: normalizeItemStatus(row.status, row.done),
+        done: row.done,
+        url: row.url || "",
+      }),
+    );
+    subtasksByTask.set(row.task_id, list);
+  }
+
+  const tasksByActivity = new Map<string, Task[]>();
+  for (const row of (tasksRes.data || []) as TaskRow[]) {
+    // Esquema nuevo: tasks tienen activity_id. Si no, es legado.
+    if (!row.activity_id) continue;
+    const list = tasksByActivity.get(row.activity_id) || [];
+    list.push(
+      normalizeTask({
+        id: row.id,
+        activityId: row.activity_id,
+        title: row.title,
+        status: normalizeItemStatus(row.status, row.done),
+        done: row.done,
+        url: row.url || "",
+        subtasks: subtasksByTask.get(row.id) || [],
+      }),
+    );
+    tasksByActivity.set(row.activity_id, list);
+  }
+
+  const activities: Activity[] = ((activitiesRes.data || []) as ActivityRow[]).map((row) => ({
+    id: row.id,
+    title: row.title,
+    date: row.date,
+    finishedDate: row.finished_date || "",
+    processUrl: row.process_url || "",
+    deliverableUrl: row.deliverable_url || "",
+    status: row.status,
+    assigneeIds: row.assignee_ids || [],
+    notes: normalizeNotes(row.notes),
+    reviewMessages: normalizeReviewMessages(row.review_messages),
+    tasks: tasksByActivity.get(row.id) || [],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+
+  return { members, activities: normalizeActivities(activities) };
+}
+
+/** Lectura del esquema antiguo y conversión en memoria. */
+async function readLegacyTasksSupabaseRaw(): Promise<StoredBoard> {
+  const supabase = getSupabaseAdmin();
   const [membersRes, tasksRes, subtasksRes] = await Promise.all([
     supabase.from("team_members").select("*").order("created_at", { ascending: true }),
     supabase.from("tasks").select("*").order("created_at", { ascending: false }),
@@ -170,6 +436,8 @@ async function readTasksSupabaseRaw(): Promise<StoredBoard> {
       role: row.role || "",
       email: row.email || "",
       photo: row.photo || "",
+      phoneCountryCode: row.phone_country_code || "+57",
+      phone: row.phone || "",
       createdAt: row.created_at,
       accessRole: normalizeAccessRole(row.access_role),
       canLogin: Boolean(row.can_login),
@@ -177,35 +445,70 @@ async function readTasksSupabaseRaw(): Promise<StoredBoard> {
     }),
   );
 
-  const subtasksByTask = new Map<string, Task["subtasks"]>();
-  for (const row of (subtasksRes.data || []) as SubtaskRow[]) {
-    const list = subtasksByTask.get(row.task_id) || [];
-    const status = normalizeSubtaskStatus(row.status, row.done);
-    list.push({
-      id: row.id,
-      title: row.title,
-      status,
-      done: status === "done",
-      url: row.url || "",
-    });
-    subtasksByTask.set(row.task_id, list);
+  type LegacyTaskRow = ActivityRow;
+  type LegacySubRow = {
+    id: string;
+    task_id: string;
+    title: string;
+    done: boolean;
+    status?: string | null;
+    url?: string | null;
+    position: number;
+  };
+
+  const subsByOldTask = new Map<string, LegacySubRow[]>();
+  for (const row of (subtasksRes.data || []) as LegacySubRow[]) {
+    const list = subsByOldTask.get(row.task_id) || [];
+    list.push(row);
+    subsByOldTask.set(row.task_id, list);
   }
 
-  const tasks: Task[] = ((tasksRes.data || []) as TaskRow[]).map((row) => ({
-    id: row.id,
-    title: row.title,
-    date: row.date,
-    finishedDate: row.finished_date || "",
-    processUrl: row.process_url || "",
-    deliverableUrl: row.deliverable_url || "",
-    status: row.status,
-    assigneeIds: row.assignee_ids || [],
-    subtasks: subtasksByTask.get(row.id) || [],
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  }));
+  const activities: Activity[] = ((tasksRes.data || []) as LegacyTaskRow[]).map((row) => {
+    const legacySubs = subsByOldTask.get(row.id) || [];
+    const status = normalizeItemStatus(row.status);
+    const tasks: Task[] =
+      legacySubs.length > 0
+        ? legacySubs.map((sub) =>
+            normalizeTask({
+              id: sub.id,
+              activityId: row.id,
+              title: sub.title,
+              status: normalizeItemStatus(sub.status, sub.done),
+              done: sub.done,
+              url: sub.url || "",
+              subtasks: [],
+            }),
+          )
+        : [
+            normalizeTask({
+              id: `${row.id}-task`,
+              activityId: row.id,
+              title: row.title,
+              status,
+              done: status === "done",
+              url: "",
+              subtasks: [],
+            }),
+          ];
 
-  return { members, tasks };
+    return {
+      id: row.id,
+      title: row.title,
+      date: row.date,
+      finishedDate: row.finished_date || "",
+      processUrl: row.process_url || "",
+      deliverableUrl: row.deliverable_url || "",
+      status,
+      assigneeIds: row.assignee_ids || [],
+      notes: normalizeNotes(row.notes),
+      reviewMessages: normalizeReviewMessages(row.review_messages),
+      tasks,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  });
+
+  return { members, activities: normalizeActivities(activities) };
 }
 
 async function writeTasksSupabaseRaw(board: StoredBoard) {
@@ -220,6 +523,17 @@ async function writeTasksSupabaseRaw(board: StoredBoard) {
   const { error: deleteTasksError } = await supabase.from("tasks").delete().neq("id", "__never__");
   if (deleteTasksError) throw deleteTasksError;
 
+  const { error: deleteActivitiesError } = await supabase
+    .from("activities")
+    .delete()
+    .neq("id", "__never__");
+  if (deleteActivitiesError) {
+    // Si no existe activities, el SQL de migración no se corrió.
+    throw new Error(
+      "Falta la tabla activities. Ejecuta supabase/migrate-activities-hierarchy.sql en Supabase.",
+    );
+  }
+
   const { error: deleteMembersError } = await supabase
     .from("team_members")
     .delete()
@@ -227,52 +541,98 @@ async function writeTasksSupabaseRaw(board: StoredBoard) {
   if (deleteMembersError) throw deleteMembersError;
 
   if (board.members.length) {
-    const { error } = await supabase.from("team_members").insert(
-      board.members.map((member) => ({
-        id: member.id,
-        name: member.name,
-        role: member.role || "",
-        email: member.email || "",
-        photo: member.photo || "",
-        created_at: member.createdAt || new Date().toISOString(),
-        access_role: member.accessRole || "member",
-        can_login: Boolean(member.canLogin),
-        password_hash: member.passwordHash || "",
-      })),
-    );
+    const memberRows = board.members.map((member) => ({
+      id: member.id,
+      name: member.name,
+      role: member.role || "",
+      email: member.email || "",
+      photo: member.photo || "",
+      phone_country_code: member.phoneCountryCode || "+57",
+      phone: member.phone || "",
+      created_at: member.createdAt || new Date().toISOString(),
+    }));
+
+    let { error } = await supabase.from("team_members").insert(memberRows);
+    if (error && (error.code === "PGRST204" || String(error.message || "").includes("phone"))) {
+      ({ error } = await supabase.from("team_members").insert(
+        memberRows.map(({ phone_country_code: _c, phone: _p, ...rest }) => rest),
+      ));
+    }
     if (error) throw error;
   }
 
-  if (board.tasks.length) {
-    const { error } = await supabase.from("tasks").insert(
-      board.tasks.map((task) => ({
-        id: task.id,
-        title: task.title,
-        date: task.date,
-        finished_date: task.finishedDate || null,
-        process_url: task.processUrl || "",
-        deliverable_url: task.deliverableUrl || "",
-        status: task.status,
-        assignee_ids: task.assigneeIds || [],
-        created_at: task.createdAt || new Date().toISOString(),
-        updated_at: task.updatedAt || new Date().toISOString(),
-      })),
-    );
-    if (error) throw error;
+  if (board.activities.length) {
+    const activityRows = board.activities.map((activity) => ({
+      id: activity.id,
+      title: activity.title,
+      date: activity.date,
+      finished_date: activity.finishedDate || null,
+      process_url: activity.processUrl || "",
+      deliverable_url: activity.deliverableUrl || "",
+      status: activity.status,
+      assignee_ids: activity.assigneeIds || [],
+      notes: activity.notes || [],
+      review_messages: activity.reviewMessages || [],
+      created_at: activity.createdAt || new Date().toISOString(),
+      updated_at: activity.updatedAt || new Date().toISOString(),
+    }));
 
-    const subtaskRows = board.tasks.flatMap((task) =>
-      task.subtasks.map((subtask, index) => {
-        const status = normalizeSubtaskStatus(subtask.status, subtask.done);
+    let { error: activitiesError } = await supabase.from("activities").insert(activityRows);
+    if (
+      activitiesError &&
+      (activitiesError.code === "PGRST204" ||
+        String(activitiesError.message || "").includes("review_messages"))
+    ) {
+      ({ error: activitiesError } = await supabase.from("activities").insert(
+        activityRows.map(({ review_messages: _rm, ...rest }) => rest),
+      ));
+    }
+    if (
+      activitiesError &&
+      (activitiesError.code === "PGRST204" ||
+        String(activitiesError.message || "").toLowerCase().includes("notes"))
+    ) {
+      ({ error: activitiesError } = await supabase.from("activities").insert(
+        activityRows.map(({ notes: _n, review_messages: _rm, ...rest }) => rest),
+      ));
+    }
+    if (activitiesError) throw activitiesError;
+
+    const taskRows = board.activities.flatMap((activity) =>
+      activity.tasks.map((task, index) => {
+        const status = normalizeItemStatus(task.status, task.done);
         return {
-          id: subtask.id,
-          task_id: task.id,
-          title: subtask.title,
+          id: task.id,
+          activity_id: activity.id,
+          title: task.title,
           status,
           done: status === "done",
-          url: subtask.url || "",
+          url: task.url || "",
           position: index,
         };
       }),
+    );
+
+    if (taskRows.length) {
+      const { error: tasksError } = await supabase.from("tasks").insert(taskRows);
+      if (tasksError) throw tasksError;
+    }
+
+    const subtaskRows = board.activities.flatMap((activity) =>
+      activity.tasks.flatMap((task) =>
+        task.subtasks.map((subtask, index) => {
+          const status = normalizeItemStatus(subtask.status, subtask.done);
+          return {
+            id: subtask.id,
+            task_id: task.id,
+            title: subtask.title,
+            status,
+            done: status === "done",
+            url: subtask.url || "",
+            position: index,
+          };
+        }),
+      ),
     );
 
     if (subtaskRows.length) {
@@ -334,6 +694,8 @@ export async function writeTasksBoard(
       role: member.role,
       email: member.email,
       photo: member.photo,
+      phoneCountryCode: member.phoneCountryCode,
+      phone: member.phone,
       createdAt: member.createdAt || prev?.createdAt || new Date().toISOString(),
       accessRole,
       canLogin,
@@ -343,7 +705,7 @@ export async function writeTasksBoard(
 
   await writeStoredBoard({
     members,
-    tasks: normalizeTasks(board.tasks || []),
+    activities: normalizeActivities(board.activities || []),
   });
 }
 

@@ -28,7 +28,7 @@ export function AdminOpsPanel({ canAccounting = false }: { canAccounting?: boole
       if (tasksRes.ok) {
         setTasksBoard((await tasksRes.json()) as TasksBoard);
       } else {
-        setTasksBoard({ members: [], tasks: [] });
+        setTasksBoard({ members: [], activities: [] });
       }
 
       if (accountingRes?.ok) {

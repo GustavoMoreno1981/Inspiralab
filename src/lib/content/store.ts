@@ -7,12 +7,31 @@ import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/admin";
 const DATA_DIR = path.join(process.cwd(), "data");
 const CONTENT_PATH = path.join(DATA_DIR, "content.json");
 
+export type WorkshopLevel = 1 | 2 | 3;
+
+export type WorkshopStep = {
+  id: string;
+  title: string;
+  done: boolean;
+};
+
+export type WorkshopMaterial = {
+  id: string;
+  title: string;
+};
+
 export type WorkshopItem = {
   id: string;
   title: string;
   text: string;
   image: string;
   youtubeUrl: string;
+  duration: string;
+  level: WorkshopLevel;
+  coach: string;
+  materials: WorkshopMaterial[];
+  /** Paso a paso del taller (antes tasks). */
+  steps: WorkshopStep[];
 };
 
 export type GalleryItem = {
@@ -22,13 +41,62 @@ export type GalleryItem = {
   image: string;
 };
 
-function normalizeWorkshop(workshop: Partial<WorkshopItem>, fallbackId: string): WorkshopItem {
+function normalizeWorkshopStep(
+  step: Partial<WorkshopStep>,
+  fallbackId: string,
+): WorkshopStep {
+  return {
+    id: step.id || fallbackId,
+    title: step.title || "",
+    done: Boolean(step.done),
+  };
+}
+
+function normalizeWorkshopMaterial(
+  material: Partial<WorkshopMaterial>,
+  fallbackId: string,
+): WorkshopMaterial {
+  return {
+    id: material.id || fallbackId,
+    title: material.title || "",
+  };
+}
+
+function normalizeLevel(value: unknown): WorkshopLevel {
+  const n = typeof value === "number" ? value : Number(value);
+  if (n === 2 || n === 3) return n;
+  return 1;
+}
+
+function normalizeWorkshop(
+  workshop: Partial<WorkshopItem> & { tasks?: WorkshopStep[] },
+  fallbackId: string,
+): WorkshopItem {
+  const rawSteps = Array.isArray(workshop.steps)
+    ? workshop.steps
+    : Array.isArray(workshop.tasks)
+      ? workshop.tasks
+      : [];
+  const rawMaterials = Array.isArray(workshop.materials) ? workshop.materials : [];
+
   return {
     id: workshop.id || fallbackId,
     title: workshop.title || "",
     text: workshop.text || "",
     image: workshop.image || "",
     youtubeUrl: workshop.youtubeUrl || "",
+    duration: workshop.duration || "",
+    level: normalizeLevel(workshop.level),
+    coach: workshop.coach || "",
+    materials: rawMaterials.map((material, index) =>
+      normalizeWorkshopMaterial(
+        material as Partial<WorkshopMaterial>,
+        `${fallbackId}-mat-${index}`,
+      ),
+    ),
+    steps: rawSteps.map((step, index) =>
+      normalizeWorkshopStep(step as Partial<WorkshopStep>, `${fallbackId}-step-${index}`),
+    ),
   };
 }
 
@@ -81,9 +149,23 @@ export function normalizeContent(content: SiteContent): SiteContent {
     const other = es.workshops.categories[catIndex];
     if (!other) return;
     category.workshops.forEach((workshop, wIndex) => {
-      if (other.workshops[wIndex] && other.workshops[wIndex].id !== workshop.id) {
-        other.workshops[wIndex].id = workshop.id;
+      const pair = other.workshops[wIndex];
+      if (!pair) return;
+      if (pair.id !== workshop.id) pair.id = workshop.id;
+      if (workshop.image && !pair.image) pair.image = workshop.image;
+      if (pair.image && !workshop.image) workshop.image = pair.image;
+      if (workshop.image !== pair.image) pair.image = workshop.image || pair.image;
+      if (workshop.youtubeUrl && !pair.youtubeUrl) pair.youtubeUrl = workshop.youtubeUrl;
+      if (pair.youtubeUrl && !workshop.youtubeUrl) workshop.youtubeUrl = pair.youtubeUrl;
+      if (workshop.youtubeUrl !== pair.youtubeUrl) {
+        pair.youtubeUrl = workshop.youtubeUrl || pair.youtubeUrl;
       }
+      // Campos operativos compartidos (EN → ES).
+      pair.duration = workshop.duration;
+      pair.level = workshop.level;
+      pair.coach = workshop.coach;
+      pair.materials = workshop.materials.map((item) => ({ ...item }));
+      pair.steps = workshop.steps.map((step) => ({ ...step }));
     });
   });
 

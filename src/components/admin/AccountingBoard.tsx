@@ -25,6 +25,7 @@ import {
 import { AdminFooter } from "@/components/admin/AdminFooter";
 import { AccountingReports } from "@/components/admin/AccountingReports";
 import { BUDGET_WARNING_PERCENT, getBudgetAlarm } from "@/lib/alarms";
+import { useToast } from "@/components/admin/AdminToast";
 
 type Tab = "summary" | "budget" | "beneficiaries" | "activities" | "expenses" | "reports";
 
@@ -52,13 +53,12 @@ function activityAttachments(activity: Activity) {
   );
 }
 
-async function uploadSupport(file: File): Promise<AttachmentFile | null> {
+async function uploadSupport(file: File): Promise<AttachmentFile | { error: string }> {
   const form = new FormData();
   form.append("file", file);
   const res = await fetch("/api/upload", { method: "POST", body: form });
   if (!res.ok) {
-    alert("No se pudo subir el soporte");
-    return null;
+    return { error: "No se pudo subir el soporte" };
   }
   const data = (await res.json()) as { url: string; name?: string };
   return {
@@ -70,6 +70,7 @@ async function uploadSupport(file: File): Promise<AttachmentFile | null> {
 
 export function AccountingBoard() {
   const router = useRouter();
+  const toast = useToast();
   const [board, setBoard] = useState<AccountingBoard>(emptyBoard());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -169,7 +170,7 @@ export function AccountingBoard() {
     setYear(budget.year);
   }
 
-  async function persist(next: AccountingBoard) {
+  async function persist(next: AccountingBoard, successMessage?: string) {
     setSaving(true);
     setStatusMsg("");
     const res = await fetch("/api/accounting", {
@@ -180,12 +181,18 @@ export function AccountingBoard() {
     setSaving(false);
     if (res.ok) {
       setBoard(next);
-      setStatusMsg("Guardado");
-      window.setTimeout(() => setStatusMsg(""), 1800);
+      if (successMessage) {
+        toast.success(successMessage);
+      } else {
+        setStatusMsg("Guardado");
+        window.setTimeout(() => setStatusMsg(""), 1800);
+      }
       return true;
     }
     const payload = (await res.json().catch(() => null)) as { error?: string } | null;
-    setStatusMsg(payload?.error || "Error al guardar");
+    const errorMsg = payload?.error || "Error al guardar";
+    setStatusMsg(errorMsg);
+    toast.error(errorMsg);
     return false;
   }
 
@@ -201,7 +208,7 @@ export function AccountingBoard() {
     const salariesUsd = numInput(budgetSalariesUsd);
     const usdRate = numInput(budgetRate) || 4000;
     if (amountUsd <= 0) {
-      alert("Indica el monto en dólares");
+      toast.error("Indica el monto en dólares");
       return;
     }
     const amountCop = toCop(amountUsd, usdRate);
@@ -212,7 +219,7 @@ export function AccountingBoard() {
       (item) => item.year === budgetYear && item.id !== editingBudgetId,
     );
     if (sameYear) {
-      alert(`Ya existe un presupuesto para ${budgetYear}`);
+      toast.error(`Ya existe un presupuesto para ${budgetYear}`);
       return;
     }
 
@@ -248,7 +255,10 @@ export function AccountingBoard() {
           ...board.budgets,
         ];
 
-    void persist({ ...board, budgets: nextBudgets }).then((ok) => {
+    void persist(
+      { ...board, budgets: nextBudgets },
+      existing ? `Presupuesto ${budgetYear} actualizado` : `Presupuesto ${budgetYear} guardado`,
+    ).then((ok) => {
       if (!ok) return;
       setYear(budgetYear);
       setEditingBudgetId(null);
@@ -262,30 +272,37 @@ export function AccountingBoard() {
 
   function removeBudget(id: string) {
     if (!window.confirm("¿Eliminar este presupuesto?")) return;
-    void persist({
-      ...board,
-      budgets: board.budgets.filter((item) => item.id !== id),
-    });
+    void persist(
+      {
+        ...board,
+        budgets: board.budgets.filter((item) => item.id !== id),
+      },
+      "Presupuesto eliminado",
+    );
     if (editingBudgetId === id) resetBudgetForm();
   }
 
   function addBeneficiary(event: FormEvent) {
     event.preventDefault();
-    if (!beneficiaryName.trim()) return;
+    if (!beneficiaryName.trim()) {
+      toast.error("Escribe el nombre del beneficiario");
+      return;
+    }
+    const name = beneficiaryName.trim();
     const next = {
       ...board,
       beneficiaries: [
         ...board.beneficiaries,
         {
           id: createId("ben"),
-          name: beneficiaryName.trim(),
+          name,
           contact: beneficiaryContact.trim(),
           notes: beneficiaryNotes.trim(),
           createdAt: new Date().toISOString(),
         },
       ],
     };
-    void persist(next);
+    void persist(next, `Beneficiario “${name}” agregado`);
     setBeneficiaryName("");
     setBeneficiaryContact("");
     setBeneficiaryNotes("");
@@ -293,14 +310,17 @@ export function AccountingBoard() {
 
   function removeBeneficiary(id: string) {
     if (board.activities.some((item) => item.beneficiaryId === id)) {
-      alert("No se puede eliminar: tiene actividades asociadas.");
+      toast.error("No se puede eliminar: tiene actividades asociadas.");
       return;
     }
     if (!window.confirm("¿Eliminar beneficiario?")) return;
-    void persist({
-      ...board,
-      beneficiaries: board.beneficiaries.filter((item) => item.id !== id),
-    });
+    void persist(
+      {
+        ...board,
+        beneficiaries: board.beneficiaries.filter((item) => item.id !== id),
+      },
+      "Beneficiario eliminado",
+    );
   }
 
   function resetActivityForm() {
@@ -345,10 +365,13 @@ export function AccountingBoard() {
 
   async function saveActivity(event: FormEvent) {
     event.preventDefault();
-    if (!activityTitle.trim()) return;
+    if (!activityTitle.trim()) {
+      toast.error("Escribe el título de la actividad");
+      return;
+    }
     const beneficiaryId = activityBeneficiaryId || board.beneficiaries[0]?.id || "";
     if (!beneficiaryId) {
-      alert("Selecciona un beneficiario");
+      toast.error("Selecciona un beneficiario");
       return;
     }
     const now = new Date().toISOString();
@@ -370,16 +393,24 @@ export function AccountingBoard() {
       ? board.activities.map((item) => (item.id === editingActivityId ? payload : item))
       : [payload, ...board.activities];
 
-    const ok = await persist({ ...board, activities });
+    const ok = await persist(
+      { ...board, activities },
+      editingActivityId
+        ? `Actividad “${payload.title}” actualizada`
+        : `Actividad “${payload.title}” guardada`,
+    );
     if (ok) resetActivityForm();
   }
 
   function removeActivity(id: string) {
     if (!window.confirm("¿Eliminar esta actividad?")) return;
-    void persist({
-      ...board,
-      activities: board.activities.filter((item) => item.id !== id),
-    });
+    void persist(
+      {
+        ...board,
+        activities: board.activities.filter((item) => item.id !== id),
+      },
+      "Actividad eliminada",
+    );
     if (editingActivityId === id) resetActivityForm();
     if (invoicesActivityId === id) setInvoicesActivityId(null);
   }
@@ -496,7 +527,7 @@ export function AccountingBoard() {
     const win = window.open(url, "_blank");
     if (!win) {
       URL.revokeObjectURL(url);
-      alert("Permite ventanas emergentes para imprimir el informe");
+      toast.error("Permite ventanas emergentes para imprimir el informe");
       return;
     }
     window.setTimeout(() => {
@@ -514,7 +545,10 @@ export function AccountingBoard() {
     setUploadingCost(category);
     const uploaded = await uploadSupport(file);
     setUploadingCost(null);
-    if (!uploaded) return;
+    if ("error" in uploaded) {
+      toast.error(uploaded.error);
+      return;
+    }
     setActivityCosts((prev) => ({
       ...prev,
       [category]: {
@@ -522,6 +556,7 @@ export function AccountingBoard() {
         files: [...prev[category].files, uploaded],
       },
     }));
+    toast.success("Soporte adjuntado");
   }
 
   function removeCostFile(category: CostCategory, fileId: string) {
@@ -559,7 +594,10 @@ export function AccountingBoard() {
 
   async function saveExpense(event: FormEvent) {
     event.preventDefault();
-    if (!expenseTitle.trim()) return;
+    if (!expenseTitle.trim()) {
+      toast.error("Escribe el título del gasto");
+      return;
+    }
     const now = new Date().toISOString();
     const payload: OperationalExpense = {
       id: editingExpenseId || createId("exp"),
@@ -577,16 +615,24 @@ export function AccountingBoard() {
     const expenses = editingExpenseId
       ? board.expenses.map((item) => (item.id === editingExpenseId ? payload : item))
       : [payload, ...board.expenses];
-    const ok = await persist({ ...board, expenses });
+    const ok = await persist(
+      { ...board, expenses },
+      editingExpenseId
+        ? `Gasto “${payload.title}” actualizado`
+        : `Gasto “${payload.title}” guardado`,
+    );
     if (ok) resetExpenseForm();
   }
 
   function removeExpense(id: string) {
     if (!window.confirm("¿Eliminar este gasto operativo?")) return;
-    void persist({
-      ...board,
-      expenses: board.expenses.filter((item) => item.id !== id),
-    });
+    void persist(
+      {
+        ...board,
+        expenses: board.expenses.filter((item) => item.id !== id),
+      },
+      "Gasto eliminado",
+    );
     if (editingExpenseId === id) resetExpenseForm();
   }
 
@@ -594,8 +640,12 @@ export function AccountingBoard() {
     setUploadingExpense(true);
     const uploaded = await uploadSupport(file);
     setUploadingExpense(false);
-    if (!uploaded) return;
+    if ("error" in uploaded) {
+      toast.error(uploaded.error);
+      return;
+    }
     setExpenseFiles((prev) => [...prev, uploaded]);
+    toast.success("Soporte del gasto adjuntado");
   }
 
   const yearActivities = board.activities.filter((item) => item.date.startsWith(String(year)));

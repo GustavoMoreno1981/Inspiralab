@@ -1,9 +1,9 @@
 "use client";
 
 import {
-  getTaskProgress,
+  getActivityProgress,
   TASK_STATUSES,
-  type Task,
+  type Activity,
   type TeamMember,
 } from "@/lib/tasks/types";
 
@@ -29,13 +29,13 @@ const DAY = 86400000;
 
 type Props = {
   members: TeamMember[];
-  tasks: Task[];
+  activities: Activity[];
 };
 
-export function TasksGantt({ members, tasks }: Props) {
+export function TasksGantt({ members, activities }: Props) {
   const timeline = (() => {
-    const starts = tasks.map((t) => parseDay(t.date)).filter((v): v is number => v != null);
-    const ends = tasks
+    const starts = activities.map((t) => parseDay(t.date)).filter((v): v is number => v != null);
+    const ends = activities
       .map((t) => parseDay(t.finishedDate) ?? parseDay(t.date))
       .filter((v): v is number => v != null);
 
@@ -66,10 +66,10 @@ export function TasksGantt({ members, tasks }: Props) {
     );
   }
 
-  if (!tasks.length || !timeline) {
+  if (!activities.length || !timeline) {
     return (
       <div className="border border-[color:var(--line)] bg-white p-8 text-center text-sm text-[color:var(--muted)]">
-        Crea tareas con fecha de inicio y fecha de fin para ver el cronograma.
+        Crea actividades con fecha de inicio y fecha de fin para ver el cronograma.
       </div>
     );
   }
@@ -77,14 +77,16 @@ export function TasksGantt({ members, tasks }: Props) {
   const rows = members
     .map((member) => ({
       member,
-      tasks: tasks.filter((task) => (task.assigneeIds || []).includes(member.id)),
+      activities: activities.filter((activity) =>
+        (activity.assigneeIds || []).includes(member.id),
+      ),
     }))
-    .filter((row) => row.tasks.length > 0);
+    .filter((row) => row.activities.length > 0);
 
   if (!rows.length) {
     return (
       <div className="border border-[color:var(--line)] bg-white p-8 text-center text-sm text-[color:var(--muted)]">
-        No hay tareas asignadas en esta vista.
+        No hay actividades asignadas en esta vista.
       </div>
     );
   }
@@ -114,7 +116,7 @@ export function TasksGantt({ members, tasks }: Props) {
           </div>
         </div>
 
-        {rows.map(({ member, tasks: memberTasks }) => (
+        {rows.map(({ member, activities: memberActivities }) => (
           <div
             key={member.id}
             className="grid grid-cols-[200px_1fr] border-b border-[color:var(--line)] last:border-b-0"
@@ -135,7 +137,8 @@ export function TasksGantt({ members, tasks }: Props) {
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{member.name}</p>
                 <p className="text-xs text-[color:var(--muted)]">
-                  {memberTasks.length} {memberTasks.length === 1 ? "tarea" : "tareas"}
+                  {memberActivities.length}{" "}
+                  {memberActivities.length === 1 ? "actividad" : "actividades"}
                 </p>
               </div>
             </div>
@@ -157,34 +160,35 @@ export function TasksGantt({ members, tasks }: Props) {
                 })}
               </div>
 
-              {memberTasks.map((task) => {
-                const start = parseDay(task.date);
-                const endRaw = parseDay(task.finishedDate) ?? start;
+              {memberActivities.map((activity) => {
+                const start = parseDay(activity.date);
+                const endRaw = parseDay(activity.finishedDate) ?? start;
                 if (start == null || endRaw == null) return null;
                 const end = Math.max(endRaw, start);
                 const left = ((start - timeline.min) / timeline.span) * 100;
                 const width = Math.max(((end - start + DAY) / timeline.span) * 100, 2.5);
-                const progress = getTaskProgress(task);
+                const progress = getActivityProgress(activity);
                 const statusLabel =
-                  TASK_STATUSES.find((s) => s.value === task.status)?.label || task.status;
+                  TASK_STATUSES.find((s) => s.value === activity.status)?.label ||
+                  activity.status;
 
                 return (
-                  <div key={task.id} className="relative h-11">
+                  <div key={activity.id} className="relative h-11">
                     <div
                       className="absolute top-0 flex h-11 flex-col justify-center overflow-hidden border border-[color:var(--accent)]/30 bg-[#fff1f4]"
                       style={{ left: `${left}%`, width: `${width}%` }}
-                      title={`${task.title} · ${progress}% · ${statusLabel}`}
+                      title={`${activity.title} · ${progress}% · ${statusLabel}`}
                     >
                       <div
                         className="absolute inset-y-0 left-0 bg-[color:var(--accent)]/25"
                         style={{ width: `${progress}%` }}
                       />
                       <div className="relative z-10 truncate px-2 text-[11px] font-semibold leading-tight text-[color:var(--ink)]">
-                        {task.title}
+                        {activity.title}
                       </div>
                       <div className="relative z-10 truncate px-2 text-[10px] text-[color:var(--muted)]">
-                        {task.date}
-                        {task.finishedDate ? ` → ${task.finishedDate}` : ""} · {progress}%
+                        {activity.date}
+                        {activity.finishedDate ? ` → ${activity.finishedDate}` : ""} · {progress}%
                       </div>
                     </div>
                   </div>

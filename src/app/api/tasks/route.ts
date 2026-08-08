@@ -19,7 +19,7 @@ export async function PUT(request: Request) {
   }
 
   const body = (await request.json().catch(() => null)) as TasksBoard | null;
-  if (!body || !Array.isArray(body.members) || !Array.isArray(body.tasks)) {
+  if (!body || !Array.isArray(body.members) || !Array.isArray(body.activities)) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 

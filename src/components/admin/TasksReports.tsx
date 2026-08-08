@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import {
   TASK_STATUSES,
-  getTaskProgress,
-  type Task,
+  getActivityProgress,
+  type Activity,
   type TeamMember,
 } from "@/lib/tasks/types";
 import { TasksGantt } from "@/components/admin/TasksGantt";
@@ -48,15 +48,15 @@ function statusLabel(status: string) {
   return TASK_STATUSES.find((item) => item.value === status)?.label || status;
 }
 
-function isActiveOnDay(task: Task, dayIso: string) {
+function isActiveOnDay(activity: Activity, dayIso: string) {
   const day = parseDay(dayIso);
-  const start = parseDay(task.date);
+  const start = parseDay(activity.date);
   if (day == null || start == null) return false;
   if (day < start) return false;
 
-  const end = parseDay(task.finishedDate);
+  const end = parseDay(activity.finishedDate);
   if (end != null) return day <= end;
-  if (task.status === "done") return day === start;
+  if (activity.status === "done") return day === start;
   return true;
 }
 
@@ -77,20 +77,22 @@ function linkHtml(url: string) {
 
 const DAY_MS = 86400000;
 
-function buildGanttHtml(members: TeamMember[], tasks: Task[]) {
+function buildGanttHtml(members: TeamMember[], activities: Activity[]) {
   const scoped = members
     .map((member) => ({
       member,
-      tasks: tasks.filter((task) => (task.assigneeIds || []).includes(member.id)),
+      activities: activities.filter((activity) =>
+        (activity.assigneeIds || []).includes(member.id),
+      ),
     }))
-    .filter((row) => row.tasks.length > 0);
+    .filter((row) => row.activities.length > 0);
 
   if (!scoped.length) {
-    return `<p style="color:#666;font-size:12px;">No hay tareas para mostrar en el Gantt.</p>`;
+    return `<p style="color:#666;font-size:12px;">No hay actividades para mostrar en el Gantt.</p>`;
   }
 
-  const starts = tasks.map((t) => parseDay(t.date)).filter((v): v is number => v != null);
-  const ends = tasks
+  const starts = activities.map((t) => parseDay(t.date)).filter((v): v is number => v != null);
+  const ends = activities
     .map((t) => parseDay(t.finishedDate) ?? parseDay(t.date))
     .filter((v): v is number => v != null);
 
@@ -122,21 +124,21 @@ function buildGanttHtml(members: TeamMember[], tasks: Task[]) {
     .join("");
 
   const rowsHtml = scoped
-    .map(({ member, tasks: memberTasks }) => {
-      const bars = memberTasks
-        .map((task) => {
-          const start = parseDay(task.date);
-          const endRaw = parseDay(task.finishedDate) ?? start;
+    .map(({ member, activities: memberActivities }) => {
+      const bars = memberActivities
+        .map((activity) => {
+          const start = parseDay(activity.date);
+          const endRaw = parseDay(activity.finishedDate) ?? start;
           if (start == null || endRaw == null) return "";
           const end = Math.max(endRaw, start);
           const left = ((start - min) / span) * 100;
           const width = Math.max(((end - start + DAY_MS) / span) * 100, 3);
-          const progress = getTaskProgress(task);
+          const progress = getActivityProgress(activity);
           return `<div style="position:relative;height:28px;margin:3px 0;">
             <div style="position:absolute;left:${left}%;width:${width}%;top:0;height:28px;background:#fff1f4;border:1px solid #e00d45;overflow:hidden;">
               <div style="position:absolute;inset:0 auto 0 0;width:${progress}%;background:rgba(224,13,69,.25);"></div>
               <div style="position:relative;z-index:1;padding:3px 5px;font-size:9px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                ${escapeHtml(task.title)} · ${progress}%
+                ${escapeHtml(activity.title)} · ${progress}%
               </div>
             </div>
           </div>`;
@@ -170,7 +172,7 @@ function buildGanttHtml(members: TeamMember[], tasks: Task[]) {
 
 type Props = {
   members: TeamMember[];
-  tasks: Task[];
+  activities: Activity[];
 };
 
 type Scope = "all" | string;
@@ -185,7 +187,7 @@ type ReportLine = {
   deliverableUrl: string;
 };
 
-export function TasksReports({ members, tasks }: Props) {
+export function TasksReports({ members, activities }: Props) {
   const [scope, setScope] = useState<Scope>("all");
   const [reportDay, setReportDay] = useState(todayIso);
   const [recipient, setRecipient] = useState("Saul");
@@ -195,36 +197,36 @@ export function TasksReports({ members, tasks }: Props) {
     return members.filter((m) => m.id === scope);
   }, [scope, members]);
 
-  const scopedTasks = useMemo(() => {
-    if (scope === "all") return tasks;
-    return tasks.filter((task) => (task.assigneeIds || []).includes(scope));
-  }, [scope, tasks]);
+  const scopedActivities = useMemo(() => {
+    if (scope === "all") return activities;
+    return activities.filter((activity) => (activity.assigneeIds || []).includes(scope));
+  }, [scope, activities]);
 
   const lines = useMemo(() => {
     const out: ReportLine[] = [];
 
     for (const member of reportMembers) {
-      const memberTasks = tasks.filter(
-        (task) =>
-          (task.assigneeIds || []).includes(member.id) &&
-          isActiveOnDay(task, reportDay),
+      const memberActivities = activities.filter(
+        (activity) =>
+          (activity.assigneeIds || []).includes(member.id) &&
+          isActiveOnDay(activity, reportDay),
       );
 
-      for (const task of memberTasks) {
+      for (const activity of memberActivities) {
         out.push({
           memberName: member.name,
-          title: task.title,
-          startDate: task.date,
-          endDate: task.finishedDate,
-          status: statusLabel(task.status),
-          processUrl: task.processUrl || "",
-          deliverableUrl: task.deliverableUrl || "",
+          title: activity.title,
+          startDate: activity.date,
+          endDate: activity.finishedDate,
+          status: statusLabel(activity.status),
+          processUrl: activity.processUrl || "",
+          deliverableUrl: activity.deliverableUrl || "",
         });
       }
     }
 
     return out;
-  }, [reportMembers, tasks, reportDay]);
+  }, [reportMembers, activities, reportDay]);
 
   function downloadPdf() {
     const greeting = `Hola ${recipient.trim() || "Saul"}, en este día ${formatDate(reportDay)}.`;
@@ -243,9 +245,9 @@ export function TasksReports({ members, tasks }: Props) {
         </tr>`,
           )
           .join("")
-      : `<tr><td colspan="7" style="text-align:center;color:#666;">Hoy no hay integrantes trabajando en tareas para esta fecha.</td></tr>`;
+      : `<tr><td colspan="7" style="text-align:center;color:#666;">Hoy no hay integrantes trabajando en actividades para esta fecha.</td></tr>`;
 
-    const ganttHtml = buildGanttHtml(reportMembers, scopedTasks);
+    const ganttHtml = buildGanttHtml(reportMembers, scopedActivities);
 
     const html = `<!DOCTYPE html>
 <html lang="es">
@@ -271,12 +273,12 @@ export function TasksReports({ members, tasks }: Props) {
   <h1>${escapeHtml(greeting)}</h1>
   <p>Resumen organizado de lo que está trabajando el equipo / integrante seleccionado.</p>
 
-  <h2>Detalle de tareas</h2>
+  <h2>Detalle de actividades</h2>
   <table class="data">
     <thead>
       <tr>
         <th>Integrante</th>
-        <th>Tarea</th>
+        <th>Actividad</th>
         <th>Inicio</th>
         <th>Fin</th>
         <th>Estado</th>
@@ -287,7 +289,7 @@ export function TasksReports({ members, tasks }: Props) {
     <tbody>${tableRows}</tbody>
   </table>
 
-  <h2>Gantt — cómo van las tareas</h2>
+  <h2>Gantt — cómo van las actividades</h2>
   ${ganttHtml}
 </body>
 </html>`;
@@ -402,7 +404,7 @@ export function TasksReports({ members, tasks }: Props) {
             <thead className="bg-[color:var(--mist)]/70 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">
               <tr>
                 <th className="px-3 py-3">Integrante</th>
-                <th className="px-3 py-3">Tarea</th>
+                <th className="px-3 py-3">Actividad</th>
                 <th className="px-3 py-3">Inicio</th>
                 <th className="px-3 py-3">Fin</th>
                 <th className="px-3 py-3">Estado</th>
@@ -414,7 +416,7 @@ export function TasksReports({ members, tasks }: Props) {
               {lines.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-3 py-8 text-center text-[color:var(--muted)]">
-                    Hoy no hay integrantes trabajando en tareas para esta fecha.
+                    Hoy no hay integrantes trabajando en actividades para esta fecha.
                   </td>
                 </tr>
               ) : (
@@ -464,9 +466,9 @@ export function TasksReports({ members, tasks }: Props) {
 
         <div>
           <h2 className="mb-3 font-[family-name:var(--font-display)] text-lg font-bold">
-            Gantt — cómo van las tareas
+            Gantt — cómo van las actividades
           </h2>
-          <TasksGantt members={reportMembers} tasks={scopedTasks} />
+          <TasksGantt members={reportMembers} activities={scopedActivities} />
         </div>
       </article>
     </div>

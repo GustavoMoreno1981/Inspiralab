@@ -5,12 +5,20 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   TASK_STATUSES,
+  TASK_STATUS_COLORS,
+  PHONE_COUNTRY_CODES,
   createId,
   emptyBoard,
-  getTaskProgress,
-  normalizeSubtaskStatus,
-  type Subtask,
+  deriveActivityStatusFromTasks,
+  deriveTaskStatusFromSubtasks,
+  formatMemberPhone,
+  getActivityProgress,
+  normalizeItemStatus,
+  type Activity,
   type Task,
+  type Subtask,
+  type TaskNote,
+  type ReviewMessage,
   type TaskStatus,
   type TasksBoard,
   type TeamMember,
@@ -19,18 +27,31 @@ import { TasksGantt } from "@/components/admin/TasksGantt";
 import { TasksReports } from "@/components/admin/TasksReports";
 import { AdminFooter } from "@/components/admin/AdminFooter";
 import { TaskSemaphore } from "@/components/admin/AdminAlarms";
-import { getTaskAlarmLevel, TASK_ALARM_COLORS } from "@/lib/alarms";
+import { ReviewMessageModal } from "@/components/admin/ReviewMessageModal";
+import { useToast } from "@/components/admin/AdminToast";
 
 const STATUS_STYLES: Record<TaskStatus, string> = {
   waiting: "bg-[#f3f3f3] text-[color:var(--muted)]",
   in_progress: "bg-[#fff1f4] text-[color:var(--accent)]",
   paused: "bg-[#eff6ff] text-[#2563eb]",
-  pending_review: "bg-[#eef4ff] text-[#2456b5]",
+  pending_review: "bg-[#fef9c3] text-[#a16207]",
   done: "bg-[#e9f8ef] text-[#177245]",
 };
 
 function str(value: unknown) {
   return typeof value === "string" ? value : "";
+}
+
+function formatNoteDate(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return new Intl.DateTimeFormat("es-CO", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function normalizeMember(member: Partial<TeamMember> & { id: string }): TeamMember {
@@ -40,10 +61,79 @@ function normalizeMember(member: Partial<TeamMember> & { id: string }): TeamMemb
     role: member.role || "",
     email: member.email || "",
     photo: member.photo || "",
+    phoneCountryCode: member.phoneCountryCode || "+57",
+    phone: (member.phone || "").replace(/\D/g, ""),
     createdAt: member.createdAt || "",
     accessRole: member.accessRole === "admin" ? "admin" : "member",
     canLogin: Boolean(member.canLogin),
     hasPassword: Boolean(member.hasPassword),
+  };
+}
+
+function normalizeSubtask(subtask: Partial<Subtask> & { id: string }): Subtask {
+  const status = normalizeItemStatus(subtask.status, subtask.done);
+  return {
+    id: subtask.id,
+    title: subtask.title || "",
+    status,
+    done: status === "done",
+    url: subtask.url || "",
+  };
+}
+
+function normalizeTask(
+  task: Partial<Task> & { id: string },
+  activityId: string,
+): Task {
+  const status = normalizeItemStatus(task.status, task.done);
+  return {
+    id: task.id,
+    activityId: task.activityId || activityId,
+    title: task.title || "",
+    status,
+    done: status === "done",
+    url: task.url || "",
+    subtasks: (task.subtasks || []).map((subtask) =>
+      normalizeSubtask({ ...subtask, id: subtask.id || createId("sub") }),
+    ),
+  };
+}
+
+function normalizeActivity(activity: Partial<Activity> & { id: string }): Activity {
+  const status = normalizeItemStatus(activity.status);
+  return {
+    id: activity.id,
+    title: activity.title || "",
+    date: activity.date || "",
+    finishedDate: activity.finishedDate || "",
+    processUrl: activity.processUrl || "",
+    deliverableUrl: activity.deliverableUrl || "",
+    status,
+    assigneeIds: activity.assigneeIds || [],
+    tasks: (activity.tasks || []).map((task) =>
+      normalizeTask({ ...task, id: task.id || createId("task") }, activity.id),
+    ),
+    notes: Array.isArray(activity.notes)
+      ? activity.notes.map((note) => ({
+          id: note.id,
+          text: note.text || "",
+          createdAt: note.createdAt || "",
+        }))
+      : [],
+    reviewMessages: Array.isArray(activity.reviewMessages)
+      ? activity.reviewMessages.map((message) => ({
+          id: message.id,
+          recipientIds: message.recipientIds || [],
+          recipientNames: message.recipientNames || [],
+          body: message.body || "",
+          url: message.url || "",
+          fullText: message.fullText || "",
+          createdAt: message.createdAt || "",
+          channel: message.channel === "copied" ? "copied" : "whatsapp",
+        }))
+      : [],
+    createdAt: activity.createdAt || "",
+    updatedAt: activity.updatedAt || "",
   };
 }
 
@@ -58,10 +148,19 @@ function MemberAvatar({
 }) {
   const sizeClass =
     size === "lg" ? "h-16 w-16" : size === "md" ? "h-12 w-12" : "h-8 w-8";
-  if (photo) {
+  const [broken, setBroken] = useState(false);
+  const src = (photo || "").trim();
+  const showImage = Boolean(src) && !broken;
+
+  if (showImage) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={photo} alt={name} className={`${sizeClass} shrink-0 object-cover`} />
+      <img
+        src={src}
+        alt={name}
+        className={`${sizeClass} shrink-0 object-cover`}
+        onError={() => setBroken(true)}
+      />
     );
   }
   return (
@@ -78,10 +177,13 @@ const emptyMemberForm = {
   role: "",
   email: "",
   photo: "",
+  phoneCountryCode: "+57",
+  phone: "",
 };
 
 export function TasksBoard() {
   const router = useRouter();
+  const toast = useToast();
   const [board, setBoard] = useState<TasksBoard>(emptyBoard());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -90,11 +192,23 @@ export function TasksBoard() {
   const [tab, setTab] = useState<"tasks" | "team">("tasks");
   const [viewMode, setViewMode] = useState<"list" | "gantt" | "reports">("list");
   const [selectedMemberId, setSelectedMemberId] = useState<string | "all">("all");
+  const [selectedStatus, setSelectedStatus] = useState<TaskStatus | "all">("all");
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [completeTaskId, setCompleteTaskId] = useState<string | null>(null);
+  const [expandedActivityId, setExpandedActivityId] = useState<string | null>(null);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [completeActivityId, setCompleteActivityId] = useState<string | null>(null);
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [notesOpenId, setNotesOpenId] = useState<string | null>(null);
+  const [reviewModalActivityId, setReviewModalActivityId] = useState<string | null>(null);
+  const [reviewHistoryOpenId, setReviewHistoryOpenId] = useState<string | null>(null);
+  const [reviewRevert, setReviewRevert] = useState<{
+    activityId: string;
+    status: TaskStatus;
+    tasks: Task[];
+  } | null>(null);
 
   const [memberForm, setMemberForm] = useState(emptyMemberForm);
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10));
@@ -104,11 +218,15 @@ export function TasksBoard() {
     return d.toISOString().slice(0, 10);
   });
   const [newAssigneeId, setNewAssigneeId] = useState("");
+  const [newFirstTask, setNewFirstTask] = useState("");
   const [newFirstSubtask, setNewFirstSubtask] = useState("");
   const [newFirstSubtaskUrl, setNewFirstSubtaskUrl] = useState("");
-  const [newSubtask, setNewSubtask] = useState<Record<string, { title: string; url: string }>>(
+  const [newTaskDraft, setNewTaskDraft] = useState<Record<string, { title: string; url: string }>>(
     {},
   );
+  const [newSubtaskDraft, setNewSubtaskDraft] = useState<
+    Record<string, { title: string; url: string }>
+  >({});
 
   const load = useCallback(async () => {
     const [tasksRes, meRes] = await Promise.all([
@@ -123,28 +241,9 @@ export function TasksBoard() {
       const data = (await tasksRes.json()) as TasksBoard;
       setBoard({
         members: (data.members || []).map((member) => normalizeMember(member)),
-        tasks: (data.tasks || []).map((task) => ({
-          ...task,
-          title: task.title || "",
-          date: task.date || "",
-          finishedDate: task.finishedDate || "",
-          processUrl: task.processUrl || "",
-          deliverableUrl: task.deliverableUrl || "",
-          status: task.status || "waiting",
-          assigneeIds: task.assigneeIds || [],
-          subtasks: (task.subtasks || []).map((subtask) => {
-            const status = normalizeSubtaskStatus(subtask.status, subtask.done);
-            return {
-              id: subtask.id,
-              title: subtask.title || "",
-              status,
-              done: status === "done",
-              url: subtask.url || "",
-            };
-          }),
-          createdAt: task.createdAt || "",
-          updatedAt: task.updatedAt || "",
-        })),
+        activities: (data.activities || []).map((activity) =>
+          normalizeActivity({ ...activity, id: activity.id }),
+        ),
       });
     }
     setLoading(false);
@@ -154,17 +253,29 @@ export function TasksBoard() {
     void load();
   }, [load]);
 
-  const filteredTasks = useMemo(() => {
-    if (selectedMemberId === "all") return board.tasks;
-    return board.tasks.filter((task) => (task.assigneeIds || []).includes(selectedMemberId));
-  }, [board.tasks, selectedMemberId]);
+  const filteredActivities = useMemo(() => {
+    return board.activities.filter((activity) => {
+      const matchesMember =
+        selectedMemberId === "all" ||
+        (activity.assigneeIds || []).includes(selectedMemberId);
+      const matchesStatus =
+        selectedStatus === "all" || activity.status === selectedStatus;
+      return matchesMember && matchesStatus;
+    });
+  }, [board.activities, selectedMemberId, selectedStatus]);
 
   const selectedMember =
     selectedMemberId === "all"
       ? null
       : board.members.find((member) => member.id === selectedMemberId) || null;
 
-  async function persist(next: TasksBoard) {
+  const selectedStatusLabel =
+    selectedStatus === "all"
+      ? null
+      : TASK_STATUSES.find((item) => item.value === selectedStatus)?.label ||
+        selectedStatus;
+
+  async function persist(next: TasksBoard, successMessage?: string) {
     setSaving(true);
     setStatusMsg("");
     const res = await fetch("/api/tasks", {
@@ -175,12 +286,18 @@ export function TasksBoard() {
     setSaving(false);
     if (res.ok) {
       await load();
-      setStatusMsg("Guardado");
-      window.setTimeout(() => setStatusMsg(""), 1800);
+      if (successMessage) {
+        toast.success(successMessage);
+      } else {
+        setStatusMsg("Guardado");
+        window.setTimeout(() => setStatusMsg(""), 1800);
+      }
       return true;
     }
     const payload = (await res.json().catch(() => null)) as { error?: string } | null;
-    setStatusMsg(payload?.error || "Error al guardar");
+    const errorMsg = payload?.error || "Error al guardar";
+    setStatusMsg(errorMsg);
+    toast.error(errorMsg);
     return false;
   }
 
@@ -197,55 +314,132 @@ export function TasksBoard() {
       form.append("file", file);
       const res = await fetch("/api/upload", { method: "POST", body: form });
       if (!res.ok) {
-        alert("Error al subir la foto");
+        const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+        toast.error(payload?.error || "Error al subir la foto");
         return;
       }
       const data = (await res.json()) as { url: string };
       setMemberForm((p) => ({ ...emptyMemberForm, ...p, photo: data.url }));
+      toast.success("Foto lista para el nuevo integrante");
     } finally {
       setUploadingPhoto(false);
     }
   }
 
-  function addMember(event: FormEvent) {
-    event.preventDefault();
-    if (!memberForm.name.trim()) return;
-    if (!memberForm.photo) {
-      alert("Sube la foto del integrante");
+  async function updateMemberPhoto(memberId: string, file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch("/api/upload", { method: "POST", body: form });
+    if (!res.ok) {
+      const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+      toast.error(payload?.error || "Error al subir la foto");
       return;
     }
+    const data = (await res.json()) as { url: string };
+    const members = board.members.map((member) =>
+      member.id === memberId ? { ...member, photo: data.url } : member,
+    );
+    const ok = await persist({ ...board, members }, "Foto del integrante actualizada");
+    if (ok && editingMemberId === memberId) {
+      setMemberForm((prev) => ({ ...prev, photo: data.url }));
+    }
+  }
+
+  async function saveMember(event: FormEvent) {
+    event.preventDefault();
+    if (!memberForm.name.trim()) {
+      toast.error("Escribe el nombre del integrante");
+      return;
+    }
+    if (!memberForm.photo) {
+      toast.error("Sube la foto del integrante");
+      return;
+    }
+
+    if (editingMemberId) {
+      const members = board.members.map((member) =>
+        member.id === editingMemberId
+          ? {
+              ...member,
+              name: memberForm.name.trim(),
+              role: memberForm.role.trim(),
+              email: memberForm.email.trim().toLowerCase(),
+              photo: memberForm.photo,
+              phoneCountryCode: memberForm.phoneCountryCode || "+57",
+              phone: memberForm.phone.replace(/\D/g, ""),
+            }
+          : member,
+      );
+      const ok = await persist(
+        { ...board, members },
+        `Integrante “${memberForm.name.trim()}” actualizado`,
+      );
+      if (ok) {
+        setMemberForm(emptyMemberForm);
+        setEditingMemberId(null);
+      }
+      return;
+    }
+
     const member: TeamMember = {
       id: createId("member"),
       name: memberForm.name.trim(),
       role: memberForm.role.trim(),
       email: memberForm.email.trim().toLowerCase(),
       photo: memberForm.photo,
+      phoneCountryCode: memberForm.phoneCountryCode || "+57",
+      phone: memberForm.phone.replace(/\D/g, ""),
       createdAt: new Date().toISOString(),
       accessRole: "member",
       canLogin: false,
       hasPassword: false,
     };
-    void persist({ ...board, members: [...board.members, member] });
+    const ok = await persist(
+      { ...board, members: [...board.members, member] },
+      `Integrante “${member.name}” agregado`,
+    );
+    if (ok) setMemberForm(emptyMemberForm);
+  }
+
+  function startEditMember(member: TeamMember) {
+    setEditingMemberId(member.id);
+    setMemberForm({
+      name: member.name || "",
+      role: member.role || "",
+      email: member.email || "",
+      photo: member.photo || "",
+      phoneCountryCode: member.phoneCountryCode || "+57",
+      phone: member.phone || "",
+    });
+  }
+
+  function cancelEditMember() {
+    setEditingMemberId(null);
     setMemberForm(emptyMemberForm);
   }
 
-  function removeMember(id: string) {
+  async function removeMember(id: string) {
     if (!window.confirm("¿Eliminar este integrante?")) return;
-    void persist({
-      members: board.members.filter((m) => m.id !== id),
-      tasks: board.tasks.map((task) => ({
-        ...task,
-        assigneeIds: task.assigneeIds.filter((assigneeId) => assigneeId !== id),
-      })),
-    });
-    if (selectedMemberId === id) setSelectedMemberId("all");
+    const member = board.members.find((item) => item.id === id);
+    const ok = await persist(
+      {
+        members: board.members.filter((m) => m.id !== id),
+        activities: board.activities.map((activity) => ({
+          ...activity,
+          assigneeIds: activity.assigneeIds.filter((assigneeId) => assigneeId !== id),
+        })),
+      },
+      member ? `Integrante “${member.name}” eliminado` : "Integrante eliminado",
+    );
+    if (ok) {
+      if (selectedMemberId === id) setSelectedMemberId("all");
+      if (editingMemberId === id) cancelEditMember();
+    }
   }
 
   function openCreateModal() {
     const defaultAssignee =
-      selectedMemberId !== "all"
-        ? selectedMemberId
-        : board.members[0]?.id || "";
+      selectedMemberId !== "all" ? selectedMemberId : board.members[0]?.id || "";
     const start = new Date().toISOString().slice(0, 10);
     const end = new Date();
     end.setDate(end.getDate() + 7);
@@ -253,42 +447,61 @@ export function TasksBoard() {
     setNewTitle("");
     setNewDate(start);
     setNewEndDate(end.toISOString().slice(0, 10));
+    setNewFirstTask("");
     setNewFirstSubtask("");
     setNewFirstSubtaskUrl("");
     setShowCreateModal(true);
   }
 
-  async function createTask(event: FormEvent) {
+  async function createActivity(event: FormEvent) {
     event.preventDefault();
-    if (!newTitle.trim()) return;
+    if (!newTitle.trim()) {
+      toast.error("Escribe el título de la actividad");
+      return;
+    }
     if (!newAssigneeId) {
-      alert("Selecciona un integrante");
+      toast.error("Selecciona un integrante");
       return;
     }
     if (!newEndDate) {
-      alert("Indica la fecha de fin");
+      toast.error("Indica la fecha de fin");
       return;
     }
     if (newEndDate < newDate) {
-      alert("La fecha de fin no puede ser anterior al inicio");
+      toast.error("La fecha de fin no puede ser anterior al inicio");
       return;
     }
 
     const now = new Date().toISOString();
-    const subtasks: Subtask[] = newFirstSubtask.trim()
-      ? [
-          {
-            id: createId("sub"),
-            title: newFirstSubtask.trim(),
-            status: "waiting",
-            done: false,
-            url: newFirstSubtaskUrl.trim(),
-          },
-        ]
-      : [];
+    const activityId = createId("activity");
+    const tasks: Task[] = [];
 
-    const task: Task = {
-      id: createId("task"),
+    if (newFirstTask.trim()) {
+      const taskId = createId("task");
+      const subtasks: Subtask[] = newFirstSubtask.trim()
+        ? [
+            {
+              id: createId("sub"),
+              title: newFirstSubtask.trim(),
+              status: "waiting",
+              done: false,
+              url: newFirstSubtaskUrl.trim(),
+            },
+          ]
+        : [];
+      tasks.push({
+        id: taskId,
+        activityId,
+        title: newFirstTask.trim(),
+        status: "waiting",
+        done: false,
+        url: "",
+        subtasks,
+      });
+    }
+
+    const activity: Activity = {
+      id: activityId,
       title: newTitle.trim(),
       date: newDate,
       finishedDate: newEndDate,
@@ -296,107 +509,503 @@ export function TasksBoard() {
       deliverableUrl: "",
       status: "waiting",
       assigneeIds: [newAssigneeId],
-      subtasks,
+      tasks,
+      notes: [],
+      reviewMessages: [],
       createdAt: now,
       updatedAt: now,
     };
 
-    const ok = await persist({ ...board, tasks: [task, ...board.tasks] });
+    const ok = await persist(
+      { ...board, activities: [activity, ...board.activities] },
+      `Actividad “${activity.title}” creada`,
+    );
     if (ok) {
       setShowCreateModal(false);
       setSelectedMemberId(newAssigneeId);
-      if (task.subtasks.length) setExpandedId(task.id);
+      if (activity.tasks.length) setExpandedActivityId(activity.id);
     }
   }
 
-  function updateTask(taskId: string, patch: Partial<Task>) {
-    void persist({
-      ...board,
-      tasks: board.tasks.map((task) =>
-        task.id === taskId ? { ...task, ...patch, updatedAt: new Date().toISOString() } : task,
-      ),
-    });
+  function updateActivity(
+    activityId: string,
+    patch: Partial<Activity>,
+    successMessage?: string,
+  ) {
+    void persist(
+      {
+        ...board,
+        activities: board.activities.map((activity) =>
+          activity.id === activityId
+            ? { ...activity, ...patch, updatedAt: new Date().toISOString() }
+            : activity,
+        ),
+      },
+      successMessage,
+    );
   }
 
-  function removeTask(taskId: string) {
-    if (!window.confirm("¿Eliminar esta tarea?")) return;
-    void persist({
-      ...board,
-      tasks: board.tasks.filter((task) => task.id !== taskId),
-    });
+  function removeActivity(activityId: string) {
+    if (!window.confirm("¿Eliminar esta actividad?")) return;
+    const activity = board.activities.find((item) => item.id === activityId);
+    void persist(
+      {
+        ...board,
+        activities: board.activities.filter((item) => item.id !== activityId),
+      },
+      activity ? `Actividad “${activity.title}” eliminada` : "Actividad eliminada",
+    );
   }
 
-  function addSubtask(taskId: string) {
-    const draft = newSubtask[taskId] || { title: "", url: "" };
+  function addNote(activityId: string) {
+    const text = (noteDrafts[activityId] || "").trim();
+    if (!text) {
+      toast.error("Escribe la nota");
+      return;
+    }
+    const note: TaskNote = {
+      id: createId("note"),
+      text,
+      createdAt: new Date().toISOString(),
+    };
+    const activity = board.activities.find((item) => item.id === activityId);
+    if (!activity) return;
+    updateActivity(activityId, { notes: [note, ...(activity.notes || [])] }, "Nota agregada");
+    setNoteDrafts((prev) => ({ ...prev, [activityId]: "" }));
+    setNotesOpenId(activityId);
+  }
+
+  function removeNote(activityId: string, noteId: string) {
+    const activity = board.activities.find((item) => item.id === activityId);
+    if (!activity) return;
+    updateActivity(
+      activityId,
+      { notes: (activity.notes || []).filter((note) => note.id !== noteId) },
+      "Nota eliminada",
+    );
+  }
+
+  function addTask(activityId: string) {
+    const draft = newTaskDraft[activityId] || { title: "", url: "" };
     const title = draft.title.trim();
-    if (!title) return;
-    const task = board.tasks.find((item) => item.id === taskId);
-    if (!task) return;
-    updateTask(taskId, {
-      subtasks: [
-        ...task.subtasks,
-        {
-          id: createId("sub"),
-          title,
-          status: "waiting",
-          done: false,
-          url: draft.url.trim(),
-        },
-      ],
-    });
-    setNewSubtask((prev) => ({ ...prev, [taskId]: { title: "", url: "" } }));
+    if (!title) {
+      toast.error("Escribe el título de la tarea");
+      return;
+    }
+    const activity = board.activities.find((item) => item.id === activityId);
+    if (!activity) return;
+    updateActivity(
+      activityId,
+      {
+        tasks: [
+          ...activity.tasks,
+          {
+            id: createId("task"),
+            activityId,
+            title,
+            status: "waiting",
+            done: false,
+            url: draft.url.trim(),
+            subtasks: [],
+          },
+        ],
+      },
+      "Tarea agregada",
+    );
+    setNewTaskDraft((prev) => ({ ...prev, [activityId]: { title: "", url: "" } }));
+    setExpandedActivityId(activityId);
   }
 
-  function updateSubtask(taskId: string, subtaskId: string, patch: Partial<Subtask>) {
-    const task = board.tasks.find((item) => item.id === taskId);
-    if (!task) return;
-    updateTask(taskId, {
-      subtasks: task.subtasks.map((item) => {
-        if (item.id !== subtaskId) return item;
-        const next = { ...item, ...patch };
-        if (patch.status) {
-          next.status = patch.status;
-          next.done = patch.status === "done";
-        }
-        return next;
-      }),
-    });
+  function removeTask(activityId: string, taskId: string) {
+    const activity = board.activities.find((item) => item.id === activityId);
+    if (!activity) return;
+    const nextTasks = activity.tasks.filter((item) => item.id !== taskId);
+    const derived = deriveActivityStatusFromTasks(nextTasks);
+    updateActivity(
+      activityId,
+      {
+        tasks: nextTasks,
+        ...(derived && derived !== activity.status ? { status: derived } : {}),
+      },
+      "Tarea eliminada",
+    );
+    if (expandedTaskId === taskId) setExpandedTaskId(null);
   }
 
-  function setTaskStatus(taskId: string, status: TaskStatus) {
-    const task = board.tasks.find((item) => item.id === taskId);
-    if (!task) return;
-    updateTask(taskId, { status });
-    // URLs de entrega solo cuando el estado es Terminada
-    if (status === "done") {
+  function updateTaskFields(
+    activityId: string,
+    taskId: string,
+    patch: Partial<Task>,
+    successMessage?: string,
+  ) {
+    const activity = board.activities.find((item) => item.id === activityId);
+    if (!activity) return;
+    const nextTasks = activity.tasks.map((task) => {
+      if (task.id !== taskId) return task;
+      const next = { ...task, ...patch };
+      if (patch.status) {
+        next.status = patch.status;
+        next.done = patch.status === "done";
+      }
+      return next;
+    });
+    updateActivity(activityId, { tasks: nextTasks }, successMessage);
+  }
+
+  function beginPendingReview(
+    activity: Activity,
+    nextTasks: Task[],
+    nextStatus: TaskStatus = "pending_review",
+  ) {
+    setReviewRevert({
+      activityId: activity.id,
+      status: activity.status,
+      tasks: activity.tasks.map((task) => ({
+        ...task,
+        subtasks: task.subtasks.map((sub) => ({ ...sub })),
+      })),
+    });
+    setBoard((prev) => ({
+      ...prev,
+      activities: prev.activities.map((item) =>
+        item.id === activity.id
+          ? {
+              ...item,
+              status: nextStatus,
+              tasks: nextTasks,
+              updatedAt: new Date().toISOString(),
+            }
+          : item,
+      ),
+    }));
+    toast.info("Confirma el aviso de revisión o cierra para cancelar");
+    window.setTimeout(() => setReviewModalActivityId(activity.id), 0);
+  }
+
+  function maybeOpenDoneModal(activityId: string, previousStatus: TaskStatus, nextStatus: TaskStatus | null) {
+    if (nextStatus === "done" && previousStatus !== "done") {
       window.setTimeout(() => {
-        setExpandedId(null);
-        setCompleteTaskId(taskId);
+        setExpandedActivityId(null);
+        setCompleteActivityId(activityId);
       }, 0);
     }
   }
 
-  function openDeliveryModal(task: Task) {
-    if (task.status !== "done") return;
-    setExpandedId(null);
-    setCompleteTaskId(task.id);
-  }
-
-  function saveDeliveryUrls(taskId: string) {
-    updateTask(taskId, { status: "done" });
-    setCompleteTaskId(null);
-  }
-
-  function removeSubtask(taskId: string, subtaskId: string) {
-    const task = board.tasks.find((item) => item.id === taskId);
+  function setTaskStatus(activityId: string, taskId: string, status: TaskStatus) {
+    const activity = board.activities.find((item) => item.id === activityId);
+    if (!activity) return;
+    const task = activity.tasks.find((item) => item.id === taskId);
     if (!task) return;
-    updateTask(taskId, {
-      subtasks: task.subtasks.filter((item) => item.id !== subtaskId),
+
+    const label = TASK_STATUSES.find((item) => item.value === status)?.label || status;
+    const nextTasks = activity.tasks.map((item) =>
+      item.id === taskId
+        ? { ...item, status, done: status === "done" }
+        : item,
+    );
+    const derivedActivity =
+      nextTasks.length === 1 ? status : deriveActivityStatusFromTasks(nextTasks);
+
+    if (
+      derivedActivity === "pending_review" &&
+      activity.status !== "pending_review"
+    ) {
+      beginPendingReview(activity, nextTasks, "pending_review");
+      return;
+    }
+
+    const activityLabel = derivedActivity
+      ? TASK_STATUSES.find((item) => item.value === derivedActivity)?.label
+      : null;
+    const message =
+      activityLabel && derivedActivity && derivedActivity !== activity.status
+        ? `Tarea: ${label} · Actividad: ${activityLabel}`
+        : `Tarea: ${label}`;
+
+    updateActivity(
+      activityId,
+      {
+        tasks: nextTasks,
+        ...(derivedActivity ? { status: derivedActivity } : {}),
+      },
+      message,
+    );
+    maybeOpenDoneModal(activityId, activity.status, derivedActivity);
+  }
+
+  function updateSubtask(
+    activityId: string,
+    taskId: string,
+    subtaskId: string,
+    patch: Partial<Subtask>,
+    successMessage?: string,
+  ) {
+    const activity = board.activities.find((item) => item.id === activityId);
+    if (!activity) return;
+    const task = activity.tasks.find((item) => item.id === taskId);
+    if (!task) return;
+
+    const statusLabel = patch.status
+      ? TASK_STATUSES.find((item) => item.value === patch.status)?.label
+      : null;
+
+    const nextSubtasks = task.subtasks.map((item) => {
+      if (item.id !== subtaskId) return item;
+      const next = { ...item, ...patch };
+      if (patch.status) {
+        next.status = patch.status;
+        next.done = patch.status === "done";
+      }
+      return next;
     });
+
+    const derivedTaskStatus = patch.status
+      ? nextSubtasks.length === 1
+        ? patch.status
+        : deriveTaskStatusFromSubtasks(nextSubtasks)
+      : null;
+
+    const nextTasks = activity.tasks.map((item) => {
+      if (item.id !== taskId) return item;
+      return {
+        ...item,
+        subtasks: nextSubtasks,
+        ...(derivedTaskStatus
+          ? { status: derivedTaskStatus, done: derivedTaskStatus === "done" }
+          : {}),
+      };
+    });
+
+    const derivedActivityStatus = derivedTaskStatus
+      ? nextTasks.length === 1
+        ? derivedTaskStatus
+        : deriveActivityStatusFromTasks(nextTasks)
+      : null;
+
+    if (
+      derivedActivityStatus === "pending_review" &&
+      activity.status !== "pending_review"
+    ) {
+      beginPendingReview(activity, nextTasks, "pending_review");
+      return;
+    }
+
+    const taskStatusLabel = derivedTaskStatus
+      ? TASK_STATUSES.find((item) => item.value === derivedTaskStatus)?.label
+      : null;
+    const activityStatusLabel = derivedActivityStatus
+      ? TASK_STATUSES.find((item) => item.value === derivedActivityStatus)?.label
+      : null;
+
+    let message: string | undefined = successMessage;
+    if (!message && statusLabel) {
+      const parts = [`Subtarea: ${statusLabel}`];
+      if (taskStatusLabel && derivedTaskStatus && derivedTaskStatus !== task.status) {
+        parts.push(`Tarea: ${taskStatusLabel}`);
+      }
+      if (
+        activityStatusLabel &&
+        derivedActivityStatus &&
+        derivedActivityStatus !== activity.status
+      ) {
+        parts.push(`Actividad: ${activityStatusLabel}`);
+      }
+      message = parts.join(" · ");
+    }
+
+    updateActivity(
+      activityId,
+      {
+        tasks: nextTasks,
+        ...(derivedActivityStatus ? { status: derivedActivityStatus } : {}),
+      },
+      message,
+    );
+    maybeOpenDoneModal(activityId, activity.status, derivedActivityStatus);
+  }
+
+  function addSubtask(activityId: string, taskId: string) {
+    const draft = newSubtaskDraft[taskId] || { title: "", url: "" };
+    const title = draft.title.trim();
+    if (!title) {
+      toast.error("Escribe el título de la subtarea");
+      return;
+    }
+    const activity = board.activities.find((item) => item.id === activityId);
+    if (!activity) return;
+    const task = activity.tasks.find((item) => item.id === taskId);
+    if (!task) return;
+
+    updateTaskFields(
+      activityId,
+      taskId,
+      {
+        subtasks: [
+          ...task.subtasks,
+          {
+            id: createId("sub"),
+            title,
+            status: "waiting",
+            done: false,
+            url: draft.url.trim(),
+          },
+        ],
+      },
+      "Subtarea agregada",
+    );
+    setNewSubtaskDraft((prev) => ({ ...prev, [taskId]: { title: "", url: "" } }));
+    setExpandedTaskId(taskId);
+  }
+
+  function removeSubtask(activityId: string, taskId: string, subtaskId: string) {
+    const activity = board.activities.find((item) => item.id === activityId);
+    if (!activity) return;
+    const task = activity.tasks.find((item) => item.id === taskId);
+    if (!task) return;
+
+    const nextSubtasks = task.subtasks.filter((item) => item.id !== subtaskId);
+    const derivedTask = deriveTaskStatusFromSubtasks(nextSubtasks);
+    const nextTasks = activity.tasks.map((item) =>
+      item.id === taskId
+        ? {
+            ...item,
+            subtasks: nextSubtasks,
+            ...(derivedTask ? { status: derivedTask, done: derivedTask === "done" } : {}),
+          }
+        : item,
+    );
+    const derivedActivity = deriveActivityStatusFromTasks(nextTasks);
+    updateActivity(
+      activityId,
+      {
+        tasks: nextTasks,
+        ...(derivedActivity && derivedActivity !== activity.status
+          ? { status: derivedActivity }
+          : {}),
+      },
+      "Subtarea eliminada",
+    );
+  }
+
+  function setActivityStatus(activityId: string, status: TaskStatus) {
+    const activity = board.activities.find((item) => item.id === activityId);
+    if (!activity) return;
+    const label = TASK_STATUSES.find((item) => item.value === status)?.label || status;
+
+    if (status === "pending_review" && activity.status !== "pending_review") {
+      beginPendingReview(activity, activity.tasks, "pending_review");
+      return;
+    }
+
+    setReviewRevert(null);
+    updateActivity(activityId, { status }, `Estado: ${label}`);
+    if (status === "done") {
+      window.setTimeout(() => {
+        setExpandedActivityId(null);
+        setCompleteActivityId(activityId);
+      }, 0);
+    }
+  }
+
+  function closeReviewModal() {
+    if (reviewRevert && reviewRevert.activityId === reviewModalActivityId) {
+      const previousLabel =
+        TASK_STATUSES.find((item) => item.value === reviewRevert.status)?.label ||
+        reviewRevert.status;
+      setBoard((prev) => ({
+        ...prev,
+        activities: prev.activities.map((activity) =>
+          activity.id === reviewRevert.activityId
+            ? {
+                ...activity,
+                status: reviewRevert.status,
+                tasks: reviewRevert.tasks,
+                updatedAt: new Date().toISOString(),
+              }
+            : activity,
+        ),
+      }));
+      toast.info(`Revisión cancelada · vuelve a ${previousLabel}`);
+    }
+    setReviewRevert(null);
+    setReviewModalActivityId(null);
+  }
+
+  function saveReviewMessage(activityId: string, message: ReviewMessage) {
+    const snapshot = board.activities.find((activity) => activity.id === activityId);
+    setReviewRevert(null);
+    setReviewModalActivityId(null);
+    setBoard((prev) => {
+      const next: TasksBoard = {
+        ...prev,
+        activities: prev.activities.map((activity) =>
+          activity.id === activityId
+            ? {
+                ...activity,
+                status: "pending_review",
+                tasks: snapshot?.tasks || activity.tasks,
+                reviewMessages: [message, ...(activity.reviewMessages || [])],
+                updatedAt: new Date().toISOString(),
+              }
+            : activity,
+        ),
+      };
+      void persist(next, "Mensaje de revisión guardado");
+      return next;
+    });
+    setReviewHistoryOpenId(activityId);
+  }
+
+  function openDeliveryModal(activity: Activity) {
+    if (activity.status !== "done") return;
+    setExpandedActivityId(null);
+    setCompleteActivityId(activity.id);
+  }
+
+  function saveDeliveryUrls(activityId: string) {
+    updateActivity(activityId, { status: "done" }, "Entrega guardada");
+    setCompleteActivityId(null);
+  }
+
+  function shareCompletedActivityOnWhatsApp(activity: Activity) {
+    const people = (activity.assigneeIds || [])
+      .map((id) => board.members.find((m) => m.id === id)?.name)
+      .filter(Boolean) as string[];
+    const who =
+      people.length === 0
+        ? "el equipo"
+        : people.length === 1
+          ? people[0]
+          : people.slice(0, -1).join(", ") + " y " + people[people.length - 1];
+
+    const lines = [
+      "¡Hola equipo! 🎉",
+      "",
+      `${who} terminó la actividad:`,
+      `“${activity.title}”`,
+      "",
+    ];
+
+    if (activity.processUrl) {
+      lines.push(`🔗 URL del proceso:`, activity.processUrl, "");
+    }
+    if (activity.deliverableUrl) {
+      lines.push(`📦 URL del entregable:`, activity.deliverableUrl, "");
+    }
+    if (!activity.processUrl && !activity.deliverableUrl) {
+      lines.push("(Aún no hay links de proceso ni entregable.)", "");
+    }
+
+    lines.push("¡Gran trabajo! ✨", "", "— Inspiralab");
+
+    const text = lines.join("\n");
+    const href = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(href, "_blank", "noopener,noreferrer");
+    toast.success("Mensaje listo para compartir por WhatsApp");
   }
 
   if (loading) {
-    return <div className="p-10 text-sm text-[color:var(--muted)]">Cargando tareas...</div>;
+    return <div className="p-10 text-sm text-[color:var(--muted)]">Cargando actividades...</div>;
   }
 
   return (
@@ -405,7 +1014,7 @@ export function TasksBoard() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-4 md:px-8">
           <div>
             <p className="font-[family-name:var(--font-display)] text-lg font-bold text-[color:var(--accent)]">
-              Seguimiento de tareas
+              Seguimiento de actividades
             </p>
             <p className="text-xs text-[color:var(--muted)]">
               {saving ? "Guardando..." : statusMsg || "Equipo y avance"}
@@ -435,7 +1044,7 @@ export function TasksBoard() {
               tab === "tasks" ? "bg-[color:var(--accent)] text-white" : ""
             }`}
           >
-            Tareas
+            Actividades
           </button>
           <button
             type="button"
@@ -450,13 +1059,24 @@ export function TasksBoard() {
 
         {tab === "team" ? (
           <section className="grid gap-6 lg:grid-cols-[340px_1fr]">
-            <form onSubmit={addMember} className="h-fit space-y-3 border border-[color:var(--line)] bg-white p-5">
-              <h2 className="font-[family-name:var(--font-display)] text-xl font-bold">
-                Nuevo integrante
-              </h2>
+            <form onSubmit={(e) => void saveMember(e)} className="h-fit space-y-3 border border-[color:var(--line)] bg-white p-5">
+              <div className="flex items-start justify-between gap-3">
+                <h2 className="font-[family-name:var(--font-display)] text-xl font-bold">
+                  {editingMemberId ? "Editar integrante" : "Nuevo integrante"}
+                </h2>
+                {editingMemberId && (
+                  <button
+                    type="button"
+                    onClick={cancelEditMember}
+                    className="text-xs font-semibold text-[color:var(--muted)] hover:text-[color:var(--ink)]"
+                  >
+                    Cancelar
+                  </button>
+                )}
+              </div>
               <input
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/png,image/webp,image/gif"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) void uploadMemberPhoto(file);
@@ -464,6 +1084,9 @@ export function TasksBoard() {
                 }}
                 className="block w-full text-xs"
               />
+              <p className="text-[11px] text-[color:var(--muted)]">
+                Formatos: JPG, PNG, WEBP o GIF (máx. 10MB).
+              </p>
               {memberForm.photo ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={memberForm.photo} alt="" className="h-24 w-24 object-cover" />
@@ -494,6 +1117,52 @@ export function TasksBoard() {
                 }
                 className="w-full border border-[color:var(--line)] px-3 py-2 text-sm"
               />
+              <div className="grid grid-cols-[9.5rem_1fr] gap-2">
+                <label className="block space-y-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+                    Indicativo
+                  </span>
+                  <select
+                    value={memberForm.phoneCountryCode || "+57"}
+                    onChange={(e) =>
+                      setMemberForm((p) => ({
+                        ...emptyMemberForm,
+                        ...p,
+                        phoneCountryCode: e.target.value,
+                      }))
+                    }
+                    className="w-full border border-[color:var(--line)] px-2 py-2 text-sm"
+                  >
+                    {PHONE_COUNTRY_CODES.map((item) => (
+                      <option key={item.code} value={item.code}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+                    WhatsApp / celular
+                  </span>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    placeholder="3001234567"
+                    value={str(memberForm.phone)}
+                    onChange={(e) =>
+                      setMemberForm((p) => ({
+                        ...emptyMemberForm,
+                        ...p,
+                        phone: e.target.value.replace(/\D/g, ""),
+                      }))
+                    }
+                    className="w-full border border-[color:var(--line)] px-3 py-2 text-sm"
+                  />
+                </label>
+              </div>
+              <p className="text-[11px] text-[color:var(--muted)]">
+                Se usará para recordatorios diarios de tareas pendientes por WhatsApp.
+              </p>
               {isAdmin && (
                 <p className="border border-[color:var(--line)] bg-[color:var(--mist)] p-3 text-xs text-[color:var(--muted)]">
                   El acceso al panel usa contraseñas compartidas por rol. El administrador puede
@@ -505,7 +1174,7 @@ export function TasksBoard() {
                 disabled={uploadingPhoto}
                 className="w-full bg-[color:var(--accent)] py-2.5 text-sm font-semibold text-white disabled:opacity-60"
               >
-                Agregar integrante
+                {editingMemberId ? "Guardar cambios" : "Agregar integrante"}
               </button>
             </form>
 
@@ -516,23 +1185,50 @@ export function TasksBoard() {
                 <ul className="divide-y divide-[color:var(--line)]">
                   {board.members.map((member) => (
                     <li key={member.id} className="flex items-center justify-between gap-4 p-4">
-                      <div className="flex items-center gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
                         <MemberAvatar name={member.name} photo={member.photo} size="md" />
-                        <div>
+                        <div className="min-w-0">
                           <p className="font-semibold">{member.name}</p>
                           <p className="text-sm text-[color:var(--muted)]">
                             {member.role || "Sin cargo"}
                             {member.email ? ` · ${member.email}` : ""}
                           </p>
+                          <p className="mt-0.5 text-xs text-[color:var(--muted)]">
+                            {formatMemberPhone(member)
+                              ? `WhatsApp: ${formatMemberPhone(member)}`
+                              : "Sin teléfono registrado"}
+                          </p>
+                          <label className="mt-2 inline-flex cursor-pointer text-xs font-semibold text-[color:var(--accent)]">
+                            {member.photo ? "Cambiar foto" : "Subir foto"}
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp,image/gif"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) void updateMemberPhoto(member.id, file);
+                                e.target.value = "";
+                              }}
+                            />
+                          </label>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => removeMember(member.id)}
-                        className="text-xs font-semibold text-[color:var(--accent)]"
-                      >
-                        Eliminar
-                      </button>
+                      <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
+                        <button
+                          type="button"
+                          onClick={() => startEditMember(member)}
+                          className="text-xs font-semibold text-[color:var(--ink)]"
+                        >
+                          {editingMemberId === member.id ? "Editando…" : "Editar"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void removeMember(member.id)}
+                          className="text-xs font-semibold text-[color:var(--accent)]"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -544,7 +1240,7 @@ export function TasksBoard() {
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold text-[color:var(--ink)]">
-                  Visualizar tareas del equipo
+                  Visualizar actividades del equipo
                 </h1>
                 <p className="mt-2 text-sm text-[color:var(--muted)]">
                   Lista, Gantt o Reportes por integrante.
@@ -586,7 +1282,7 @@ export function TasksBoard() {
                   disabled={board.members.length === 0}
                   className="bg-[color:var(--accent)] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
                 >
-                  + Nueva tarea
+                  + Nueva actividad
                 </button>
               </div>
             </div>
@@ -605,7 +1301,7 @@ export function TasksBoard() {
                 </button>
               </div>
             ) : viewMode === "reports" ? (
-              <TasksReports members={board.members} tasks={board.tasks} />
+              <TasksReports members={board.members} activities={board.activities} />
             ) : (
               <>
                 <div className="flex gap-3 overflow-x-auto pb-1">
@@ -622,13 +1318,22 @@ export function TasksBoard() {
                       Todo el equipo
                     </p>
                     <p className="text-xs text-[color:var(--muted)]">
-                      {board.tasks.length} tareas
+                      {
+                        board.activities.filter(
+                          (a) =>
+                            selectedStatus === "all" || a.status === selectedStatus,
+                        ).length
+                      }{" "}
+                      actividades
                     </p>
                   </button>
 
                   {board.members.map((member) => {
-                    const count = board.tasks.filter((task) =>
-                      (task.assigneeIds || []).includes(member.id),
+                    const count = board.activities.filter(
+                      (activity) =>
+                        (activity.assigneeIds || []).includes(member.id) &&
+                        (selectedStatus === "all" ||
+                          activity.status === selectedStatus),
                     ).length;
                     const active = selectedMemberId === member.id;
                     return (
@@ -648,7 +1353,7 @@ export function TasksBoard() {
                             {member.name}
                           </p>
                           <p className="text-xs text-[color:var(--muted)]">
-                            {count} {count === 1 ? "tarea" : "tareas"}
+                            {count} {count === 1 ? "actividad" : "actividades"}
                           </p>
                         </div>
                       </button>
@@ -656,12 +1361,83 @@ export function TasksBoard() {
                   })}
                 </div>
 
-                {selectedMember && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+                    Estado
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStatus("all")}
+                    className={`border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      selectedStatus === "all"
+                        ? "border-[color:var(--accent)] bg-[#fff1f4] text-[color:var(--accent)]"
+                        : "border-[color:var(--line)] bg-white text-[color:var(--ink)]"
+                    }`}
+                  >
+                    Todos
+                  </button>
+                  {TASK_STATUSES.map(({ value: status, label }) => {
+                    const active = selectedStatus === status;
+                    const count = board.activities.filter((a) => {
+                      const matchesMember =
+                        selectedMemberId === "all" ||
+                        (a.assigneeIds || []).includes(selectedMemberId);
+                      return matchesMember && a.status === status;
+                    }).length;
+                    return (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => setSelectedStatus(status)}
+                        className={`border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                          active
+                            ? "border-transparent text-white"
+                            : "border-[color:var(--line)] bg-white text-[color:var(--ink)]"
+                        }`}
+                        style={
+                          active
+                            ? {
+                                backgroundColor: TASK_STATUS_COLORS[status].bg,
+                              }
+                            : undefined
+                        }
+                      >
+                        {label}
+                        <span
+                          className={`ml-1.5 ${active ? "opacity-80" : "text-[color:var(--muted)]"}`}
+                        >
+                          ({count})
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {(selectedMember || selectedStatusLabel) && (
                   <p className="text-sm text-[color:var(--muted)]">
-                    Mostrando tareas de{" "}
-                    <span className="font-semibold text-[color:var(--ink)]">
-                      {selectedMember.name}
-                    </span>
+                    Mostrando{" "}
+                    {selectedStatusLabel ? (
+                      <>
+                        actividades en{" "}
+                        <span className="font-semibold text-[color:var(--ink)]">
+                          {selectedStatusLabel}
+                        </span>
+                      </>
+                    ) : (
+                      "actividades"
+                    )}
+                    {selectedMember ? (
+                      <>
+                        {" "}
+                        de{" "}
+                        <span className="font-semibold text-[color:var(--ink)]">
+                          {selectedMember.name}
+                        </span>
+                      </>
+                    ) : null}
+                    {" · "}
+                    {filteredActivities.length}{" "}
+                    {filteredActivities.length === 1 ? "resultado" : "resultados"}
                   </p>
                 )}
 
@@ -672,309 +1448,768 @@ export function TasksBoard() {
                         ? board.members
                         : board.members.filter((m) => m.id === selectedMemberId)
                     }
-                    tasks={filteredTasks}
+                    activities={filteredActivities}
                   />
                 ) : (
-                <div className="grid gap-3">
-                  {filteredTasks.length === 0 ? (
-                    <div className="border border-[color:var(--line)] bg-white p-8 text-center">
-                      <p className="text-[color:var(--muted)]">No hay tareas en esta vista.</p>
-                      <button
-                        type="button"
-                        onClick={openCreateModal}
-                        className="mt-3 text-sm font-semibold text-[color:var(--accent)]"
-                      >
-                        Crear una tarea
-                      </button>
-                    </div>
-                  ) : (
-                    filteredTasks.map((task) => {
-                      const progress = getTaskProgress(task);
-                      const expanded = expandedId === task.id;
-                      const canComplete = task.status === "done";
-                      const alarmLevel = getTaskAlarmLevel(task);
-                      const assignees = (task.assigneeIds || [])
-                        .map((id) => board.members.find((m) => m.id === id))
-                        .filter(Boolean) as TeamMember[];
-
-                      return (
-                        <article
-                          key={task.id}
-                          className="border border-[color:var(--line)] bg-white"
+                  <div className="grid gap-3">
+                    {filteredActivities.length === 0 ? (
+                      <div className="border border-[color:var(--line)] bg-white p-8 text-center">
+                        <p className="text-[color:var(--muted)]">
+                          No hay actividades en esta vista.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={openCreateModal}
+                          className="mt-3 text-sm font-semibold text-[color:var(--accent)]"
                         >
-                          <div className="p-4 md:p-5">
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div className="min-w-0 flex-1 space-y-3">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <TaskSemaphore level={alarmLevel} />
-                                  <h3 className="font-[family-name:var(--font-display)] text-lg font-bold">
-                                    {task.title}
-                                  </h3>
-                                  {alarmLevel !== "none" && (
+                          Crear una actividad
+                        </button>
+                      </div>
+                    ) : (
+                      filteredActivities.map((activity) => {
+                        const progress = getActivityProgress(activity);
+                        const expanded = expandedActivityId === activity.id;
+                        const canComplete = activity.status === "done";
+                        const statusColor =
+                          TASK_STATUS_COLORS[activity.status] || TASK_STATUS_COLORS.waiting;
+                        const assignees = (activity.assigneeIds || [])
+                          .map((id) => board.members.find((m) => m.id === id))
+                          .filter(Boolean) as TeamMember[];
+
+                        return (
+                          <article
+                            key={activity.id}
+                            className="border border-[color:var(--line)] bg-white"
+                          >
+                            <div className="p-4 md:p-5">
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div className="min-w-0 flex-1 space-y-3">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <TaskSemaphore color={statusColor.bg} />
+                                    <input
+                                      aria-label="Título de la actividad"
+                                      defaultValue={str(activity.title)}
+                                      key={`activity-title-${activity.id}-${activity.updatedAt}`}
+                                      onBlur={(e) => {
+                                        const title = e.target.value.trim();
+                                        if (!title) {
+                                          e.target.value = activity.title;
+                                          toast.error("El título de la actividad no puede quedar vacío");
+                                          return;
+                                        }
+                                        if (title !== activity.title) {
+                                          updateActivity(
+                                            activity.id,
+                                            { title },
+                                            "Actividad actualizada",
+                                          );
+                                        }
+                                      }}
+                                      className="min-w-0 flex-1 border border-transparent bg-transparent px-1 font-[family-name:var(--font-display)] text-lg font-bold outline-none hover:border-[color:var(--line)] focus:border-[color:var(--accent)]"
+                                    />
                                     <span
-                                      className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
+                                      className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
                                       style={{
-                                        backgroundColor: TASK_ALARM_COLORS[alarmLevel].bg,
+                                        backgroundColor: statusColor.bg,
+                                        color: statusColor.text,
                                       }}
                                     >
-                                      {TASK_ALARM_COLORS[alarmLevel].label}
+                                      {statusColor.label}
                                     </span>
+                                  </div>
+
+                                  <div className="flex flex-wrap gap-4">
+                                    <label className="space-y-1 text-sm text-[color:var(--muted)]">
+                                      <span className="block text-[10px] font-semibold uppercase">
+                                        Estado de la actividad
+                                      </span>
+                                      <select
+                                        value={str(activity.status) || "waiting"}
+                                        onChange={(e) =>
+                                          setActivityStatus(
+                                            activity.id,
+                                            e.target.value as TaskStatus,
+                                          )
+                                        }
+                                        className={`border border-[color:var(--line)] px-2 py-1.5 text-sm font-semibold ${
+                                          STATUS_STYLES[activity.status] || STATUS_STYLES.waiting
+                                        }`}
+                                      >
+                                        {TASK_STATUSES.map((item) => (
+                                          <option key={item.value} value={item.value}>
+                                            {item.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                    <label className="space-y-1 text-sm text-[color:var(--muted)]">
+                                      <span className="block text-[10px] font-semibold uppercase">
+                                        Inicio
+                                      </span>
+                                      <input
+                                        type="date"
+                                        value={str(activity.date)}
+                                        onChange={(e) =>
+                                          updateActivity(activity.id, { date: e.target.value })
+                                        }
+                                        className="border border-[color:var(--line)] bg-white px-2 py-1.5 text-sm text-[color:var(--ink)]"
+                                      />
+                                    </label>
+                                    <label className="space-y-1 text-sm text-[color:var(--muted)]">
+                                      <span className="block text-[10px] font-semibold uppercase">
+                                        Fin
+                                      </span>
+                                      <input
+                                        type="date"
+                                        value={str(activity.finishedDate)}
+                                        onChange={(e) =>
+                                          updateActivity(activity.id, {
+                                            finishedDate: e.target.value,
+                                          })
+                                        }
+                                        className="border border-[color:var(--line)] bg-white px-2 py-1.5 text-sm text-[color:var(--ink)]"
+                                      />
+                                    </label>
+                                    <label className="space-y-1 text-sm text-[color:var(--muted)]">
+                                      <span className="block text-[10px] font-semibold uppercase">
+                                        Asignado a
+                                      </span>
+                                      <select
+                                        value={str(activity.assigneeIds?.[0]) || ""}
+                                        onChange={(e) => {
+                                          const id = e.target.value;
+                                          if (!id) return;
+                                          updateActivity(
+                                            activity.id,
+                                            { assigneeIds: [id] },
+                                            "Asignación actualizada",
+                                          );
+                                        }}
+                                        className="border border-[color:var(--line)] bg-white px-2 py-1.5 text-sm text-[color:var(--ink)]"
+                                      >
+                                        {!activity.assigneeIds?.length ? (
+                                          <option value="">Selecciona...</option>
+                                        ) : null}
+                                        {board.members.map((member) => (
+                                          <option key={member.id} value={member.id}>
+                                            {member.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                  </div>
+
+                                  <div>
+                                    <div className="mb-1 flex justify-between text-xs font-semibold">
+                                      <span className="text-[color:var(--muted)]">Progreso</span>
+                                      <span>{progress}%</span>
+                                    </div>
+                                    <div className="h-2 bg-[color:var(--mist)]">
+                                      <div
+                                        className="h-full bg-[color:var(--accent)] transition-all"
+                                        style={{ width: `${progress}%` }}
+                                      />
+                                    </div>
+                                    {!activity.tasks.length ? (
+                                      <p className="mt-1 text-[11px] text-[color:var(--muted)]">
+                                        Sin tareas: el avance sigue el estado de la actividad.
+                                      </p>
+                                    ) : null}
+                                  </div>
+
+                                  <div className="flex flex-wrap gap-2">
+                                    {assignees.map((member) => (
+                                      <div
+                                        key={member.id}
+                                        className="flex items-center gap-2 bg-[color:var(--mist)] px-2 py-1"
+                                      >
+                                        <MemberAvatar
+                                          name={member.name}
+                                          photo={member.photo}
+                                        />
+                                        <span className="text-xs font-semibold">
+                                          {member.name}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+
+                                  {activity.status === "done" && (
+                                    <div className="space-y-2 border border-[color:var(--line)] bg-[color:var(--mist)] px-3 py-2.5">
+                                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+                                        Entrega terminada
+                                      </p>
+                                      <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:gap-4">
+                                        {activity.processUrl ? (
+                                          <a
+                                            href={activity.processUrl}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-sm font-semibold text-[color:var(--accent)] underline-offset-2 hover:underline"
+                                          >
+                                            URL del proceso
+                                          </a>
+                                        ) : (
+                                          <span className="text-sm text-[color:var(--muted)]">
+                                            Sin URL del proceso
+                                          </span>
+                                        )}
+                                        {activity.deliverableUrl ? (
+                                          <a
+                                            href={activity.deliverableUrl}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-sm font-semibold text-[color:var(--accent)] underline-offset-2 hover:underline"
+                                          >
+                                            URL del entregable
+                                          </a>
+                                        ) : (
+                                          <span className="text-sm text-[color:var(--muted)]">
+                                            Sin URL del entregable
+                                          </span>
+                                        )}
+                                      </div>
+                                      {(!activity.processUrl || !activity.deliverableUrl) && (
+                                        <button
+                                          type="button"
+                                          onClick={() => openDeliveryModal(activity)}
+                                          className="text-xs font-semibold text-[color:var(--accent)]"
+                                        >
+                                          Completar URLs de entrega
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          shareCompletedActivityOnWhatsApp(activity)
+                                        }
+                                        className="inline-flex items-center gap-1.5 bg-[#25D366] px-3 py-2 text-xs font-semibold text-white"
+                                      >
+                                        Compartir por WhatsApp
+                                      </button>
+                                    </div>
                                   )}
                                 </div>
 
-                                <div className="flex flex-wrap gap-4">
-                                  <label className="space-y-1 text-sm text-[color:var(--muted)]">
-                                    <span className="block text-[10px] font-semibold uppercase">
-                                      Estado de la tarea
-                                    </span>
-                                    <select
-                                      value={str(task.status) || "waiting"}
-                                      onChange={(e) =>
-                                        setTaskStatus(task.id, e.target.value as TaskStatus)
-                                      }
-                                      className={`border border-[color:var(--line)] px-2 py-1.5 text-sm font-semibold ${
-                                        STATUS_STYLES[task.status] || STATUS_STYLES.waiting
-                                      }`}
-                                    >
-                                      {TASK_STATUSES.map((item) => (
-                                        <option key={item.value} value={item.value}>
-                                          {item.label}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </label>
-                                  <label className="space-y-1 text-sm text-[color:var(--muted)]">
-                                    <span className="block text-[10px] font-semibold uppercase">
-                                      Inicio
-                                    </span>
-                                    <input
-                                      type="date"
-                                      value={str(task.date)}
-                                      onChange={(e) =>
-                                        updateTask(task.id, { date: e.target.value })
-                                      }
-                                      className="border border-[color:var(--line)] bg-white px-2 py-1.5 text-sm text-[color:var(--ink)]"
-                                    />
-                                  </label>
-                                  <label className="space-y-1 text-sm text-[color:var(--muted)]">
-                                    <span className="block text-[10px] font-semibold uppercase">
-                                      Fin
-                                    </span>
-                                    <input
-                                      type="date"
-                                      value={str(task.finishedDate)}
-                                      onChange={(e) =>
-                                        updateTask(task.id, { finishedDate: e.target.value })
-                                      }
-                                      className="border border-[color:var(--line)] bg-white px-2 py-1.5 text-sm text-[color:var(--ink)]"
-                                    />
-                                  </label>
-                                </div>
-
-                                <div>
-                                  <div className="mb-1 flex justify-between text-xs font-semibold">
-                                    <span className="text-[color:var(--muted)]">Progreso</span>
-                                    <span>{progress}%</span>
-                                  </div>
-                                  <div className="h-2 bg-[color:var(--mist)]">
-                                    <div
-                                      className="h-full bg-[color:var(--accent)] transition-all"
-                                      style={{ width: `${progress}%` }}
-                                    />
-                                  </div>
-                                  {!task.subtasks.length ? (
-                                    <p className="mt-1 text-[11px] text-[color:var(--muted)]">
-                                      Sin subtareas: el avance sigue el estado de la tarea.
-                                    </p>
-                                  ) : null}
-                                </div>
-
                                 <div className="flex flex-wrap gap-2">
-                                  {assignees.map((member) => (
-                                    <div
-                                      key={member.id}
-                                      className="flex items-center gap-2 bg-[color:var(--mist)] px-2 py-1"
+                                  <button
+                                    type="button"
+                                    disabled={!canComplete}
+                                    title={
+                                      canComplete
+                                        ? "Agregar URLs de entrega"
+                                        : "Cambia el estado a Terminada para activar"
+                                    }
+                                    onClick={() => openDeliveryModal(activity)}
+                                    className={`px-3 py-1.5 text-xs font-semibold ${
+                                      canComplete
+                                        ? "bg-[color:var(--accent)] text-white"
+                                        : "cursor-not-allowed border border-[color:var(--line)] text-[color:var(--muted)] opacity-50"
+                                    }`}
+                                  >
+                                    URLs de entrega
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setNotesOpenId(
+                                        notesOpenId === activity.id ? null : activity.id,
+                                      )
+                                    }
+                                    className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
+                                  >
+                                    Notas ({(activity.notes || []).length})
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (activity.status !== "pending_review") {
+                                        setActivityStatus(activity.id, "pending_review");
+                                      } else {
+                                        setReviewModalActivityId(activity.id);
+                                      }
+                                    }}
+                                    className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
+                                  >
+                                    Avisar revisión
+                                  </button>
+                                  {(activity.reviewMessages || []).length > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setReviewHistoryOpenId(
+                                          reviewHistoryOpenId === activity.id
+                                            ? null
+                                            : activity.id,
+                                        )
+                                      }
+                                      className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
                                     >
-                                      <MemberAvatar
-                                        name={member.name}
-                                        photo={member.photo}
-                                      />
-                                      <span className="text-xs font-semibold">{member.name}</span>
-                                    </div>
-                                  ))}
+                                      Historial ({(activity.reviewMessages || []).length})
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setExpandedActivityId(expanded ? null : activity.id)
+                                    }
+                                    className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
+                                  >
+                                    {activity.tasks.length
+                                      ? `Tareas (${activity.tasks.length})`
+                                      : "Agregar tareas"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeActivity(activity.id)}
+                                    className="text-xs font-semibold text-[color:var(--accent)]"
+                                  >
+                                    Eliminar
+                                  </button>
                                 </div>
                               </div>
-
-                              <div className="flex flex-wrap gap-2">
-                                <button
-                                  type="button"
-                                  disabled={!canComplete}
-                                  title={
-                                    canComplete
-                                      ? "Agregar URLs de entrega"
-                                      : "Cambia el estado a Terminada para activar"
-                                  }
-                                  onClick={() => openDeliveryModal(task)}
-                                  className={`px-3 py-1.5 text-xs font-semibold ${
-                                    canComplete
-                                      ? "bg-[color:var(--accent)] text-white"
-                                      : "cursor-not-allowed border border-[color:var(--line)] text-[color:var(--muted)] opacity-50"
-                                  }`}
-                                >
-                                  URLs de entrega
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setExpandedId(expanded ? null : task.id)}
-                                  className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
-                                >
-                                  {task.subtasks.length
-                                    ? `Subtareas (${task.subtasks.length})`
-                                    : "Agregar subtareas"}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => removeTask(task.id)}
-                                  className="text-xs font-semibold text-[color:var(--accent)]"
-                                >
-                                  Eliminar
-                                </button>
-                              </div>
                             </div>
-                          </div>
 
-                          {expanded && (
-                            <div className="border-t border-[color:var(--line)] p-4">
-                              <h4 className="text-sm font-bold">Subtareas (opcional)</h4>
-                              <p className="mt-1 text-xs text-[color:var(--muted)]">
-                                Puedes agregarlas después. Cada una puede llevar su URL.
-                              </p>
-                              <ul className="mt-3 space-y-2">
-                                {task.subtasks.map((subtask) => (
-                                  <li
-                                    key={subtask.id}
-                                    className="space-y-2 border border-[color:var(--line)] px-3 py-2"
+                            {notesOpenId === activity.id && (
+                              <div className="border-t border-[color:var(--line)] p-4">
+                                <h4 className="text-sm font-bold">Notas de la actividad</h4>
+                                <p className="mt-1 text-xs text-[color:var(--muted)]">
+                                  Registra pendientes u observaciones. Cada nota guarda la fecha
+                                  en que se escribió.
+                                </p>
+
+                                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                                  <textarea
+                                    rows={2}
+                                    placeholder="Escribe una nota..."
+                                    value={noteDrafts[activity.id] || ""}
+                                    onChange={(e) =>
+                                      setNoteDrafts((prev) => ({
+                                        ...prev,
+                                        [activity.id]: e.target.value,
+                                      }))
+                                    }
+                                    className="min-w-0 flex-1 border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => addNote(activity.id)}
+                                    className="shrink-0 bg-[color:var(--accent)] px-4 py-2 text-xs font-semibold text-white"
                                   >
-                                    <div className="flex flex-wrap items-center justify-between gap-3">
-                                      <p
-                                        className={`min-w-0 flex-1 text-sm font-semibold ${
-                                          subtask.status === "done"
-                                            ? "text-[color:var(--muted)] line-through"
-                                            : ""
-                                        }`}
+                                    Agregar nota
+                                  </button>
+                                </div>
+
+                                {(activity.notes || []).length === 0 ? (
+                                  <p className="mt-4 text-sm text-[color:var(--muted)]">
+                                    Aún no hay notas en esta actividad.
+                                  </p>
+                                ) : (
+                                  <ul className="mt-4 space-y-2">
+                                    {(activity.notes || []).map((note) => (
+                                      <li
+                                        key={note.id}
+                                        className="border border-[color:var(--line)] bg-[color:var(--mist)] px-3 py-2"
                                       >
-                                        {subtask.title}
-                                      </p>
-                                      <div className="flex shrink-0 items-center gap-2">
-                                        <select
-                                          aria-label="Estado de la subtarea"
-                                          value={str(subtask.status) || "waiting"}
-                                          onChange={(e) =>
-                                            updateSubtask(task.id, subtask.id, {
-                                              status: e.target.value as TaskStatus,
-                                            })
-                                          }
-                                          className={`min-w-[10.5rem] border border-[color:var(--line)] px-2 py-1.5 text-xs font-semibold ${
-                                            STATUS_STYLES[subtask.status] ||
-                                            STATUS_STYLES.waiting
-                                          }`}
-                                        >
-                                          {TASK_STATUSES.map((item) => (
-                                            <option key={item.value} value={item.value}>
-                                              {item.label}
-                                            </option>
-                                          ))}
-                                        </select>
-                                        <button
-                                          type="button"
-                                          onClick={() => removeSubtask(task.id, subtask.id)}
-                                          className="text-xs font-semibold text-[color:var(--accent)]"
-                                        >
-                                          Quitar
-                                        </button>
-                                      </div>
-                                    </div>
-                                    <input
-                                      type="url"
-                                      placeholder="URL de la subtarea (opcional)"
-                                      value={str(subtask.url)}
-                                      onChange={(e) =>
-                                        updateSubtask(task.id, subtask.id, {
-                                          url: e.target.value,
-                                        })
-                                      }
-                                      className="w-full border border-[color:var(--line)] px-2 py-1.5 text-xs"
-                                    />
-                                    {subtask.url ? (
-                                      <a
-                                        href={subtask.url}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="inline-block text-xs font-semibold text-[color:var(--accent)]"
-                                      >
-                                        Abrir URL
-                                      </a>
-                                    ) : null}
-                                  </li>
-                                ))}
-                              </ul>
-                              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-                                <input
-                                  value={str(newSubtask[task.id]?.title)}
-                                  onChange={(e) =>
-                                    setNewSubtask((prev) => ({
-                                      ...prev,
-                                      [task.id]: {
-                                        title: e.target.value,
-                                        url: prev[task.id]?.url || "",
-                                      },
-                                    }))
-                                  }
-                                  placeholder="Nueva subtarea..."
-                                  className="border border-[color:var(--line)] px-3 py-2 text-sm"
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") {
-                                      e.preventDefault();
-                                      addSubtask(task.id);
-                                    }
-                                  }}
-                                />
-                                <input
-                                  type="url"
-                                  value={str(newSubtask[task.id]?.url)}
-                                  onChange={(e) =>
-                                    setNewSubtask((prev) => ({
-                                      ...prev,
-                                      [task.id]: {
-                                        title: prev[task.id]?.title || "",
-                                        url: e.target.value,
-                                      },
-                                    }))
-                                  }
-                                  placeholder="URL (opcional)"
-                                  className="border border-[color:var(--line)] px-3 py-2 text-sm"
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") {
-                                      e.preventDefault();
-                                      addSubtask(task.id);
-                                    }
-                                  }}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => addSubtask(task.id)}
-                                  className="bg-[color:var(--accent)] px-4 py-2 text-sm font-semibold text-white"
-                                >
-                                  Agregar
-                                </button>
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="min-w-0 flex-1">
+                                            <p className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+                                              {formatNoteDate(note.createdAt)}
+                                            </p>
+                                            <p className="mt-1 whitespace-pre-wrap text-sm text-[color:var(--ink)]">
+                                              {note.text}
+                                            </p>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => removeNote(activity.id, note.id)}
+                                            className="shrink-0 text-xs font-semibold text-[color:var(--accent)]"
+                                          >
+                                            Quitar
+                                          </button>
+                                        </div>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
                               </div>
-                            </div>
-                          )}
-                        </article>
-                      );
-                    })
-                  )}
-                </div>
+                            )}
+
+                            {reviewHistoryOpenId === activity.id && (
+                              <div className="border-t border-[color:var(--line)] p-4">
+                                <h4 className="text-sm font-bold">Historial de revisión</h4>
+                                <p className="mt-1 text-xs text-[color:var(--muted)]">
+                                  Mensajes enviados o copiados para pedir revisión al equipo.
+                                </p>
+                                <ul className="mt-3 space-y-3">
+                                  {(activity.reviewMessages || []).map((message) => (
+                                    <li
+                                      key={message.id}
+                                      className="border border-[color:var(--line)] bg-[color:var(--mist)] px-3 py-2"
+                                    >
+                                      <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <p className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+                                          {formatNoteDate(message.createdAt)} ·{" "}
+                                          {message.channel === "whatsapp"
+                                            ? "WhatsApp"
+                                            : "Texto copiado"}
+                                        </p>
+                                        <p className="text-xs text-[color:var(--muted)]">
+                                          Para:{" "}
+                                          {message.recipientNames.join(", ") ||
+                                            "Sin destinatarios"}
+                                        </p>
+                                      </div>
+                                      <pre className="mt-2 whitespace-pre-wrap font-sans text-sm text-[color:var(--ink)]">
+                                        {message.fullText}
+                                      </pre>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {expanded && (
+                              <div className="border-t border-[color:var(--line)] p-4">
+                                <h4 className="text-sm font-bold">Tareas</h4>
+                                <p className="mt-1 text-xs text-[color:var(--muted)]">
+                                  Cada tarea puede tener subtareas con su propio estado y
+                                  URL.
+                                </p>
+                                <ul className="mt-3 space-y-3">
+                                  {activity.tasks.map((task) => {
+                                    const taskExpanded = expandedTaskId === task.id;
+                                    return (
+                                      <li
+                                        key={task.id}
+                                        className="border border-[color:var(--line)] bg-[color:var(--mist)]"
+                                      >
+                                        <div className="space-y-2 p-3">
+                                          <div className="flex flex-wrap items-center justify-between gap-3">
+                                            <input
+                                              aria-label="Título de la tarea"
+                                              defaultValue={str(task.title)}
+                                              key={`task-title-${task.id}-${task.status}-${task.url}`}
+                                              onBlur={(e) => {
+                                                const title = e.target.value.trim();
+                                                if (!title) {
+                                                  e.target.value = task.title;
+                                                  toast.error(
+                                                    "El título de la tarea no puede quedar vacío",
+                                                  );
+                                                  return;
+                                                }
+                                                if (title !== task.title) {
+                                                  updateTaskFields(
+                                                    activity.id,
+                                                    task.id,
+                                                    { title },
+                                                    "Tarea actualizada",
+                                                  );
+                                                }
+                                              }}
+                                              className={`min-w-0 flex-1 border border-transparent bg-transparent px-1 text-sm font-semibold outline-none hover:border-[color:var(--line)] focus:border-[color:var(--accent)] ${
+                                                task.status === "done"
+                                                  ? "text-[color:var(--muted)] line-through"
+                                                  : ""
+                                              }`}
+                                            />
+                                            <div className="flex shrink-0 flex-wrap items-center gap-2">
+                                              <select
+                                                aria-label="Estado de la tarea"
+                                                value={str(task.status) || "waiting"}
+                                                onChange={(e) =>
+                                                  setTaskStatus(
+                                                    activity.id,
+                                                    task.id,
+                                                    e.target.value as TaskStatus,
+                                                  )
+                                                }
+                                                className={`min-w-[10.5rem] border border-[color:var(--line)] px-2 py-1.5 text-xs font-semibold ${
+                                                  STATUS_STYLES[task.status] ||
+                                                  STATUS_STYLES.waiting
+                                                }`}
+                                              >
+                                                {TASK_STATUSES.map((item) => (
+                                                  <option key={item.value} value={item.value}>
+                                                    {item.label}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  setExpandedTaskId(
+                                                    taskExpanded ? null : task.id,
+                                                  )
+                                                }
+                                                className="border border-[color:var(--line)] bg-white px-2 py-1.5 text-xs font-semibold"
+                                              >
+                                                {task.subtasks.length
+                                                  ? `Subtareas (${task.subtasks.length})`
+                                                  : "Subtareas"}
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  removeTask(activity.id, task.id)
+                                                }
+                                                className="text-xs font-semibold text-[color:var(--accent)]"
+                                              >
+                                                Quitar
+                                              </button>
+                                            </div>
+                                          </div>
+                                          <input
+                                            type="url"
+                                            placeholder="URL de la tarea (opcional)"
+                                            value={str(task.url)}
+                                            onChange={(e) =>
+                                              updateTaskFields(activity.id, task.id, {
+                                                url: e.target.value,
+                                              })
+                                            }
+                                            className="w-full border border-[color:var(--line)] bg-white px-2 py-1.5 text-xs"
+                                          />
+                                          {task.url ? (
+                                            <a
+                                              href={task.url}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="inline-block text-xs font-semibold text-[color:var(--accent)]"
+                                            >
+                                              Abrir URL
+                                            </a>
+                                          ) : null}
+                                        </div>
+
+                                        {taskExpanded && (
+                                          <div className="border-t border-[color:var(--line)] bg-white p-3">
+                                            <h5 className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted)]">
+                                              Subtareas
+                                            </h5>
+                                            <ul className="mt-2 space-y-2">
+                                              {task.subtasks.map((subtask) => (
+                                                <li
+                                                  key={subtask.id}
+                                                  className="space-y-2 border border-[color:var(--line)] px-3 py-2"
+                                                >
+                                                  <div className="flex flex-wrap items-center justify-between gap-3">
+                                                    <input
+                                                      aria-label="Título de la subtarea"
+                                                      defaultValue={str(subtask.title)}
+                                                      key={`sub-title-${subtask.id}-${subtask.status}-${subtask.url}`}
+                                                      onBlur={(e) => {
+                                                        const title = e.target.value.trim();
+                                                        if (!title) {
+                                                          e.target.value = subtask.title;
+                                                          toast.error(
+                                                            "El título de la subtarea no puede quedar vacío",
+                                                          );
+                                                          return;
+                                                        }
+                                                        if (title !== subtask.title) {
+                                                          updateSubtask(
+                                                            activity.id,
+                                                            task.id,
+                                                            subtask.id,
+                                                            { title },
+                                                            "Subtarea actualizada",
+                                                          );
+                                                        }
+                                                      }}
+                                                      className={`min-w-0 flex-1 border border-transparent bg-transparent px-1 text-sm font-semibold outline-none hover:border-[color:var(--line)] focus:border-[color:var(--accent)] ${
+                                                        subtask.status === "done"
+                                                          ? "text-[color:var(--muted)] line-through"
+                                                          : ""
+                                                      }`}
+                                                    />
+                                                    <div className="flex shrink-0 items-center gap-2">
+                                                      <select
+                                                        aria-label="Estado de la subtarea"
+                                                        value={str(subtask.status) || "waiting"}
+                                                        onChange={(e) =>
+                                                          updateSubtask(
+                                                            activity.id,
+                                                            task.id,
+                                                            subtask.id,
+                                                            {
+                                                              status: e.target
+                                                                .value as TaskStatus,
+                                                            },
+                                                          )
+                                                        }
+                                                        className={`min-w-[10.5rem] border border-[color:var(--line)] px-2 py-1.5 text-xs font-semibold ${
+                                                          STATUS_STYLES[subtask.status] ||
+                                                          STATUS_STYLES.waiting
+                                                        }`}
+                                                      >
+                                                        {TASK_STATUSES.map((item) => (
+                                                          <option
+                                                            key={item.value}
+                                                            value={item.value}
+                                                          >
+                                                            {item.label}
+                                                          </option>
+                                                        ))}
+                                                      </select>
+                                                      <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                          removeSubtask(
+                                                            activity.id,
+                                                            task.id,
+                                                            subtask.id,
+                                                          )
+                                                        }
+                                                        className="text-xs font-semibold text-[color:var(--accent)]"
+                                                      >
+                                                        Quitar
+                                                      </button>
+                                                    </div>
+                                                  </div>
+                                                  <input
+                                                    type="url"
+                                                    placeholder="URL de la subtarea (opcional)"
+                                                    value={str(subtask.url)}
+                                                    onChange={(e) =>
+                                                      updateSubtask(
+                                                        activity.id,
+                                                        task.id,
+                                                        subtask.id,
+                                                        { url: e.target.value },
+                                                      )
+                                                    }
+                                                    className="w-full border border-[color:var(--line)] px-2 py-1.5 text-xs"
+                                                  />
+                                                  {subtask.url ? (
+                                                    <a
+                                                      href={subtask.url}
+                                                      target="_blank"
+                                                      rel="noreferrer"
+                                                      className="inline-block text-xs font-semibold text-[color:var(--accent)]"
+                                                    >
+                                                      Abrir URL
+                                                    </a>
+                                                  ) : null}
+                                                </li>
+                                              ))}
+                                            </ul>
+                                            <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                                              <input
+                                                value={str(newSubtaskDraft[task.id]?.title)}
+                                                onChange={(e) =>
+                                                  setNewSubtaskDraft((prev) => ({
+                                                    ...prev,
+                                                    [task.id]: {
+                                                      title: e.target.value,
+                                                      url: prev[task.id]?.url || "",
+                                                    },
+                                                  }))
+                                                }
+                                                placeholder="Nueva subtarea..."
+                                                className="border border-[color:var(--line)] px-3 py-2 text-sm"
+                                                onKeyDown={(e) => {
+                                                  if (e.key === "Enter") {
+                                                    e.preventDefault();
+                                                    addSubtask(activity.id, task.id);
+                                                  }
+                                                }}
+                                              />
+                                              <input
+                                                type="url"
+                                                value={str(newSubtaskDraft[task.id]?.url)}
+                                                onChange={(e) =>
+                                                  setNewSubtaskDraft((prev) => ({
+                                                    ...prev,
+                                                    [task.id]: {
+                                                      title: prev[task.id]?.title || "",
+                                                      url: e.target.value,
+                                                    },
+                                                  }))
+                                                }
+                                                placeholder="URL (opcional)"
+                                                className="border border-[color:var(--line)] px-3 py-2 text-sm"
+                                                onKeyDown={(e) => {
+                                                  if (e.key === "Enter") {
+                                                    e.preventDefault();
+                                                    addSubtask(activity.id, task.id);
+                                                  }
+                                                }}
+                                              />
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  addSubtask(activity.id, task.id)
+                                                }
+                                                className="bg-[color:var(--accent)] px-4 py-2 text-sm font-semibold text-white"
+                                              >
+                                                Agregar
+                                              </button>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                                <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                                  <input
+                                    value={str(newTaskDraft[activity.id]?.title)}
+                                    onChange={(e) =>
+                                      setNewTaskDraft((prev) => ({
+                                        ...prev,
+                                        [activity.id]: {
+                                          title: e.target.value,
+                                          url: prev[activity.id]?.url || "",
+                                        },
+                                      }))
+                                    }
+                                    placeholder="Nueva tarea..."
+                                    className="border border-[color:var(--line)] px-3 py-2 text-sm"
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        addTask(activity.id);
+                                      }
+                                    }}
+                                  />
+                                  <input
+                                    type="url"
+                                    value={str(newTaskDraft[activity.id]?.url)}
+                                    onChange={(e) =>
+                                      setNewTaskDraft((prev) => ({
+                                        ...prev,
+                                        [activity.id]: {
+                                          title: prev[activity.id]?.title || "",
+                                          url: e.target.value,
+                                        },
+                                      }))
+                                    }
+                                    placeholder="URL (opcional)"
+                                    className="border border-[color:var(--line)] px-3 py-2 text-sm"
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        addTask(activity.id);
+                                      }
+                                    }}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => addTask(activity.id)}
+                                    className="bg-[color:var(--accent)] px-4 py-2 text-sm font-semibold text-white"
+                                  >
+                                    Agregar
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </article>
+                        );
+                      })
+                    )}
+                  </div>
                 )}
               </>
             )}
@@ -987,16 +2222,16 @@ export function TasksBoard() {
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
           <form
-            onSubmit={(e) => void createTask(e)}
+            onSubmit={(e) => void createActivity(e)}
             className="w-full max-w-md space-y-4 border border-[color:var(--line)] bg-white p-5 shadow-xl"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="font-[family-name:var(--font-display)] text-xl font-bold">
-                  Nueva tarea
+                  Nueva actividad
                 </h2>
                 <p className="mt-1 text-sm text-[color:var(--muted)]">
-                  Incluye inicio y fin para el Gantt. El estado se gestiona en la tarjeta.
+                  Incluye inicio y fin para el Gantt. Puedes agregar la primera tarea y subtarea.
                 </p>
               </div>
               <button
@@ -1010,14 +2245,14 @@ export function TasksBoard() {
 
             <label className="block space-y-1">
               <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                ¿Qué hay que hacer?
+                ¿Qué hay que lograr?
               </span>
               <input
                 required
                 autoFocus
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
-                placeholder="Ej: Crear el programa"
+                placeholder="Ej: Lanzar el programa"
                 className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)]"
               />
             </label>
@@ -1081,48 +2316,60 @@ export function TasksBoard() {
 
             <label className="block space-y-1">
               <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                Primera subtarea (opcional)
+                Primera tarea (opcional)
               </span>
               <input
-                value={newFirstSubtask}
-                onChange={(e) => setNewFirstSubtask(e.target.value)}
-                placeholder="Déjalo vacío si no necesitas subtareas"
+                value={newFirstTask}
+                onChange={(e) => setNewFirstTask(e.target.value)}
+                placeholder="Déjalo vacío si solo quieres la actividad"
                 className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm"
               />
-              <span className="block text-[11px] text-[color:var(--muted)]">
-                Puedes crear la tarea sin subtareas y gestionarla solo con su estado.
-              </span>
             </label>
 
-            {newFirstSubtask.trim() ? (
-              <label className="block space-y-1">
-                <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                  URL de la subtarea (opcional)
-                </span>
-                <input
-                  type="url"
-                  value={newFirstSubtaskUrl}
-                  onChange={(e) => setNewFirstSubtaskUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm"
-                />
-              </label>
+            {newFirstTask.trim() ? (
+              <>
+                <label className="block space-y-1">
+                  <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
+                    Primera subtarea (opcional)
+                  </span>
+                  <input
+                    value={newFirstSubtask}
+                    onChange={(e) => setNewFirstSubtask(e.target.value)}
+                    placeholder="Una subtarea concreta dentro de la tarea"
+                    className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm"
+                  />
+                </label>
+                {newFirstSubtask.trim() ? (
+                  <label className="block space-y-1">
+                    <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
+                      URL de la subtarea (opcional)
+                    </span>
+                    <input
+                      type="url"
+                      value={newFirstSubtaskUrl}
+                      onChange={(e) => setNewFirstSubtaskUrl(e.target.value)}
+                      placeholder="https://..."
+                      className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm"
+                    />
+                  </label>
+                ) : null}
+              </>
             ) : null}
 
             <button
               type="submit"
               className="w-full bg-[color:var(--accent)] py-3 text-sm font-semibold text-white"
             >
-              Crear tarea
+              Crear actividad
             </button>
           </form>
         </div>
       )}
 
-      {completeTaskId &&
+      {completeActivityId &&
         (() => {
-          const task = board.tasks.find((item) => item.id === completeTaskId);
-          if (!task) return null;
+          const activity = board.activities.find((item) => item.id === completeActivityId);
+          if (!activity) return null;
           return (
             <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
               <div className="w-full max-w-md space-y-4 border border-[color:var(--line)] bg-white p-5 shadow-xl">
@@ -1131,11 +2378,11 @@ export function TasksBoard() {
                     <h2 className="font-[family-name:var(--font-display)] text-xl font-bold">
                       URLs de entrega
                     </h2>
-                    <p className="mt-1 text-sm text-[color:var(--muted)]">{task.title}</p>
+                    <p className="mt-1 text-sm text-[color:var(--muted)]">{activity.title}</p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setCompleteTaskId(null)}
+                    onClick={() => setCompleteActivityId(null)}
                     className="text-sm font-semibold text-[color:var(--muted)]"
                   >
                     Cerrar
@@ -1149,8 +2396,10 @@ export function TasksBoard() {
                   <input
                     type="url"
                     placeholder="https://..."
-                    value={str(task.processUrl)}
-                    onChange={(e) => updateTask(task.id, { processUrl: e.target.value })}
+                    value={str(activity.processUrl)}
+                    onChange={(e) =>
+                      updateActivity(activity.id, { processUrl: e.target.value })
+                    }
                     className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)]"
                   />
                 </label>
@@ -1162,19 +2411,21 @@ export function TasksBoard() {
                   <input
                     type="url"
                     placeholder="https://..."
-                    value={str(task.deliverableUrl)}
-                    onChange={(e) => updateTask(task.id, { deliverableUrl: e.target.value })}
+                    value={str(activity.deliverableUrl)}
+                    onChange={(e) =>
+                      updateActivity(activity.id, { deliverableUrl: e.target.value })
+                    }
                     className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)]"
                   />
                 </label>
 
                 <p className="text-xs text-[color:var(--muted)]">
-                  Al guardar, el estado de la tarea queda en <strong>Terminada</strong>.
+                  Al guardar, el estado de la actividad queda en <strong>Terminada</strong>.
                 </p>
 
                 <button
                   type="button"
-                  onClick={() => saveDeliveryUrls(task.id)}
+                  onClick={() => saveDeliveryUrls(activity.id)}
                   className="w-full bg-[color:var(--accent)] py-3 text-sm font-semibold text-white"
                 >
                   Guardar y cerrar
@@ -1183,6 +2434,20 @@ export function TasksBoard() {
             </div>
           );
         })()}
+
+      <ReviewMessageModal
+        open={Boolean(reviewModalActivityId)}
+        activity={
+          reviewModalActivityId
+            ? board.activities.find((item) => item.id === reviewModalActivityId) || null
+            : null
+        }
+        members={board.members}
+        onClose={closeReviewModal}
+        onSent={(message) => {
+          if (reviewModalActivityId) saveReviewMessage(reviewModalActivityId, message);
+        }}
+      />
     </div>
   );
 }

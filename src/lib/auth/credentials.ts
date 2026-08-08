@@ -17,13 +17,13 @@ export const DEFAULT_CREDENTIALS: AuthCredentials = {
 };
 
 function normalize(data: Partial<AuthCredentials> | null): AuthCredentials {
+  // Prioridad: archivo guardado por el admin → defaults del sistema.
+  // No usamos ADMIN_PASSWORD del .env aquí para no pisar las claves compartidas.
   const adminPassword =
     (typeof data?.adminPassword === "string" && data.adminPassword.trim()) ||
-    process.env.ADMIN_PASSWORD ||
     DEFAULT_CREDENTIALS.adminPassword;
   const memberPassword =
     (typeof data?.memberPassword === "string" && data.memberPassword.trim()) ||
-    process.env.MEMBER_PASSWORD ||
     DEFAULT_CREDENTIALS.memberPassword;
 
   return {

@@ -4,16 +4,25 @@ import {
   getYearSummary,
   type AccountingBoard,
 } from "@/lib/accounting/types";
-import type { Task, TasksBoard, TeamMember } from "@/lib/tasks/types";
+import type { Activity, TasksBoard, TeamMember } from "@/lib/tasks/types";
 
-export type TaskAlarmLevel = "green" | "yellow" | "red" | "blue" | "none";
+export type TaskAlarmLevel = "green" | "yellow" | "red" | "blue" | "gray";
+
+export type TaskAlarmReason =
+  | "done"
+  | "paused"
+  | "overdue"
+  | "due_soon"
+  | "pending_review"
+  | "on_track";
 
 export type TaskAlarm = {
-  taskId: string;
+  activityId: string;
   title: string;
   finishedDate: string;
-  status: Task["status"];
+  status: Activity["status"];
   level: TaskAlarmLevel;
+  reason: TaskAlarmReason;
   daysUntilDue: number | null;
   assignees: TeamMember[];
   message: string;
@@ -39,13 +48,14 @@ export const BUDGET_WARNING_PERCENT = 80;
 export const TASK_DUE_SOON_DAYS = 3;
 
 export const TASK_ALARM_COLORS: Record<
-  Exclude<TaskAlarmLevel, "none">,
+  TaskAlarmLevel,
   { bg: string; text: string; label: string }
 > = {
   green: { bg: "#16a34a", text: "#fff", label: "Terminada" },
-  yellow: { bg: "#ca8a04", text: "#fff", label: "Por vencer (3 días)" },
+  yellow: { bg: "#ca8a04", text: "#fff", label: "Por vencer / revisión" },
   red: { bg: "#dc2626", text: "#fff", label: "Vencida" },
   blue: { bg: "#2563eb", text: "#fff", label: "En pausa" },
+  gray: { bg: "#94a3b8", text: "#fff", label: "En plazo" },
 };
 
 function todayLocal(): Date {
@@ -65,27 +75,30 @@ export function daysUntilDue(finishedDate: string, from = todayLocal()): number 
   return Math.round((end.getTime() - from.getTime()) / 86_400_000);
 }
 
-/**
- * Semáforo de tarea:
- * - verde: terminada
- * - azul: pausada
- * - rojo: no terminada y fecha fin ya pasó
- * - amarillo: no terminada y faltan ≤ 3 días
- * - none: en curso con margen o sin fecha fin
- */
-export function getTaskAlarmLevel(task: Task, from = todayLocal()): TaskAlarmLevel {
-  if (task.status === "done") return "green";
-  if (task.status === "paused") return "blue";
-
-  const days = daysUntilDue(task.finishedDate, from);
-  if (days === null) return "none";
-  if (days < 0) return "red";
-  if (days <= TASK_DUE_SOON_DAYS) return "yellow";
-  return "none";
+export function getTaskAlarmLevel(activity: Activity, from = todayLocal()): TaskAlarmLevel {
+  return getTaskAlarmReason(activity, from).level;
 }
 
-function assigneeNames(task: Task, members: TeamMember[]) {
-  const list = task.assigneeIds
+export function getTaskAlarmReason(
+  activity: Activity,
+  from = todayLocal(),
+): { level: TaskAlarmLevel; reason: TaskAlarmReason } {
+  if (activity.status === "done") return { level: "green", reason: "done" };
+  if (activity.status === "paused") return { level: "blue", reason: "paused" };
+
+  const days = daysUntilDue(activity.finishedDate, from);
+  if (days !== null && days < 0) return { level: "red", reason: "overdue" };
+  if (activity.status === "pending_review") {
+    return { level: "yellow", reason: "pending_review" };
+  }
+  if (days !== null && days <= TASK_DUE_SOON_DAYS) {
+    return { level: "yellow", reason: "due_soon" };
+  }
+  return { level: "gray", reason: "on_track" };
+}
+
+function assigneeNames(activity: Activity, members: TeamMember[]) {
+  const list = activity.assigneeIds
     .map((id) => members.find((m) => m.id === id))
     .filter((m): m is TeamMember => Boolean(m));
   return list;
@@ -97,34 +110,40 @@ function formatAssignees(assignees: TeamMember[]) {
 }
 
 export function getTaskAlarms(board: TasksBoard, from = todayLocal()): TaskAlarm[] {
-  return board.tasks
-    .map((task) => {
-      const level = getTaskAlarmLevel(task, from);
-      const days = daysUntilDue(task.finishedDate, from);
-      const assignees = assigneeNames(task, board.members);
+  return board.activities
+    .map((activity) => {
+      const { level, reason } = getTaskAlarmReason(activity, from);
+      const days = daysUntilDue(activity.finishedDate, from);
+      const assignees = assigneeNames(activity, board.members);
+      const who = formatAssignees(assignees);
       let message = "";
 
-      if (level === "red") {
+      if (reason === "overdue") {
         const overdue = days === null ? 0 : Math.abs(days);
-        const who = formatAssignees(assignees);
         const verb = assignees.length === 1 ? "no ha terminado" : "no han terminado";
-        message = `${who} ${verb} “${task.title}” (vencida hace ${overdue} día${overdue === 1 ? "" : "s"}, fin ${task.finishedDate}).`;
-      } else if (level === "yellow") {
-        const who = formatAssignees(assignees);
+        message = `${who} ${verb} “${activity.title}” (vencida hace ${overdue} día${overdue === 1 ? "" : "s"}, fin ${activity.finishedDate}).`;
+      } else if (reason === "pending_review") {
         const verb = assignees.length === 1 ? "tiene" : "tienen";
-        message = `${who} ${verb} “${task.title}” por vencer en ${days} día${days === 1 ? "" : "s"} (fin ${task.finishedDate}).`;
-      } else if (level === "blue") {
-        message = `“${task.title}” está en pausa (${formatAssignees(assignees)}).`;
-      } else if (level === "green") {
-        message = `“${task.title}” terminada (${formatAssignees(assignees)}).`;
+        message = `${who} ${verb} “${activity.title}” pendiente por revisión.`;
+      } else if (reason === "due_soon") {
+        const verb = assignees.length === 1 ? "tiene" : "tienen";
+        const daysLeft = days ?? 0;
+        message = `${who} ${verb} “${activity.title}” por vencer en ${daysLeft} día${daysLeft === 1 ? "" : "s"} (fin ${activity.finishedDate}).`;
+      } else if (reason === "paused") {
+        message = `“${activity.title}” está en pausa (${who}).`;
+      } else if (reason === "done") {
+        message = `“${activity.title}” terminada (${who}).`;
+      } else {
+        message = `“${activity.title}” en plazo (${who}).`;
       }
 
       return {
-        taskId: task.id,
-        title: task.title,
-        finishedDate: task.finishedDate,
-        status: task.status,
+        activityId: activity.id,
+        title: activity.title,
+        finishedDate: activity.finishedDate,
+        status: activity.status,
         level,
+        reason,
         daysUntilDue: days,
         assignees,
         message,
@@ -136,13 +155,25 @@ export function getTaskAlarms(board: TasksBoard, from = todayLocal()): TaskAlarm
         yellow: 1,
         blue: 2,
         green: 3,
-        none: 4,
+        gray: 4,
       };
-      return order[a.level] - order[b.level] || a.title.localeCompare(b.title);
+      const reasonOrder: Record<TaskAlarmReason, number> = {
+        overdue: 0,
+        pending_review: 1,
+        due_soon: 2,
+        paused: 3,
+        done: 4,
+        on_track: 5,
+      };
+      return (
+        order[a.level] - order[b.level] ||
+        reasonOrder[a.reason] - reasonOrder[b.reason] ||
+        a.title.localeCompare(b.title)
+      );
     });
 }
 
-/** Alarmas que requieren atención (vencidas / por vencer). */
+/** Alarmas que requieren atención (vencidas / por vencer / revisión). */
 export function getTaskNotifications(board: TasksBoard, from = todayLocal()) {
   return getTaskAlarms(board, from).filter(
     (item) => item.level === "red" || item.level === "yellow",
