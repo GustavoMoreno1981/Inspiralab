@@ -11,6 +11,7 @@ import {
   type ReviewMessage,
   type Subtask,
   type Task,
+  type TaskBankItem,
   type TaskNote,
   type TasksBoard,
   type TeamMember,
@@ -73,6 +74,7 @@ type StoredMember = TeamMember & { passwordHash: string };
 type StoredBoard = {
   members: StoredMember[];
   activities: Activity[];
+  bank: TaskBankItem[];
 };
 
 function normalizeAccessRole(value: unknown): AccessRole {
@@ -109,6 +111,7 @@ function toPublicBoard(board: StoredBoard): TasksBoard {
   return {
     members: board.members.map(toPublicMember),
     activities: board.activities,
+    bank: board.bank || [],
   };
 }
 
@@ -198,6 +201,30 @@ function normalizeTask(task: Partial<Task> & { id: string; activityId: string })
   };
 }
 
+function normalizeBank(items: unknown): TaskBankItem[] {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((raw) => {
+      if (!raw || typeof raw !== "object") return null;
+      const item = raw as Partial<TaskBankItem>;
+      if (!item.id) return null;
+      return {
+        id: String(item.id),
+        title: typeof item.title === "string" ? item.title : "",
+        notes: typeof item.notes === "string" ? item.notes : "",
+        ownerId: typeof item.ownerId === "string" ? item.ownerId : "",
+        suggestedAssigneeIds: Array.isArray(item.suggestedAssigneeIds)
+          ? item.suggestedAssigneeIds.map(String)
+          : [],
+        convertedActivityId:
+          typeof item.convertedActivityId === "string" ? item.convertedActivityId : null,
+        createdAt: item.createdAt || new Date().toISOString(),
+        updatedAt: item.updatedAt || new Date().toISOString(),
+      };
+    })
+    .filter((item): item is TaskBankItem => Boolean(item));
+}
+
 function normalizeActivities(activities: Activity[]): Activity[] {
   return (activities || []).map((activity) => ({
     ...activity,
@@ -219,6 +246,8 @@ function normalizeActivities(activities: Activity[]): Activity[] {
 
 /** Migra JSON antiguo { tasks: [{ subtasks }] } → { activities }. */
 function migrateLegacyBoard(data: Record<string, unknown>): StoredBoard {
+  const bank = normalizeBank(data.bank);
+
   if (Array.isArray(data.activities)) {
     return {
       members: Array.isArray(data.members)
@@ -234,6 +263,7 @@ function migrateLegacyBoard(data: Record<string, unknown>): StoredBoard {
           )
         : [],
       activities: normalizeActivities(data.activities as Activity[]),
+      bank,
     };
   }
 
@@ -302,12 +332,13 @@ function migrateLegacyBoard(data: Record<string, unknown>): StoredBoard {
         )
       : [],
     activities: normalizeActivities(activities),
+    bank,
   };
 }
 
 function normalizeStoredBoard(data: unknown): StoredBoard {
   if (!data || typeof data !== "object") {
-    return { members: [], activities: [] };
+    return { members: [], activities: [], bank: [] };
   }
   return migrateLegacyBoard(data as Record<string, unknown>);
 }
@@ -317,7 +348,7 @@ async function readTasksLocalRaw(): Promise<StoredBoard> {
     const raw = await fs.readFile(TASKS_PATH, "utf8");
     return normalizeStoredBoard(JSON.parse(raw));
   } catch {
-    return { members: [], activities: [] };
+    return { members: [], activities: [], bank: [] };
   }
 }
 
@@ -335,11 +366,12 @@ async function readTasksSupabaseRaw(): Promise<StoredBoard> {
     return readLegacyTasksSupabaseRaw();
   }
 
-  const [membersRes, activitiesRes, tasksRes, subtasksRes] = await Promise.all([
+  const [membersRes, activitiesRes, tasksRes, subtasksRes, bankRes] = await Promise.all([
     supabase.from("team_members").select("*").order("created_at", { ascending: true }),
     supabase.from("activities").select("*").order("created_at", { ascending: false }),
     supabase.from("tasks").select("*").order("position", { ascending: true }),
     supabase.from("subtasks").select("*").order("position", { ascending: true }),
+    supabase.from("task_bank").select("*").order("created_at", { ascending: false }),
   ]);
 
   if (membersRes.error) throw membersRes.error;
@@ -413,7 +445,22 @@ async function readTasksSupabaseRaw(): Promise<StoredBoard> {
     updatedAt: row.updated_at,
   }));
 
-  return { members, activities: normalizeActivities(activities) };
+  const bank = bankRes.error
+    ? []
+    : normalizeBank(
+        ((bankRes.data || []) as Array<Record<string, unknown>>).map((row) => ({
+          id: row.id,
+          title: row.title,
+          notes: row.notes,
+          ownerId: row.owner_id,
+          suggestedAssigneeIds: row.suggested_assignee_ids,
+          convertedActivityId: row.converted_activity_id,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        })),
+      );
+
+  return { members, activities: normalizeActivities(activities), bank };
 }
 
 /** Lectura del esquema antiguo y conversión en memoria. */
@@ -508,7 +555,7 @@ async function readLegacyTasksSupabaseRaw(): Promise<StoredBoard> {
     };
   });
 
-  return { members, activities: normalizeActivities(activities) };
+  return { members, activities: normalizeActivities(activities), bank: [] };
 }
 
 async function writeTasksSupabaseRaw(board: StoredBoard) {
@@ -640,6 +687,34 @@ async function writeTasksSupabaseRaw(board: StoredBoard) {
       if (subtasksError) throw subtasksError;
     }
   }
+
+  // Banco de ideas (opcional hasta correr add-task-bank.sql).
+  const { error: deleteBankError } = await supabase
+    .from("task_bank")
+    .delete()
+    .neq("id", "__never__");
+  if (deleteBankError) {
+    console.warn(
+      "Tabla task_bank no disponible. Ejecuta supabase/add-task-bank.sql para persistir el banco.",
+      deleteBankError.message,
+    );
+    return;
+  }
+
+  if (board.bank.length) {
+    const bankRows = board.bank.map((item) => ({
+      id: item.id,
+      title: item.title,
+      notes: item.notes || "",
+      owner_id: item.ownerId || "",
+      suggested_assignee_ids: item.suggestedAssigneeIds || [],
+      converted_activity_id: item.convertedActivityId || null,
+      created_at: item.createdAt || new Date().toISOString(),
+      updated_at: item.updatedAt || new Date().toISOString(),
+    }));
+    const { error: bankError } = await supabase.from("task_bank").insert(bankRows);
+    if (bankError) throw bankError;
+  }
 }
 
 async function readStoredBoard(): Promise<StoredBoard> {
@@ -706,6 +781,7 @@ export async function writeTasksBoard(
   await writeStoredBoard({
     members,
     activities: normalizeActivities(board.activities || []),
+    bank: normalizeBank(board.bank || []),
   });
 }
 

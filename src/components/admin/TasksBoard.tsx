@@ -17,6 +17,7 @@ import {
   type Activity,
   type Task,
   type Subtask,
+  type TaskBankItem,
   type TaskNote,
   type ReviewMessage,
   type TaskStatus,
@@ -158,14 +159,14 @@ function MemberAvatar({
       <img
         src={src}
         alt={name}
-        className={`${sizeClass} shrink-0 object-cover`}
+        className={`${sizeClass} shrink-0 rounded-full object-cover`}
         onError={() => setBroken(true)}
       />
     );
   }
   return (
     <div
-      className={`flex ${sizeClass} shrink-0 items-center justify-center bg-[color:var(--mist)] text-sm font-semibold text-[color:var(--muted)]`}
+      className={`flex ${sizeClass} shrink-0 items-center justify-center rounded-full bg-[color:var(--mist)] text-sm font-semibold text-[color:var(--muted)]`}
     >
       {name.slice(0, 1).toUpperCase()}
     </div>
@@ -189,13 +190,21 @@ export function TasksBoard() {
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
+  const [sessionName, setSessionName] = useState("");
+  const [sessionMemberId, setSessionMemberId] = useState("");
   const [tab, setTab] = useState<"tasks" | "team">("tasks");
-  const [viewMode, setViewMode] = useState<"list" | "gantt" | "reports">("list");
+  const [viewMode, setViewMode] = useState<"list" | "gantt" | "reports" | "bank">("list");
   const [selectedMemberId, setSelectedMemberId] = useState<string | "all">("all");
   const [selectedStatus, setSelectedStatus] = useState<TaskStatus | "all">("all");
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [bankTitle, setBankTitle] = useState("");
+  const [bankNotes, setBankNotes] = useState("");
+  const [convertingBankId, setConvertingBankId] = useState<string | null>(null);
   const [expandedActivityId, setExpandedActivityId] = useState<string | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [editingAssigneesActivityId, setEditingAssigneesActivityId] = useState<string | null>(
+    null,
+  );
   const [completeActivityId, setCompleteActivityId] = useState<string | null>(null);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [notesOpenId, setNotesOpenId] = useState<string | null>(null);
@@ -217,7 +226,7 @@ export function TasksBoard() {
     d.setDate(d.getDate() + 7);
     return d.toISOString().slice(0, 10);
   });
-  const [newAssigneeId, setNewAssigneeId] = useState("");
+  const [newAssigneeIds, setNewAssigneeIds] = useState<string[]>([]);
   const [newFirstTask, setNewFirstTask] = useState("");
   const [newFirstSubtask, setNewFirstSubtask] = useState("");
   const [newFirstSubtaskUrl, setNewFirstSubtaskUrl] = useState("");
@@ -234,8 +243,14 @@ export function TasksBoard() {
       fetch("/api/auth/me", { cache: "no-store" }),
     ]);
     if (meRes.ok) {
-      const me = (await meRes.json()) as { role?: string };
+      const me = (await meRes.json()) as {
+        role?: string;
+        name?: string | null;
+        memberId?: string | null;
+      };
       setIsAdmin(me.role === "admin");
+      setSessionName((me.name || "").trim());
+      setSessionMemberId((me.memberId || "").trim());
     }
     if (tasksRes.ok) {
       const data = (await tasksRes.json()) as TasksBoard;
@@ -244,6 +259,7 @@ export function TasksBoard() {
         activities: (data.activities || []).map((activity) =>
           normalizeActivity({ ...activity, id: activity.id }),
         ),
+        bank: Array.isArray(data.bank) ? data.bank : [],
       });
     }
     setLoading(false);
@@ -274,6 +290,21 @@ export function TasksBoard() {
       ? null
       : TASK_STATUSES.find((item) => item.value === selectedStatus)?.label ||
         selectedStatus;
+
+  const filteredBank = useMemo(() => {
+    const items = board.bank || [];
+    if (selectedMemberId === "all") return items;
+    return items.filter((item) => item.ownerId === selectedMemberId);
+  }, [board.bank, selectedMemberId]);
+
+  const pendingBank = useMemo(
+    () => filteredBank.filter((item) => !item.convertedActivityId),
+    [filteredBank],
+  );
+  const convertedBank = useMemo(
+    () => filteredBank.filter((item) => Boolean(item.convertedActivityId)),
+    [filteredBank],
+  );
 
   async function persist(next: TasksBoard, successMessage?: string) {
     setSaving(true);
@@ -428,6 +459,14 @@ export function TasksBoard() {
           ...activity,
           assigneeIds: activity.assigneeIds.filter((assigneeId) => assigneeId !== id),
         })),
+        bank: (board.bank || [])
+          .filter((item) => item.ownerId !== id)
+          .map((item) => ({
+            ...item,
+            suggestedAssigneeIds: (item.suggestedAssigneeIds || []).filter(
+              (assigneeId) => assigneeId !== id,
+            ),
+          })),
       },
       member ? `Integrante “${member.name}” eliminado` : "Integrante eliminado",
     );
@@ -443,7 +482,8 @@ export function TasksBoard() {
     const start = new Date().toISOString().slice(0, 10);
     const end = new Date();
     end.setDate(end.getDate() + 7);
-    setNewAssigneeId(defaultAssignee);
+    setConvertingBankId(null);
+    setNewAssigneeIds(defaultAssignee ? [defaultAssignee] : []);
     setNewTitle("");
     setNewDate(start);
     setNewEndDate(end.toISOString().slice(0, 10));
@@ -453,14 +493,36 @@ export function TasksBoard() {
     setShowCreateModal(true);
   }
 
+  function toggleNewAssignee(memberId: string) {
+    setNewAssigneeIds((prev) =>
+      prev.includes(memberId)
+        ? prev.filter((id) => id !== memberId)
+        : [...prev, memberId],
+    );
+  }
+
+  function toggleActivityAssignee(activityId: string, memberId: string) {
+    const activity = board.activities.find((item) => item.id === activityId);
+    if (!activity) return;
+    const current = activity.assigneeIds || [];
+    const next = current.includes(memberId)
+      ? current.filter((id) => id !== memberId)
+      : [...current, memberId];
+    if (!next.length) {
+      toast.error("La actividad debe tener al menos una persona asignada");
+      return;
+    }
+    updateActivity(activityId, { assigneeIds: next }, "Asignación actualizada");
+  }
+
   async function createActivity(event: FormEvent) {
     event.preventDefault();
     if (!newTitle.trim()) {
       toast.error("Escribe el título de la actividad");
       return;
     }
-    if (!newAssigneeId) {
-      toast.error("Selecciona un integrante");
+    if (!newAssigneeIds.length) {
+      toast.error("Selecciona al menos una persona o un grupo");
       return;
     }
     if (!newEndDate) {
@@ -508,7 +570,7 @@ export function TasksBoard() {
       processUrl: "",
       deliverableUrl: "",
       status: "waiting",
-      assigneeIds: [newAssigneeId],
+      assigneeIds: [...newAssigneeIds],
       tasks,
       notes: [],
       reviewMessages: [],
@@ -516,15 +578,97 @@ export function TasksBoard() {
       updatedAt: now,
     };
 
+    const nextBank =
+      convertingBankId
+        ? (board.bank || []).map((item) =>
+            item.id === convertingBankId
+              ? {
+                  ...item,
+                  convertedActivityId: activityId,
+                  updatedAt: now,
+                }
+              : item,
+          )
+        : board.bank || [];
+
     const ok = await persist(
-      { ...board, activities: [activity, ...board.activities] },
-      `Actividad “${activity.title}” creada`,
+      {
+        ...board,
+        activities: [activity, ...board.activities],
+        bank: nextBank,
+      },
+      convertingBankId
+        ? `Actividad “${activity.title}” creada desde el banco`
+        : `Actividad “${activity.title}” creada`,
     );
     if (ok) {
       setShowCreateModal(false);
-      setSelectedMemberId(newAssigneeId);
+      setConvertingBankId(null);
+      if (newAssigneeIds.length === 1) {
+        setSelectedMemberId(newAssigneeIds[0]);
+      }
       if (activity.tasks.length) setExpandedActivityId(activity.id);
     }
+  }
+
+  async function addBankItem(event: FormEvent) {
+    event.preventDefault();
+    if (selectedMemberId === "all") {
+      toast.error("Selecciona un integrante para crear su banco de tareas");
+      return;
+    }
+    if (!bankTitle.trim()) {
+      toast.error("Escribe qué hay que hacer / la actividad propuesta");
+      return;
+    }
+    const now = new Date().toISOString();
+    const item: TaskBankItem = {
+      id: createId("bank"),
+      title: bankTitle.trim(),
+      notes: bankNotes.trim(),
+      ownerId: selectedMemberId,
+      suggestedAssigneeIds: [selectedMemberId],
+      convertedActivityId: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const ok = await persist(
+      { ...board, bank: [item, ...(board.bank || [])] },
+      "Idea agregada al banco",
+    );
+    if (ok) {
+      setBankTitle("");
+      setBankNotes("");
+    }
+  }
+
+  async function removeBankItem(id: string) {
+    if (!window.confirm("¿Eliminar esta idea del banco?")) return;
+    await persist(
+      { ...board, bank: (board.bank || []).filter((item) => item.id !== id) },
+      "Idea eliminada del banco",
+    );
+  }
+
+  function startConvertBankItem(item: TaskBankItem) {
+    const start = new Date().toISOString().slice(0, 10);
+    const end = new Date();
+    end.setDate(end.getDate() + 7);
+    setConvertingBankId(item.id);
+    setNewTitle(item.title);
+    setNewAssigneeIds(
+      item.suggestedAssigneeIds.length
+        ? item.suggestedAssigneeIds
+        : item.ownerId
+          ? [item.ownerId]
+          : [],
+    );
+    setNewDate(start);
+    setNewEndDate(end.toISOString().slice(0, 10));
+    setNewFirstTask("");
+    setNewFirstSubtask("");
+    setNewFirstSubtaskUrl("");
+    setShowCreateModal(true);
   }
 
   function updateActivity(
@@ -1243,7 +1387,7 @@ export function TasksBoard() {
                   Visualizar actividades del equipo
                 </h1>
                 <p className="mt-2 text-sm text-[color:var(--muted)]">
-                  Lista, Gantt o Reportes por integrante.
+                  Lista, Gantt, Reportes o Banco de ideas por integrante.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -1274,6 +1418,15 @@ export function TasksBoard() {
                     }`}
                   >
                     Reportes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("bank")}
+                    className={`px-3 py-1.5 text-xs font-semibold ${
+                      viewMode === "bank" ? "bg-[color:var(--accent)] text-white" : ""
+                    }`}
+                  >
+                    Banco
                   </button>
                 </div>
                 <button
@@ -1361,10 +1514,11 @@ export function TasksBoard() {
                   })}
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
-                    Estado
-                  </span>
+                {viewMode !== "bank" ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+                      Estado
+                    </span>
                   <button
                     type="button"
                     onClick={() => setSelectedStatus("all")}
@@ -1412,7 +1566,134 @@ export function TasksBoard() {
                     );
                   })}
                 </div>
+                ) : null}
 
+                {viewMode === "bank" ? (
+                  <div className="space-y-5">
+                    <div className="border border-[color:var(--line)] bg-white p-5 md:p-6">
+                      <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--ink)]">
+                        Banco de tareas
+                      </h2>
+                      <p className="mt-1 text-sm text-[color:var(--muted)]">
+                        Anota todo lo que hay que convertir en actividades formales.
+                        {selectedMember
+                          ? ` Banco de ${selectedMember.name}.`
+                          : " Selecciona un integrante arriba para agregar ideas a su banco."}
+                      </p>
+
+                      <form onSubmit={(e) => void addBankItem(e)} className="mt-5 grid gap-3">
+                        <label className="block space-y-1">
+                          <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
+                            ¿Qué actividad hay que crear?
+                          </span>
+                          <input
+                            value={bankTitle}
+                            onChange={(e) => setBankTitle(e.target.value)}
+                            placeholder="Ej: Preparar lanzamiento del programa"
+                            disabled={selectedMemberId === "all"}
+                            className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)] disabled:opacity-50"
+                          />
+                        </label>
+                        <label className="block space-y-1">
+                          <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
+                            Notas / detalles (opcional)
+                          </span>
+                          <textarea
+                            value={bankNotes}
+                            onChange={(e) => setBankNotes(e.target.value)}
+                            rows={3}
+                            placeholder="Qué implica, materiales, dependencias…"
+                            disabled={selectedMemberId === "all"}
+                            className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)] disabled:opacity-50"
+                          />
+                        </label>
+                        <button
+                          type="submit"
+                          disabled={selectedMemberId === "all" || saving}
+                          className="justify-self-start bg-[color:var(--accent)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                        >
+                          + Agregar al banco
+                        </button>
+                      </form>
+                    </div>
+
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-bold text-[color:var(--ink)]">
+                        Pendientes ({pendingBank.length})
+                      </h3>
+                      {pendingBank.length === 0 ? (
+                        <div className="border border-dashed border-[color:var(--line)] bg-white p-6 text-sm text-[color:var(--muted)]">
+                          No hay ideas pendientes
+                          {selectedMember ? ` para ${selectedMember.name}` : ""}.
+                        </div>
+                      ) : (
+                        pendingBank.map((item) => {
+                          const owner = board.members.find((m) => m.id === item.ownerId);
+                          return (
+                            <article
+                              key={item.id}
+                              className="border border-[color:var(--line)] bg-white p-4 md:p-5"
+                            >
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-[family-name:var(--font-display)] text-base font-bold text-[color:var(--ink)]">
+                                    {item.title}
+                                  </p>
+                                  {item.notes ? (
+                                    <p className="mt-1 text-sm text-[color:var(--muted)]">
+                                      {item.notes}
+                                    </p>
+                                  ) : null}
+                                  <p className="mt-2 text-xs text-[color:var(--muted)]">
+                                    {owner ? `Para: ${owner.name}` : "Sin dueño"}
+                                  </p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => startConvertBankItem(item)}
+                                    className="bg-[color:var(--accent)] px-3 py-1.5 text-xs font-semibold text-white"
+                                  >
+                                    Crear actividad
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void removeBankItem(item.id)}
+                                    className="border border-[color:var(--accent)] px-3 py-1.5 text-xs font-semibold text-[color:var(--accent)]"
+                                  >
+                                    Eliminar
+                                  </button>
+                                </div>
+                              </div>
+                            </article>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {convertedBank.length > 0 ? (
+                      <div className="space-y-3">
+                        <h3 className="text-sm font-bold text-[color:var(--ink)]">
+                          Ya convertidas ({convertedBank.length})
+                        </h3>
+                        {convertedBank.map((item) => (
+                          <article
+                            key={item.id}
+                            className="border border-[color:var(--line)] bg-[color:var(--mist)] px-4 py-3"
+                          >
+                            <p className="text-sm font-semibold text-[color:var(--ink)] line-through opacity-70">
+                              {item.title}
+                            </p>
+                            <p className="text-xs text-[color:var(--muted)]">
+                              Convertida en actividad
+                            </p>
+                          </article>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <>
                 {(selectedMember || selectedStatusLabel) && (
                   <p className="text-sm text-[color:var(--muted)]">
                     Mostrando{" "}
@@ -1516,6 +1797,25 @@ export function TasksBoard() {
                                     >
                                       {statusColor.label}
                                     </span>
+                                    {assignees.length > 0 ? (
+                                      <div
+                                        className="flex items-center gap-2"
+                                        title={assignees.map((m) => m.name).join(", ")}
+                                      >
+                                        {assignees.slice(0, 4).map((member) => (
+                                          <MemberAvatar
+                                            key={member.id}
+                                            name={member.name}
+                                            photo={member.photo}
+                                          />
+                                        ))}
+                                        {assignees.length > 4 ? (
+                                          <span className="text-[10px] font-semibold text-[color:var(--muted)]">
+                                            +{assignees.length - 4}
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    ) : null}
                                   </div>
 
                                   <div className="flex flex-wrap gap-4">
@@ -1570,33 +1870,110 @@ export function TasksBoard() {
                                         className="border border-[color:var(--line)] bg-white px-2 py-1.5 text-sm text-[color:var(--ink)]"
                                       />
                                     </label>
-                                    <label className="space-y-1 text-sm text-[color:var(--muted)]">
-                                      <span className="block text-[10px] font-semibold uppercase">
-                                        Asignado a
-                                      </span>
-                                      <select
-                                        value={str(activity.assigneeIds?.[0]) || ""}
-                                        onChange={(e) => {
-                                          const id = e.target.value;
-                                          if (!id) return;
-                                          updateActivity(
-                                            activity.id,
-                                            { assigneeIds: [id] },
-                                            "Asignación actualizada",
-                                          );
-                                        }}
-                                        className="border border-[color:var(--line)] bg-white px-2 py-1.5 text-sm text-[color:var(--ink)]"
-                                      >
-                                        {!activity.assigneeIds?.length ? (
-                                          <option value="">Selecciona...</option>
-                                        ) : null}
-                                        {board.members.map((member) => (
-                                          <option key={member.id} value={member.id}>
-                                            {member.name}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </label>
+                                    <div className="space-y-1 text-sm text-[color:var(--muted)] md:col-span-2">
+                                      <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <span className="block text-[10px] font-semibold uppercase">
+                                          Quién la hace
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setEditingAssigneesActivityId((prev) =>
+                                              prev === activity.id ? null : activity.id,
+                                            )
+                                          }
+                                          className="text-[11px] font-semibold text-[color:var(--accent)]"
+                                        >
+                                          {editingAssigneesActivityId === activity.id
+                                            ? "Listo"
+                                            : "Agregar o quitar"}
+                                        </button>
+                                      </div>
+                                      {assignees.length === 0 ? (
+                                        <p className="text-xs text-[color:var(--muted)]">
+                                          Sin personas asignadas
+                                        </p>
+                                      ) : (
+                                        <div className="flex flex-wrap gap-2">
+                                          {assignees.map((member) => (
+                                            <div
+                                              key={member.id}
+                                              className="flex items-center gap-2 border border-[color:var(--line)] bg-white px-2 py-1.5"
+                                            >
+                                              <MemberAvatar
+                                                name={member.name}
+                                                photo={member.photo}
+                                              />
+                                              <span className="text-xs font-semibold text-[color:var(--ink)]">
+                                                {member.name}
+                                              </span>
+                                              {editingAssigneesActivityId === activity.id ? (
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    toggleActivityAssignee(
+                                                      activity.id,
+                                                      member.id,
+                                                    )
+                                                  }
+                                                  className="text-[11px] font-semibold text-[color:var(--accent)]"
+                                                  title="Quitar de la actividad"
+                                                >
+                                                  Quitar
+                                                </button>
+                                              ) : null}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                      {editingAssigneesActivityId === activity.id ? (
+                                        <div className="mt-2 space-y-2 border border-dashed border-[color:var(--line)] p-3">
+                                          <p className="text-[11px] text-[color:var(--muted)]">
+                                            Toca para agregar a alguien del equipo:
+                                          </p>
+                                          <div className="flex flex-wrap gap-2">
+                                            {board.members
+                                              .filter(
+                                                (member) =>
+                                                  !(activity.assigneeIds || []).includes(
+                                                    member.id,
+                                                  ),
+                                              )
+                                              .map((member) => (
+                                                <button
+                                                  key={member.id}
+                                                  type="button"
+                                                  onClick={() =>
+                                                    toggleActivityAssignee(
+                                                      activity.id,
+                                                      member.id,
+                                                    )
+                                                  }
+                                                  className="flex items-center gap-2 border border-[color:var(--line)] bg-white px-2.5 py-1.5 text-left hover:border-[color:var(--accent)]"
+                                                >
+                                                  <MemberAvatar
+                                                    name={member.name}
+                                                    photo={member.photo}
+                                                  />
+                                                  <span className="text-xs font-semibold text-[color:var(--ink)]">
+                                                    {member.name}
+                                                  </span>
+                                                  <span className="text-[11px] font-semibold text-[color:var(--accent)]">
+                                                    +
+                                                  </span>
+                                                </button>
+                                              ))}
+                                            {board.members.every((member) =>
+                                              (activity.assigneeIds || []).includes(member.id),
+                                            ) ? (
+                                              <p className="text-xs text-[color:var(--muted)]">
+                                                Todo el equipo ya está en esta actividad.
+                                              </p>
+                                            ) : null}
+                                          </div>
+                                        </div>
+                                      ) : null}
+                                    </div>
                                   </div>
 
                                   <div>
@@ -1615,23 +1992,6 @@ export function TasksBoard() {
                                         Sin tareas: el avance sigue el estado de la actividad.
                                       </p>
                                     ) : null}
-                                  </div>
-
-                                  <div className="flex flex-wrap gap-2">
-                                    {assignees.map((member) => (
-                                      <div
-                                        key={member.id}
-                                        className="flex items-center gap-2 bg-[color:var(--mist)] px-2 py-1"
-                                      >
-                                        <MemberAvatar
-                                          name={member.name}
-                                          photo={member.photo}
-                                        />
-                                        <span className="text-xs font-semibold">
-                                          {member.name}
-                                        </span>
-                                      </div>
-                                    ))}
                                   </div>
 
                                   {activity.status === "done" && (
@@ -2211,6 +2571,8 @@ export function TasksBoard() {
                     )}
                   </div>
                 )}
+                  </>
+                )}
               </>
             )}
           </section>
@@ -2228,15 +2590,20 @@ export function TasksBoard() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="font-[family-name:var(--font-display)] text-xl font-bold">
-                  Nueva actividad
+                  {convertingBankId ? "Crear actividad desde el banco" : "Nueva actividad"}
                 </h2>
                 <p className="mt-1 text-sm text-[color:var(--muted)]">
-                  Incluye inicio y fin para el Gantt. Puedes agregar la primera tarea y subtarea.
+                  {convertingBankId
+                    ? "Confirma fechas y quién la hace para convertir la idea en actividad."
+                    : "Incluye inicio y fin para el Gantt. Puedes agregar la primera tarea y subtarea."}
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setShowCreateModal(false)}
+                onClick={() => {
+                  setConvertingBankId(null);
+                  setShowCreateModal(false);
+                }}
                 className="text-sm font-semibold text-[color:var(--muted)]"
               >
                 Cerrar
@@ -2257,18 +2624,24 @@ export function TasksBoard() {
               />
             </label>
 
-            <label className="block space-y-1">
+            <div className="block space-y-1">
               <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
                 ¿Quién la hace?
               </span>
+              <p className="text-xs text-[color:var(--muted)]">
+                Elige una persona o varias para formar un grupo.
+                {newAssigneeIds.length > 0
+                  ? ` · ${newAssigneeIds.length} seleccionad${newAssigneeIds.length === 1 ? "a" : "as"}`
+                  : ""}
+              </p>
               <div className="grid grid-cols-2 gap-2">
                 {board.members.map((member) => {
-                  const active = newAssigneeId === member.id;
+                  const active = newAssigneeIds.includes(member.id);
                   return (
                     <button
                       key={member.id}
                       type="button"
-                      onClick={() => setNewAssigneeId(member.id)}
+                      onClick={() => toggleNewAssignee(member.id)}
                       className={`flex items-center gap-2 border px-3 py-2 text-left ${
                         active
                           ? "border-[color:var(--accent)] bg-[#fff1f4]"
@@ -2281,7 +2654,7 @@ export function TasksBoard() {
                   );
                 })}
               </div>
-            </label>
+            </div>
 
             <label className="block space-y-1">
               <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
@@ -2358,7 +2731,8 @@ export function TasksBoard() {
 
             <button
               type="submit"
-              className="w-full bg-[color:var(--accent)] py-3 text-sm font-semibold text-white"
+              disabled={saving}
+              className="w-full bg-[color:var(--accent)] py-3 text-sm font-semibold text-white disabled:opacity-50"
             >
               Crear actividad
             </button>
@@ -2443,6 +2817,8 @@ export function TasksBoard() {
             : null
         }
         members={board.members}
+        sessionMemberId={sessionMemberId}
+        sessionName={sessionName}
         onClose={closeReviewModal}
         onSent={(message) => {
           if (reviewModalActivityId) saveReviewMessage(reviewModalActivityId, message);

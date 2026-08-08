@@ -5,76 +5,140 @@ import type { Activity, ReviewMessage, TeamMember } from "@/lib/tasks/types";
 import { createId } from "@/lib/tasks/types";
 import { useToast } from "@/components/admin/AdminToast";
 
+function firstName(fullName: string) {
+  const part = fullName.trim().split(/\s+/).filter(Boolean)[0];
+  return part || fullName.trim() || "equipo";
+}
+
 function buildReviewText({
   activityTitle,
-  recipientNames,
+  recipientName,
+  senderName,
   body,
   url,
 }: {
   activityTitle: string;
-  recipientNames: string[];
+  recipientName: string;
+  senderName: string;
   body: string;
   url: string;
 }) {
-  const to =
-    recipientNames.length > 0 ? recipientNames.join(", ") : "todo el equipo";
+  const recipientFirst = firstName(recipientName);
+  const senderFull = senderName.trim() || "Inspiralab";
+
   const lines = [
-    "Hola a todo el equipo,",
-    `este mensaje va dirigido a: ${to}.`,
+    `Hola ${recipientFirst}, espero que te encuentres muy bien. 🌷`,
     "",
-    `Por favor revisar la actividad: "${activityTitle}".`,
+    `${senderFull} te envía este mensaje con el fin de solicitarte, cuando tengas un momento, que revises el avance de la actividad "${activityTitle}".`,
+    "",
+    "Nos gustaría saber cómo va el proceso y si la actividad ya está lista o si aún hace falta algo para poder apoyarte en lo que necesites.",
   ];
+
   if (body.trim()) {
     lines.push("", body.trim());
   }
   if (url.trim()) {
-    lines.push("", `URL para revisar: ${url.trim()}`);
+    lines.push("", `Puedes revisar aquí: ${url.trim()}`);
   }
-  lines.push("", "— Inspiralab");
+
+  lines.push(
+    "",
+    "Muchas gracias por tu compromiso y dedicación.",
+    "",
+    "Un abrazo,",
+    senderFull,
+    "Inspiralab",
+  );
+
   return lines.join("\n");
+}
+
+function resolveDefaultSenderId(
+  members: TeamMember[],
+  sessionMemberId?: string,
+  sessionName?: string,
+) {
+  if (sessionMemberId && members.some((member) => member.id === sessionMemberId)) {
+    return sessionMemberId;
+  }
+  const normalized = (sessionName || "").trim().toLowerCase();
+  if (normalized && normalized !== "administrador" && normalized !== "equipo") {
+    const match = members.find((member) => member.name.trim().toLowerCase() === normalized);
+    if (match) return match.id;
+  }
+  return members[0]?.id || "";
 }
 
 export function ReviewMessageModal({
   open,
   activity,
   members,
+  sessionMemberId,
+  sessionName,
   onClose,
   onSent,
 }: {
   open: boolean;
   activity: Activity | null;
   members: TeamMember[];
+  sessionMemberId?: string;
+  sessionName?: string;
   onClose: () => void;
   onSent: (message: ReviewMessage) => void;
 }) {
   const toast = useToast();
+  const [senderId, setSenderId] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [body, setBody] = useState(
-    "Por favor revisar el avance y confirmar si está listo o qué falta.",
-  );
+  const [body, setBody] = useState("");
   const [url, setUrl] = useState("");
 
   useEffect(() => {
     if (!open || !activity) return;
+    setSenderId(resolveDefaultSenderId(members, sessionMemberId, sessionName));
     setSelectedIds(activity.assigneeIds?.length ? [...activity.assigneeIds] : []);
-    setBody("Por favor revisar el avance y confirmar si está listo o qué falta.");
+    setBody("");
     setUrl(activity.processUrl || activity.deliverableUrl || "");
-  }, [open, activity]);
+  }, [open, activity, members, sessionMemberId, sessionName]);
+
+  const sender = useMemo(
+    () => members.find((member) => member.id === senderId) || null,
+    [members, senderId],
+  );
+  const senderFullName = sender?.name?.trim() || "";
 
   const selectedMembers = useMemo(
     () => members.filter((member) => selectedIds.includes(member.id)),
     [members, selectedIds],
   );
 
+  const personalizedMessages = useMemo(() => {
+    if (!activity || !senderFullName) return [];
+    return selectedMembers.map((member) => ({
+      member,
+      text: buildReviewText({
+        activityTitle: activity.title,
+        recipientName: member.name,
+        senderName: senderFullName,
+        body,
+        url,
+      }),
+    }));
+  }, [activity, selectedMembers, senderFullName, body, url]);
+
   const preview = useMemo(() => {
-    if (!activity) return "";
-    return buildReviewText({
-      activityTitle: activity.title,
-      recipientNames: selectedMembers.map((m) => m.name),
-      body,
-      url,
-    });
-  }, [activity, selectedMembers, body, url]);
+    if (!senderFullName) {
+      return "Elige quién envía el mensaje para que la otra persona sepa de parte de quién es.";
+    }
+    if (!personalizedMessages.length) {
+      return "Selecciona a quién debe revisar para ver la vista previa.";
+    }
+    if (personalizedMessages.length === 1) {
+      return personalizedMessages[0].text;
+    }
+    return personalizedMessages
+      .map((item) => `— Para ${item.member.name} —\n\n${item.text}`)
+      .join("\n\n————————\n\n");
+  }, [personalizedMessages, senderFullName]);
 
   if (!open || !activity) return null;
 
@@ -85,21 +149,21 @@ export function ReviewMessageModal({
   }
 
   function selectAll() {
-    setSelectedIds(members.map((m) => m.id));
+    setSelectedIds(members.map((member) => member.id));
   }
 
   function clearAll() {
     setSelectedIds([]);
   }
 
-  function saveHistory(channel: ReviewMessage["channel"]) {
+  function saveHistory(channel: ReviewMessage["channel"], fullText: string) {
     const message: ReviewMessage = {
       id: createId("review"),
       recipientIds: selectedIds,
-      recipientNames: selectedMembers.map((m) => m.name),
+      recipientNames: selectedMembers.map((member) => member.name),
       body: body.trim(),
       url: url.trim(),
-      fullText: preview,
+      fullText,
       createdAt: new Date().toISOString(),
       channel,
     };
@@ -107,9 +171,17 @@ export function ReviewMessageModal({
   }
 
   async function copyText() {
+    if (!senderFullName) {
+      toast.error("Elige quién envía el mensaje");
+      return;
+    }
+    if (!personalizedMessages.length) {
+      toast.error("Selecciona al menos un integrante");
+      return;
+    }
     try {
       await navigator.clipboard.writeText(preview);
-      saveHistory("copied");
+      saveHistory("copied", preview);
       toast.success("Mensaje copiado y guardado en el historial");
     } catch {
       toast.error("No se pudo copiar. Selecciona el texto manualmente.");
@@ -117,13 +189,34 @@ export function ReviewMessageModal({
   }
 
   function sendWhatsApp() {
-    if (selectedIds.length === 0) {
+    if (!senderFullName) {
+      toast.error("Elige quién envía el mensaje");
+      return;
+    }
+    if (!personalizedMessages.length) {
       toast.error("Selecciona al menos un integrante");
       return;
     }
-    const href = `https://wa.me/?text=${encodeURIComponent(preview)}`;
+
+    const first = personalizedMessages[0];
+    const href = `https://wa.me/?text=${encodeURIComponent(first.text)}`;
     window.open(href, "_blank", "noopener,noreferrer");
-    saveHistory("whatsapp");
+    saveHistory("whatsapp", preview);
+
+    if (personalizedMessages.length > 1) {
+      void navigator.clipboard.writeText(preview).then(
+        () =>
+          toast.success(
+            `WhatsApp abierto para ${first.member.name}. Los demás mensajes quedaron copiados.`,
+          ),
+        () =>
+          toast.success(
+            `WhatsApp abierto para ${first.member.name}. Copia el resto desde la vista previa.`,
+          ),
+      );
+      return;
+    }
+
     toast.success("Mensaje listo para WhatsApp y guardado en el historial");
   }
 
@@ -158,10 +251,32 @@ export function ReviewMessageModal({
         </div>
 
         <div className="mt-5 space-y-4">
+          <label className="block space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+              Quién envía este mensaje
+            </span>
+            <select
+              value={senderId}
+              onChange={(e) => setSenderId(e.target.value)}
+              className="w-full border border-[color:var(--line)] bg-white px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)]"
+            >
+              <option value="">Selecciona tu nombre…</option>
+              {members.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.name}
+                  {member.role ? ` · ${member.role}` : ""}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-[color:var(--muted)]">
+              Así la persona que revisa sabrá claramente de parte de quién es la solicitud.
+            </p>
+          </label>
+
           <div>
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
-                Este mensaje va dirigido a
+                Quién debe revisar
               </p>
               <div className="flex gap-2 text-xs font-semibold">
                 <button type="button" onClick={selectAll} className="text-[color:var(--accent)]">
@@ -210,14 +325,14 @@ export function ReviewMessageModal({
 
           <label className="block space-y-1.5">
             <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
-              Mensaje adicional
+              Nota adicional (opcional)
             </span>
             <textarea
-              rows={4}
+              rows={3}
               value={body}
               onChange={(e) => setBody(e.target.value)}
               className="w-full border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
-              placeholder="Detalle de lo que deben revisar..."
+              placeholder="Detalle extra si lo necesitas…"
             />
           </label>
 
@@ -260,8 +375,8 @@ export function ReviewMessageModal({
             </button>
           </div>
           <p className="text-xs text-[color:var(--muted)]">
-            WhatsApp abrirá el chat para que elijas el grupo o contacto. Al enviar, el mensaje queda
-            en el historial de la actividad.
+            El mensaje lleva tu nombre completo para que sepa quién lo pide. Si hay varias personas,
+            WhatsApp abre el primero y el resto queda copiado.
           </p>
         </div>
       </div>

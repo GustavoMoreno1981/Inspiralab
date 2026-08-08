@@ -57,11 +57,25 @@ create table if not exists public.subtasks (
 create index if not exists tasks_activity_id_idx on public.tasks (activity_id);
 create index if not exists subtasks_task_id_idx on public.subtasks (task_id);
 
+create table if not exists public.task_bank (
+  id text primary key,
+  title text not null default '',
+  notes text not null default '',
+  owner_id text not null default '',
+  suggested_assignee_ids text[] not null default '{}',
+  converted_activity_id text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists task_bank_owner_idx on public.task_bank (owner_id);
+
 -- Acceso solo desde el servidor (service role). Bloqueamos acceso público anónimo.
 alter table public.site_content enable row level security;
 alter table public.team_members enable row level security;
 alter table public.activities enable row level security;
 alter table public.tasks enable row level security;
 alter table public.subtasks enable row level security;
+alter table public.task_bank enable row level security;
 
 -- Sin policies para anon/authenticated: el backend usa service_role y bypassa RLS.

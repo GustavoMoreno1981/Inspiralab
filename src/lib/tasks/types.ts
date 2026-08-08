@@ -122,6 +122,24 @@ export type Activity = {
 export type TasksBoard = {
   members: TeamMember[];
   activities: Activity[];
+  /**
+   * Banco de ideas / propuestas de actividades pendientes de crear.
+   * Útil para listar todo lo que hay que montar como actividad formal.
+   */
+  bank: TaskBankItem[];
+};
+
+/** Idea o propuesta pendiente de convertirse en actividad. */
+export type TaskBankItem = {
+  id: string;
+  title: string;
+  notes: string;
+  /** Integrante dueño del ítem del banco (quien se seleccionó). */
+  ownerId: string;
+  suggestedAssigneeIds: string[];
+  convertedActivityId: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export const TASK_STATUSES: { value: TaskStatus; label: string }[] = [
@@ -236,5 +254,5 @@ export function deriveActivityStatusFromTasks(tasks: Task[]): TaskStatus | null 
 }
 
 export function emptyBoard(): TasksBoard {
-  return { members: [], activities: [] };
+  return { members: [], activities: [], bank: [] };
 }

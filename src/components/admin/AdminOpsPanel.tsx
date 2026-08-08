@@ -8,6 +8,7 @@ import {
   type AccountingBoard,
 } from "@/lib/accounting/types";
 import type { TasksBoard } from "@/lib/tasks/types";
+import { emptyBoard as emptyTasksBoard } from "@/lib/tasks/types";
 
 export function AdminOpsPanel({ canAccounting = false }: { canAccounting?: boolean }) {
   const [tasksBoard, setTasksBoard] = useState<TasksBoard | null>(null);
@@ -28,7 +29,7 @@ export function AdminOpsPanel({ canAccounting = false }: { canAccounting?: boole
       if (tasksRes.ok) {
         setTasksBoard((await tasksRes.json()) as TasksBoard);
       } else {
-        setTasksBoard({ members: [], activities: [] });
+        setTasksBoard(emptyTasksBoard());
       }
 
       if (accountingRes?.ok) {

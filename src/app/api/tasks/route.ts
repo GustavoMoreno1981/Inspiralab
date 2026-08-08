@@ -23,8 +23,14 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
+  const payload: TasksBoard = {
+    members: body.members,
+    activities: body.activities,
+    bank: Array.isArray(body.bank) ? body.bank : [],
+  };
+
   try {
-    await writeTasksBoard(body, { allowAuthEdit: session.role === "admin" });
+    await writeTasksBoard(payload, { allowAuthEdit: session.role === "admin" });
     return NextResponse.json({ ok: true });
   } catch (error) {
     const message =
