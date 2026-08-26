@@ -152,36 +152,39 @@ function normalizeNotes(notes: unknown): TaskNote[] {
 
 function normalizeReviewMessages(messages: unknown): ReviewMessage[] {
   if (!Array.isArray(messages)) return [];
-  return messages
-    .map((message): ReviewMessage | null => {
-      if (!message || typeof message !== "object") return null;
-      const item = message as Partial<ReviewMessage>;
-      if (!item.id || typeof item.fullText !== "string") return null;
-      return {
-        id: String(item.id),
-        recipientIds: Array.isArray(item.recipientIds)
-          ? item.recipientIds.map(String)
-          : [],
-        recipientNames: Array.isArray(item.recipientNames)
-          ? item.recipientNames.map(String)
-          : [],
-        body: typeof item.body === "string" ? item.body : "",
-        url: typeof item.url === "string" ? item.url : "",
-        fullText: item.fullText,
-        createdAt: item.createdAt || new Date().toISOString(),
-        channel: item.channel === "copied" ? "copied" : "whatsapp",
-        response:
-          item.response === "yes" ||
-          item.response === "no" ||
-          item.response === "pending" ||
-          item.response === "call"
-            ? item.response
-            : null,
-        responseAt: typeof item.responseAt === "string" ? item.responseAt : "",
-        responseBy: typeof item.responseBy === "string" ? item.responseBy : "",
-      };
-    })
-    .filter((message): message is ReviewMessage => message !== null);
+
+  const result: ReviewMessage[] = [];
+  for (const message of messages) {
+    if (!message || typeof message !== "object") continue;
+    const item = message as Partial<ReviewMessage>;
+    if (!item.id || typeof item.fullText !== "string") continue;
+
+    result.push({
+      id: String(item.id),
+      recipientIds: Array.isArray(item.recipientIds)
+        ? item.recipientIds.map(String)
+        : [],
+      recipientNames: Array.isArray(item.recipientNames)
+        ? item.recipientNames.map(String)
+        : [],
+      body: typeof item.body === "string" ? item.body : "",
+      url: typeof item.url === "string" ? item.url : "",
+      fullText: item.fullText,
+      createdAt: item.createdAt || new Date().toISOString(),
+      channel: item.channel === "copied" ? "copied" : "whatsapp",
+      response:
+        item.response === "yes" ||
+        item.response === "no" ||
+        item.response === "pending" ||
+        item.response === "call"
+          ? item.response
+          : null,
+      responseAt: typeof item.responseAt === "string" ? item.responseAt : "",
+      responseBy: typeof item.responseBy === "string" ? item.responseBy : "",
+    });
+  }
+
+  return result;
 }
 
 function normalizeSubtask(subtask: Partial<Subtask> & { id: string }): Subtask {
