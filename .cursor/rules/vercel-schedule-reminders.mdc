@@ -1,0 +1,17 @@
+---
+description: Recordar configurar recordatorios del cronograma al desplegar en Vercel
+alwaysApply: true
+---
+
+# Despliegue Vercel — recordatorios de cronograma
+
+Cuando el usuario hable de **desplegar / deploy / Vercel / producción**, recordar completar:
+
+1. Variables en Vercel: `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `CRON_SECRET`, más las de Supabase.
+2. Verificar dominio/remitente en Resend (o `onboarding@resend.dev` solo para pruebas).
+3. Ejecutar SQL `supabase/add-schedule-reminders.sql` (tabla `schedule_reminder_log`) en el proyecto Supabase de producción si aún no está.
+4. Confirmar en Vercel → Settings → Cron Jobs que aparece `/api/cron/schedule-reminders` (definido en `vercel.json`, diario 13:00 UTC).
+
+Destinatarios por defecto: `admin@inspiralab.org`, `saul@techno-coatings.com`, `DianaRodriguezartist@gmail.com` (o `SCHEDULE_REMINDER_EMAILS`).
+
+No insistir en cada mensaje; solo cuando toque el paso de despliegue o correo/cron.

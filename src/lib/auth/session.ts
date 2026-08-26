@@ -4,7 +4,13 @@ export const AUTH_COOKIE = "inspiralab_session";
 
 export type SessionRole = "admin" | "member";
 
-export type AdminModule = "sitio" | "talleres" | "tareas" | "contabilidad";
+export type AdminModule =
+  | "sitio"
+  | "talleres"
+  | "cronograma"
+  | "seguimiento"
+  | "tareas"
+  | "contabilidad";
 
 export type SessionPayload = {
   role: SessionRole;
@@ -22,8 +28,17 @@ function getSecret() {
 }
 
 export function modulesForRole(role: SessionRole): AdminModule[] {
-  if (role === "admin") return ["sitio", "talleres", "tareas", "contabilidad"];
-  return ["sitio", "talleres", "tareas"];
+  if (role === "admin") {
+    return [
+      "sitio",
+      "talleres",
+      "cronograma",
+      "seguimiento",
+      "tareas",
+      "contabilidad",
+    ];
+  }
+  return ["sitio", "talleres", "cronograma", "seguimiento", "tareas"];
 }
 
 export function canAccessModule(role: SessionRole, module: AdminModule) {

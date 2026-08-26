@@ -85,6 +85,38 @@ function WorkshopsIcon() {
   );
 }
 
+function ScheduleIcon() {
+  return (
+    <svg viewBox="0 0 64 64" className="h-14 w-14" aria-hidden="true" fill="none">
+      <rect x="10" y="14" width="44" height="40" rx="3" stroke="currentColor" strokeWidth="3" />
+      <path d="M10 26h44" stroke="currentColor" strokeWidth="3" />
+      <path d="M22 10v10M42 10v10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+      <rect x="18" y="32" width="8" height="8" fill="currentColor" />
+      <rect x="30" y="32" width="8" height="8" fill="currentColor" opacity="0.45" />
+      <rect x="42" y="32" width="8" height="8" fill="currentColor" opacity="0.45" />
+      <rect x="18" y="44" width="8" height="6" fill="currentColor" opacity="0.45" />
+      <rect x="30" y="44" width="8" height="6" fill="currentColor" />
+    </svg>
+  );
+}
+
+function FollowUpIcon() {
+  return (
+    <svg viewBox="0 0 64 64" className="h-14 w-14" aria-hidden="true" fill="none">
+      <rect x="12" y="10" width="40" height="44" rx="3" stroke="currentColor" strokeWidth="3" />
+      <path d="M22 24h20M22 34h20M22 44h12" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+      <circle cx="44" cy="44" r="10" fill="white" stroke="currentColor" strokeWidth="3" />
+      <path
+        d="M40 44l3 3 6-7"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 type MeResponse = {
   authenticated: boolean;
   role?: SessionRole;
@@ -110,10 +142,26 @@ export function AdminDashboard() {
     router.refresh();
   }
 
-  const modules = me?.modules || ["sitio", "talleres", "tareas"];
+  const modules = me?.modules || [
+    "sitio",
+    "talleres",
+    "cronograma",
+    "seguimiento",
+    "tareas",
+  ];
   const canAccounting = modules.includes("contabilidad");
   const canTalleres =
     modules.includes("talleres") || modules.includes("sitio");
+  // Visible con el módulo propio o con talleres/sitio (mismo equipo operativo).
+  const canCronograma =
+    modules.includes("cronograma") ||
+    modules.includes("talleres") ||
+    modules.includes("sitio");
+  const canSeguimiento =
+    modules.includes("seguimiento") ||
+    modules.includes("cronograma") ||
+    modules.includes("talleres") ||
+    modules.includes("sitio");
   const roleLabel = me?.role === "admin" ? "Administrador" : "Equipo";
   const isAdmin = me?.role === "admin";
 
@@ -166,10 +214,10 @@ export function AdminDashboard() {
         <p className="mt-3 max-w-xl text-base text-[color:var(--muted)]">
           {canAccounting
             ? "Tienes acceso completo a los módulos del panel."
-            : "Tu acceso incluye sitio, talleres y seguimiento de tareas."}
+            : "Tu acceso incluye sitio, talleres, cronograma, seguimiento y tareas."}
         </p>
 
-        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {modules.includes("sitio") && (
             <Link
               href="/admin/sitio"
@@ -203,6 +251,44 @@ export function AdminDashboard() {
                 </h2>
                 <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)]">
                   Crear y organizar talleres por las tres flores; se publican en la home.
+                </p>
+              </div>
+            </Link>
+          )}
+
+          {canCronograma && (
+            <Link
+              href="/admin/cronograma"
+              className="group flex flex-col items-start gap-5 border border-[color:var(--line)] bg-white p-7 transition-all duration-300 hover:-translate-y-1 hover:border-[color:var(--accent)] hover:shadow-[0_18px_40px_-28px_rgba(224,13,69,0.45)]"
+            >
+              <span className="text-[color:var(--accent)] transition-transform duration-300 group-hover:scale-105">
+                <ScheduleIcon />
+              </span>
+              <div>
+                <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--ink)]">
+                  Cronograma
+                </h2>
+                <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)]">
+                  Programar talleres en el calendario: fecha, hora, lugar y coach.
+                </p>
+              </div>
+            </Link>
+          )}
+
+          {canSeguimiento && (
+            <Link
+              href="/admin/seguimiento-talleres"
+              className="group flex flex-col items-start gap-5 border border-[color:var(--line)] bg-white p-7 transition-all duration-300 hover:-translate-y-1 hover:border-[color:var(--accent)] hover:shadow-[0_18px_40px_-28px_rgba(224,13,69,0.45)]"
+            >
+              <span className="text-[color:var(--accent)] transition-transform duration-300 group-hover:scale-105">
+                <FollowUpIcon />
+              </span>
+              <div>
+                <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--ink)]">
+                  Seguimiento de talleres
+                </h2>
+                <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)]">
+                  Encuesta de evaluación que se activa al vencer la fecha del taller.
                 </p>
               </div>
             </Link>

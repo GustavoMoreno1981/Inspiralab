@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 let adminClient: SupabaseClient | null = null;
+let adminClientCacheKey = "";
 
 function getSupabaseKey() {
   return (
@@ -21,13 +22,18 @@ export function getSupabaseAdmin() {
     );
   }
 
-  if (!adminClient) {
-    adminClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, getSupabaseKey(), {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key = getSupabaseKey();
+  const cacheKey = `${url}:${key.slice(0, 12)}`;
+
+  if (!adminClient || adminClientCacheKey !== cacheKey) {
+    adminClient = createClient(url, key, {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
       },
     });
+    adminClientCacheKey = cacheKey;
   }
 
   return adminClient;

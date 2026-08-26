@@ -90,6 +90,9 @@ export type TaskNote = {
   createdAt: string;
 };
 
+/** Respuesta a una solicitud de revisión (como opciones de encuesta en WhatsApp). */
+export type ReviewResponseValue = "yes" | "no" | "pending" | "call";
+
 /** Mensaje de revisión enviado al equipo (historial + WhatsApp). */
 export type ReviewMessage = {
   id: string;
@@ -100,6 +103,9 @@ export type ReviewMessage = {
   fullText: string;
   createdAt: string;
   channel: "whatsapp" | "copied";
+  response?: ReviewResponseValue | null;
+  responseAt?: string;
+  responseBy?: string;
 };
 
 /** Objetivo / proyecto grande (antes era la "tarea" de nivel superior). */

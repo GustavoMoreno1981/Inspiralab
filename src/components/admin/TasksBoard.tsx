@@ -20,15 +20,22 @@ import {
   type TaskBankItem,
   type TaskNote,
   type ReviewMessage,
+  type ReviewResponseValue,
   type TaskStatus,
   type TasksBoard,
   type TeamMember,
 } from "@/lib/tasks/types";
+import {
+  latestReviewResponse,
+  reviewResponseLabel,
+} from "@/lib/tasks/review-message";
 import { TasksGantt } from "@/components/admin/TasksGantt";
 import { TasksReports } from "@/components/admin/TasksReports";
 import { AdminFooter } from "@/components/admin/AdminFooter";
 import { TaskSemaphore } from "@/components/admin/AdminAlarms";
 import { ReviewMessageModal } from "@/components/admin/ReviewMessageModal";
+import { ReviewResponsePanel } from "@/components/admin/ReviewResponsePanel";
+import { TasksAssistant } from "@/components/admin/TasksAssistant";
 import { useToast } from "@/components/admin/AdminToast";
 
 const STATUS_STYLES: Record<TaskStatus, string> = {
@@ -131,6 +138,15 @@ function normalizeActivity(activity: Partial<Activity> & { id: string }): Activi
           fullText: message.fullText || "",
           createdAt: message.createdAt || "",
           channel: message.channel === "copied" ? "copied" : "whatsapp",
+          response:
+            message.response === "yes" ||
+            message.response === "no" ||
+            message.response === "pending" ||
+            message.response === "call"
+              ? message.response
+              : null,
+          responseAt: message.responseAt || "",
+          responseBy: message.responseBy || "",
         }))
       : [],
     createdAt: activity.createdAt || "",
@@ -197,8 +213,14 @@ export function TasksBoard() {
   const [selectedMemberId, setSelectedMemberId] = useState<string | "all">("all");
   const [selectedStatus, setSelectedStatus] = useState<TaskStatus | "all">("all");
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const [bankTitle, setBankTitle] = useState("");
   const [bankNotes, setBankNotes] = useState("");
+  const [bankOwnerId, setBankOwnerId] = useState("");
+  const [editingBankId, setEditingBankId] = useState<string | null>(null);
+  const [editingBankTitle, setEditingBankTitle] = useState("");
+  const [editingBankNotes, setEditingBankNotes] = useState("");
+  const [viewingBankId, setViewingBankId] = useState<string | null>(null);
   const [convertingBankId, setConvertingBankId] = useState<string | null>(null);
   const [expandedActivityId, setExpandedActivityId] = useState<string | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
@@ -613,8 +635,10 @@ export function TasksBoard() {
 
   async function addBankItem(event: FormEvent) {
     event.preventDefault();
-    if (selectedMemberId === "all") {
-      toast.error("Selecciona un integrante para crear su banco de tareas");
+    const ownerId =
+      selectedMemberId !== "all" ? selectedMemberId : bankOwnerId;
+    if (!ownerId) {
+      toast.error("Selecciona un integrante para el banco de tareas");
       return;
     }
     if (!bankTitle.trim()) {
@@ -626,8 +650,8 @@ export function TasksBoard() {
       id: createId("bank"),
       title: bankTitle.trim(),
       notes: bankNotes.trim(),
-      ownerId: selectedMemberId,
-      suggestedAssigneeIds: [selectedMemberId],
+      ownerId,
+      suggestedAssigneeIds: [ownerId],
       convertedActivityId: null,
       createdAt: now,
       updatedAt: now,
@@ -640,6 +664,44 @@ export function TasksBoard() {
       setBankTitle("");
       setBankNotes("");
     }
+  }
+
+  function startEditBankItem(item: TaskBankItem) {
+    setViewingBankId(null);
+    setEditingBankId(item.id);
+    setEditingBankTitle(item.title);
+    setEditingBankNotes(item.notes);
+  }
+
+  function cancelEditBankItem() {
+    setEditingBankId(null);
+    setEditingBankTitle("");
+    setEditingBankNotes("");
+  }
+
+  async function saveBankItemEdit(id: string) {
+    if (!editingBankTitle.trim()) {
+      toast.error("Escribe un título para la idea");
+      return;
+    }
+    const now = new Date().toISOString();
+    const ok = await persist(
+      {
+        ...board,
+        bank: (board.bank || []).map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                title: editingBankTitle.trim(),
+                notes: editingBankNotes.trim(),
+                updatedAt: now,
+              }
+            : item,
+        ),
+      },
+      "Idea actualizada en el banco",
+    );
+    if (ok) cancelEditBankItem();
   }
 
   async function removeBankItem(id: string) {
@@ -1051,6 +1113,141 @@ export function TasksBoard() {
     }
   }
 
+  async function handleAssistantCreate(activity: Activity) {
+    const ok = await persist(
+      {
+        ...board,
+        activities: [activity, ...board.activities],
+      },
+      `Actividad “${activity.title}” creada`,
+    );
+    if (ok) {
+      setTab("tasks");
+      setViewMode("list");
+      if (activity.assigneeIds.length === 1) {
+        setSelectedMemberId(activity.assigneeIds[0]);
+      }
+      if (activity.tasks.length) setExpandedActivityId(activity.id);
+    }
+    return ok;
+  }
+
+  async function handleAssistantConvertFromBank(
+    bankItemId: string,
+    activity: Activity,
+  ) {
+    const now = new Date().toISOString();
+    const nextBank = (board.bank || []).map((item) =>
+      item.id === bankItemId
+        ? {
+            ...item,
+            convertedActivityId: activity.id,
+            updatedAt: now,
+          }
+        : item,
+    );
+    const ok = await persist(
+      {
+        ...board,
+        activities: [activity, ...board.activities],
+        bank: nextBank,
+      },
+      `Actividad “${activity.title}” creada desde el banco`,
+    );
+    if (ok) {
+      setTab("tasks");
+      setViewMode("list");
+      if (activity.assigneeIds.length === 1) {
+        setSelectedMemberId(activity.assigneeIds[0]);
+      }
+      if (activity.tasks.length) setExpandedActivityId(activity.id);
+    }
+    return ok;
+  }
+
+  async function handleAssistantUpdate(input: {
+    activityId: string;
+    status: TaskStatus;
+    note: string;
+    tasks: Task[];
+  }) {
+    const activity = board.activities.find((item) => item.id === input.activityId);
+    if (!activity) return false;
+
+    const normalizedTasks = input.tasks.map((task) =>
+      normalizeTask({ ...task, activityId: input.activityId }, input.activityId),
+    );
+
+    const notes =
+      input.note.trim().length > 0
+        ? [
+            {
+              id: createId("note"),
+              text: input.note.trim(),
+              createdAt: new Date().toISOString(),
+            } satisfies TaskNote,
+            ...(activity.notes || []),
+          ]
+        : activity.notes || [];
+
+    if (input.status === "pending_review" && activity.status !== "pending_review") {
+      if (input.note.trim()) {
+        const okNotes = await persist({
+          ...board,
+          activities: board.activities.map((item) =>
+            item.id === activity.id
+              ? {
+                  ...item,
+                  tasks: normalizedTasks,
+                  notes,
+                  updatedAt: new Date().toISOString(),
+                }
+              : item,
+          ),
+        });
+        if (!okNotes) return false;
+      }
+      beginPendingReview(
+        { ...activity, notes, tasks: normalizedTasks },
+        normalizedTasks,
+        "pending_review",
+      );
+      return true;
+    }
+
+    const label =
+      TASK_STATUSES.find((item) => item.value === input.status)?.label || input.status;
+    const ok = await persist(
+      {
+        ...board,
+        activities: board.activities.map((item) =>
+          item.id === activity.id
+            ? {
+                ...item,
+                status: input.status,
+                tasks: normalizedTasks,
+                notes,
+                updatedAt: new Date().toISOString(),
+              }
+            : item,
+        ),
+      },
+      input.note.trim()
+        ? `Avance guardado · ${label} · nota agregada`
+        : `Avance guardado · ${label}`,
+    );
+    if (ok) {
+      setExpandedActivityId(activity.id);
+    }
+    if (ok && input.status === "done") {
+      window.setTimeout(() => {
+        setExpandedActivityId(null);
+        setCompleteActivityId(activity.id);
+      }, 0);
+    }
+    return ok;
+  }
+
   function closeReviewModal() {
     if (reviewRevert && reviewRevert.activityId === reviewModalActivityId) {
       const previousLabel =
@@ -1097,6 +1294,55 @@ export function TasksBoard() {
       void persist(next, "Mensaje de revisión guardado");
       return next;
     });
+    setReviewHistoryOpenId(activityId);
+  }
+
+  function recordReviewResponse(activityId: string, value: ReviewResponseValue) {
+    const activity = board.activities.find((item) => item.id === activityId);
+    if (!activity) return;
+
+    const respondedBy = sessionName.trim() || "Equipo";
+    const now = new Date().toISOString();
+    const label = reviewResponseLabel(value);
+    let messages = [...(activity.reviewMessages || [])];
+
+    if (!messages.length) {
+      const assigneeNames = (activity.assigneeIds || [])
+        .map((id) => board.members.find((member) => member.id === id)?.name)
+        .filter(Boolean) as string[];
+      messages = [
+        {
+          id: createId("review"),
+          recipientIds: [...(activity.assigneeIds || [])],
+          recipientNames: assigneeNames,
+          body: "",
+          url: activity.processUrl || activity.deliverableUrl || "",
+          fullText: "Respuesta registrada en el panel (sin mensaje WhatsApp previo).",
+          createdAt: now,
+          channel: "copied",
+          response: value,
+          responseAt: now,
+          responseBy: respondedBy,
+        },
+      ];
+    } else {
+      messages = messages.map((message, index) =>
+        index === 0
+          ? {
+              ...message,
+              response: value,
+              responseAt: now,
+              responseBy: respondedBy,
+            }
+          : message,
+      );
+    }
+
+    updateActivity(
+      activityId,
+      { reviewMessages: messages },
+      `Respuesta de revisión: ${label}`,
+    );
     setReviewHistoryOpenId(activityId);
   }
 
@@ -1168,6 +1414,13 @@ export function TasksBoard() {
             <Link href="/admin" className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold">
               Panel
             </Link>
+            <button
+              type="button"
+              onClick={() => setAssistantOpen(true)}
+              className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
+            >
+              Asistente guiado
+            </button>
             <button
               type="button"
               onClick={() => void logout()}
@@ -1578,10 +1831,29 @@ export function TasksBoard() {
                         Anota todo lo que hay que convertir en actividades formales.
                         {selectedMember
                           ? ` Banco de ${selectedMember.name}.`
-                          : " Selecciona un integrante arriba para agregar ideas a su banco."}
+                          : " Puedes agregar ideas para cualquier integrante."}
                       </p>
 
                       <form onSubmit={(e) => void addBankItem(e)} className="mt-5 grid gap-3">
+                        {selectedMemberId === "all" ? (
+                          <label className="block space-y-1">
+                            <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
+                              Integrante
+                            </span>
+                            <select
+                              value={bankOwnerId}
+                              onChange={(e) => setBankOwnerId(e.target.value)}
+                              className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)]"
+                            >
+                              <option value="">Selecciona integrante…</option>
+                              {board.members.map((member) => (
+                                <option key={member.id} value={member.id}>
+                                  {member.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
                         <label className="block space-y-1">
                           <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
                             ¿Qué actividad hay que crear?
@@ -1590,8 +1862,7 @@ export function TasksBoard() {
                             value={bankTitle}
                             onChange={(e) => setBankTitle(e.target.value)}
                             placeholder="Ej: Preparar lanzamiento del programa"
-                            disabled={selectedMemberId === "all"}
-                            className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)] disabled:opacity-50"
+                            className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)]"
                           />
                         </label>
                         <label className="block space-y-1">
@@ -1603,13 +1874,12 @@ export function TasksBoard() {
                             onChange={(e) => setBankNotes(e.target.value)}
                             rows={3}
                             placeholder="Qué implica, materiales, dependencias…"
-                            disabled={selectedMemberId === "all"}
-                            className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)] disabled:opacity-50"
+                            className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)]"
                           />
                         </label>
                         <button
                           type="submit"
-                          disabled={selectedMemberId === "all" || saving}
+                          disabled={saving}
                           className="justify-self-start bg-[color:var(--accent)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
                         >
                           + Agregar al banco
@@ -1629,42 +1899,126 @@ export function TasksBoard() {
                       ) : (
                         pendingBank.map((item) => {
                           const owner = board.members.find((m) => m.id === item.ownerId);
+                          const isEditing = editingBankId === item.id;
+                          const isViewing = viewingBankId === item.id;
                           return (
                             <article
                               key={item.id}
                               className="border border-[color:var(--line)] bg-white p-4 md:p-5"
                             >
-                              <div className="flex flex-wrap items-start justify-between gap-3">
-                                <div className="min-w-0 flex-1">
-                                  <p className="font-[family-name:var(--font-display)] text-base font-bold text-[color:var(--ink)]">
-                                    {item.title}
-                                  </p>
-                                  {item.notes ? (
-                                    <p className="mt-1 text-sm text-[color:var(--muted)]">
-                                      {item.notes}
-                                    </p>
+                              {isEditing ? (
+                                <div className="space-y-3">
+                                  <label className="block space-y-1">
+                                    <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
+                                      Título
+                                    </span>
+                                    <input
+                                      value={editingBankTitle}
+                                      onChange={(e) => setEditingBankTitle(e.target.value)}
+                                      className="w-full border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
+                                    />
+                                  </label>
+                                  <label className="block space-y-1">
+                                    <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
+                                      Notas
+                                    </span>
+                                    <textarea
+                                      value={editingBankNotes}
+                                      onChange={(e) => setEditingBankNotes(e.target.value)}
+                                      rows={3}
+                                      className="w-full border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
+                                    />
+                                  </label>
+                                  <div className="flex flex-wrap gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => void saveBankItemEdit(item.id)}
+                                      disabled={saving}
+                                      className="bg-[color:var(--accent)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                                    >
+                                      Guardar
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={cancelEditBankItem}
+                                      className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
+                                    >
+                                      Cancelar
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div className="min-w-0 flex-1">
+                                      <p className="font-[family-name:var(--font-display)] text-base font-bold text-[color:var(--ink)]">
+                                        {item.title}
+                                      </p>
+                                      {!isViewing && item.notes ? (
+                                        <p className="mt-1 text-sm text-[color:var(--muted)] line-clamp-2">
+                                          {item.notes}
+                                        </p>
+                                      ) : null}
+                                      <p className="mt-2 text-xs text-[color:var(--muted)]">
+                                        {owner ? `Para: ${owner.name}` : "Sin dueño"}
+                                      </p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingBankId(null);
+                                          setViewingBankId(isViewing ? null : item.id);
+                                        }}
+                                        className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
+                                      >
+                                        {isViewing ? "Ocultar" : "Ver"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => startEditBankItem(item)}
+                                        className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
+                                      >
+                                        Editar
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => startConvertBankItem(item)}
+                                        className="bg-[color:var(--accent)] px-3 py-1.5 text-xs font-semibold text-white"
+                                      >
+                                        Crear actividad
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => void removeBankItem(item.id)}
+                                        className="border border-[color:var(--accent)] px-3 py-1.5 text-xs font-semibold text-[color:var(--accent)]"
+                                      >
+                                        Eliminar
+                                      </button>
+                                    </div>
+                                  </div>
+                                  {isViewing ? (
+                                    <div className="mt-4 border-t border-[color:var(--line)] pt-4 text-sm">
+                                      {item.notes ? (
+                                        <p className="whitespace-pre-wrap text-[color:var(--ink)]">
+                                          {item.notes}
+                                        </p>
+                                      ) : (
+                                        <p className="text-[color:var(--muted)]">
+                                          Sin notas adicionales.
+                                        </p>
+                                      )}
+                                      <p className="mt-3 text-xs text-[color:var(--muted)]">
+                                        Creada:{" "}
+                                        {new Date(item.createdAt).toLocaleDateString("es-CO")}
+                                        {item.updatedAt !== item.createdAt
+                                          ? ` · Actualizada: ${new Date(item.updatedAt).toLocaleDateString("es-CO")}`
+                                          : ""}
+                                      </p>
+                                    </div>
                                   ) : null}
-                                  <p className="mt-2 text-xs text-[color:var(--muted)]">
-                                    {owner ? `Para: ${owner.name}` : "Sin dueño"}
-                                  </p>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => startConvertBankItem(item)}
-                                    className="bg-[color:var(--accent)] px-3 py-1.5 text-xs font-semibold text-white"
-                                  >
-                                    Crear actividad
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => void removeBankItem(item.id)}
-                                    className="border border-[color:var(--accent)] px-3 py-1.5 text-xs font-semibold text-[color:var(--accent)]"
-                                  >
-                                    Eliminar
-                                  </button>
-                                </div>
-                              </div>
+                                </>
+                              )}
                             </article>
                           );
                         })
@@ -1749,6 +2103,7 @@ export function TasksBoard() {
                     ) : (
                       filteredActivities.map((activity) => {
                         const progress = getActivityProgress(activity);
+                        const reviewState = latestReviewResponse(activity.reviewMessages);
                         const expanded = expandedActivityId === activity.id;
                         const canComplete = activity.status === "done";
                         const statusColor =
@@ -1994,6 +2349,18 @@ export function TasksBoard() {
                                     ) : null}
                                   </div>
 
+                                  {activity.status === "pending_review" && (
+                                    <ReviewResponsePanel
+                                      currentResponse={reviewState?.value}
+                                      respondedBy={reviewState?.by}
+                                      respondedAt={reviewState?.at}
+                                      disabled={saving}
+                                      onRecord={(value) =>
+                                        recordReviewResponse(activity.id, value)
+                                      }
+                                    />
+                                  )}
+
                                   {activity.status === "done" && (
                                     <div className="space-y-2 border border-[color:var(--line)] bg-[color:var(--mist)] px-3 py-2.5">
                                       <p className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">
@@ -2223,6 +2590,17 @@ export function TasksBoard() {
                                       <pre className="mt-2 whitespace-pre-wrap font-sans text-sm text-[color:var(--ink)]">
                                         {message.fullText}
                                       </pre>
+                                      {message.response ? (
+                                        <p className="mt-2 text-xs font-semibold text-[color:var(--accent)]">
+                                          Respuesta: {reviewResponseLabel(message.response)}
+                                          {message.responseBy
+                                            ? ` · ${message.responseBy}`
+                                            : ""}
+                                          {message.responseAt
+                                            ? ` · ${formatNoteDate(message.responseAt)}`
+                                            : ""}
+                                        </p>
+                                      ) : null}
                                     </li>
                                   ))}
                                 </ul>
@@ -2580,6 +2958,21 @@ export function TasksBoard() {
       </main>
 
       <AdminFooter />
+
+      <TasksAssistant
+        open={assistantOpen}
+        members={board.members}
+        activities={board.activities}
+        bank={board.bank || []}
+        saving={saving}
+        defaultAssigneeId={
+          selectedMemberId !== "all" ? selectedMemberId : sessionMemberId || undefined
+        }
+        onClose={() => setAssistantOpen(false)}
+        onCreate={handleAssistantCreate}
+        onConvertFromBank={handleAssistantConvertFromBank}
+        onUpdate={handleAssistantUpdate}
+      />
 
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">

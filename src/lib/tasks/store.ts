@@ -170,6 +170,15 @@ function normalizeReviewMessages(messages: unknown): ReviewMessage[] {
         fullText: item.fullText,
         createdAt: item.createdAt || new Date().toISOString(),
         channel: item.channel === "copied" ? "copied" : "whatsapp",
+        response:
+          item.response === "yes" ||
+          item.response === "no" ||
+          item.response === "pending" ||
+          item.response === "call"
+            ? item.response
+            : null,
+        responseAt: typeof item.responseAt === "string" ? item.responseAt : "",
+        responseBy: typeof item.responseBy === "string" ? item.responseBy : "",
       };
     })
     .filter((message): message is ReviewMessage => Boolean(message));
@@ -596,6 +605,9 @@ async function writeTasksSupabaseRaw(board: StoredBoard) {
       photo: member.photo || "",
       phone_country_code: member.phoneCountryCode || "+57",
       phone: member.phone || "",
+      access_role: member.accessRole === "admin" ? "admin" : "member",
+      can_login: Boolean(member.canLogin),
+      password_hash: member.passwordHash || "",
       created_at: member.createdAt || new Date().toISOString(),
     }));
 
@@ -603,6 +615,19 @@ async function writeTasksSupabaseRaw(board: StoredBoard) {
     if (error && (error.code === "PGRST204" || String(error.message || "").includes("phone"))) {
       ({ error } = await supabase.from("team_members").insert(
         memberRows.map(({ phone_country_code: _c, phone: _p, ...rest }) => rest),
+      ));
+    }
+    if (
+      error &&
+      (error.code === "PGRST204" ||
+        String(error.message || "").includes("password_hash") ||
+        String(error.message || "").includes("access_role") ||
+        String(error.message || "").includes("can_login"))
+    ) {
+      ({ error } = await supabase.from("team_members").insert(
+        memberRows.map(
+          ({ access_role: _a, can_login: _c, password_hash: _p, ...rest }) => rest,
+        ),
       ));
     }
     if (error) throw error;

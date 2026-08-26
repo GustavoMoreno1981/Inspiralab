@@ -1,0 +1,22 @@
+{
+  "sessions": [
+    {
+      "id": "sess-msl3xat6-m0ypj7",
+      "kind": "workshop",
+      "eventName": "",
+      "workshopId": "",
+      "flowerIndex": 0,
+      "title": "Taller de prueba — Inteligencia emocional",
+      "date": "2026-08-07",
+      "startTime": "09:00",
+      "endTime": "11:00",
+      "location": "Bucaramanga",
+      "coach": "Equipo Inspiralab",
+      "beneficiaryIds": [],
+      "status": "scheduled",
+      "notes": "Taller de prueba para ver el seguimiento / encuesta.",
+      "createdAt": "2026-08-09T01:11:37.719Z",
+      "updatedAt": "2026-08-09T01:11:37.719Z"
+    }
+  ]
+}

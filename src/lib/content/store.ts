@@ -13,6 +13,8 @@ export type WorkshopStep = {
   id: string;
   title: string;
   done: boolean;
+  /** Solo admin / exportación; no se muestra en la web pública. */
+  simbologia: string;
 };
 
 export type WorkshopMaterial = {
@@ -49,6 +51,7 @@ function normalizeWorkshopStep(
     id: step.id || fallbackId,
     title: step.title || "",
     done: Boolean(step.done),
+    simbologia: typeof step.simbologia === "string" ? step.simbologia : "",
   };
 }
 

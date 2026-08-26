@@ -65,12 +65,9 @@ export function LoginForm() {
 
   return (
     <div className="mx-auto flex min-h-[100svh] max-w-md flex-col justify-center px-5 py-16">
-      <Link
-        href="/"
-        className="mb-8 font-[family-name:var(--font-display)] text-2xl font-bold text-[color:var(--accent)]"
-      >
+      <p className="mb-8 text-center font-[family-name:var(--font-display)] text-2xl font-bold text-[color:var(--accent)]">
         Inspiralab
-      </Link>
+      </p>
       <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold text-[color:var(--ink)]">
         Inicio de sesión
       </h1>
@@ -118,6 +115,15 @@ export function LoginForm() {
           {loading ? "Entrando..." : "Entrar"}
         </button>
       </form>
+
+      <p className="mt-6 text-center">
+        <Link
+          href="/"
+          className="inline-flex border border-[color:var(--line)] bg-white px-4 py-2.5 text-xs font-semibold text-[color:var(--ink)] hover:border-[color:var(--accent)] hover:text-[color:var(--accent)]"
+        >
+          Ver sitio web
+        </Link>
+      </p>
     </div>
   );
 }

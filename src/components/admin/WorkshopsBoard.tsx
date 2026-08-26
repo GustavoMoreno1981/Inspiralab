@@ -5,6 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AdminFooter } from "@/components/admin/AdminFooter";
 import { useToast } from "@/components/admin/AdminToast";
+import {
+  WorkshopsAssistant,
+  type WorkshopAssistantDraft,
+} from "@/components/admin/WorkshopsAssistant";
 import type { Dictionary, Locale, SiteContent } from "@/lib/i18n/dictionaries";
 import { createWorkshopId } from "@/lib/media/youtube";
 
@@ -109,12 +113,21 @@ function exportWorkshopDocument({
     : "<p>Sin materiales registrados.</p>";
   const stepsHtml = steps.length
     ? `<ol>${steps
-        .map(
-          (step, index) =>
-            `<li><strong>Paso ${index + 1}.</strong> ${escapeHtml(step.title)}${
+        .map((step, index) => {
+          const simbologia = (step.simbologia || "").trim();
+          return `<li>
+            <strong>Paso ${index + 1}.</strong> ${escapeHtml(step.title)}${
               step.done ? " <em>(completado)</em>" : ""
-            }</li>`,
-        )
+            }
+            ${
+              simbologia
+                ? `<div class="simbologia"><span>Simbología:</span> ${escapeHtml(
+                    simbologia,
+                  ).replace(/\n/g, "<br/>")}</div>`
+                : ""
+            }
+          </li>`;
+        })
         .join("")}</ol>`
     : "<p>Sin pasos registrados.</p>";
 
@@ -166,7 +179,9 @@ function exportWorkshopDocument({
     th, td { text-align: left; padding: 8px 0; border-bottom: 1px solid #eee; vertical-align: top; }
     th { width: 140px; color: #666; font-weight: 600; }
     ul, ol { padding-left: 1.25rem; margin: 0; }
-    li { margin: 6px 0; }
+    li { margin: 10px 0; }
+    .simbologia { margin-top: 4px; color: #555; font-size: 0.95em; }
+    .simbologia span { font-weight: 600; color: #333; }
     @media print { body { padding: 0; } @page { margin: 14mm; } }
   </style>
 </head>
@@ -203,6 +218,7 @@ export function WorkshopsBoard() {
   const [stepDrafts, setStepDrafts] = useState<Record<string, string>>({});
   const [materialDrafts, setMaterialDrafts] = useState<Record<string, string>>({});
   const [activeFlower, setActiveFlower] = useState(0);
+  const [assistantOpen, setAssistantOpen] = useState(false);
 
   useEffect(() => {
     void fetch("/api/content", { cache: "no-store" })
@@ -291,6 +307,46 @@ export function WorkshopsBoard() {
     setExpandedIds((prev) => new Set(prev).add(id));
   }
 
+  function handleAssistantCreate(draft: WorkshopAssistantDraft) {
+    const id = createWorkshopId();
+    const flowerIndex = Math.min(
+      Math.max(0, draft.flowerIndex),
+      FLOWER_LABELS.es.length - 1,
+    );
+    setContent((prev) => {
+      if (!prev) return prev;
+      return updateBothLocales(prev, (dict, lang) => {
+        const category = dict.workshops.categories[flowerIndex];
+        if (!category) return;
+        category.workshops.push({
+          id,
+          title: lang === "es" ? draft.titleEs : draft.titleEn,
+          text: lang === "es" ? draft.textEs : draft.textEn,
+          image: "",
+          youtubeUrl: "",
+          duration: draft.duration,
+          level: draft.level,
+          coach: draft.coach,
+          materials: draft.materials.map((title) => ({
+            id: createWorkshopId(),
+            title,
+          })),
+          steps: draft.steps.map((step) => ({
+            id: createWorkshopId(),
+            title: step.title,
+            done: false,
+            simbologia: step.simbologia,
+          })),
+        });
+      });
+    });
+    setActiveFlower(flowerIndex);
+    setExpandedIds((prev) => new Set(prev).add(id));
+    setAssistantOpen(false);
+    toast.success("Taller creado. Pulsa Guardar para publicarlo.");
+    return true;
+  }
+
   function removeWorkshop(catIndex: number, workshopId: string) {
     if (!window.confirm("¿Eliminar este taller en ambos idiomas?")) return;
     setContent((prev) =>
@@ -336,7 +392,7 @@ export function WorkshopsBoard() {
             const workshop = findWorkshop(dict, catIndex, workshopId);
             if (!workshop) return;
             if (!Array.isArray(workshop.steps)) workshop.steps = [];
-            workshop.steps.push({ id, title, done: false });
+            workshop.steps.push({ id, title, done: false, simbologia: "" });
           })
         : prev,
     );
@@ -369,6 +425,24 @@ export function WorkshopsBoard() {
               (item) => item.id === stepId,
             );
             if (step) step.title = title;
+          })
+        : prev,
+    );
+  }
+
+  function updateStepSimbologia(
+    catIndex: number,
+    workshopId: string,
+    stepId: string,
+    simbologia: string,
+  ) {
+    setContent((prev) =>
+      prev
+        ? updateBothLocales(prev, (dict) => {
+            const step = findWorkshop(dict, catIndex, workshopId)?.steps.find(
+              (item) => item.id === stepId,
+            );
+            if (step) step.simbologia = simbologia;
           })
         : prev,
     );
@@ -592,13 +666,22 @@ export function WorkshopsBoard() {
                   Talleres de esta flor · visibles en la home
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => addWorkshop(activeFlower)}
-                className="bg-[color:var(--accent)] px-4 py-2 text-xs font-semibold text-white"
-              >
-                + Agregar taller
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAssistantOpen(true)}
+                  className="bg-[color:var(--accent)] px-4 py-2 text-xs font-semibold text-white"
+                >
+                  Asistente guiado
+                </button>
+                <button
+                  type="button"
+                  onClick={() => addWorkshop(activeFlower)}
+                  className="bg-[color:var(--accent)] px-4 py-2 text-xs font-semibold text-white"
+                >
+                  + Agregar taller
+                </button>
+              </div>
             </div>
 
             <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -904,7 +987,8 @@ export function WorkshopsBoard() {
                               Paso a paso del taller
                             </h3>
                             <p className="text-xs text-[color:var(--muted)]">
-                              Secuencia de la sesión · no se muestra en la web pública
+                              Secuencia de la sesión · simbología solo en la exportación (no en
+                              la web pública)
                             </p>
                             <ul className="mt-3 space-y-2">
                               {steps.length === 0 ? (
@@ -915,45 +999,67 @@ export function WorkshopsBoard() {
                                 steps.map((step, index) => (
                                   <li
                                     key={step.id}
-                                    className="flex items-center gap-2 border border-[color:var(--line)] bg-[color:var(--mist)] px-3 py-2"
+                                    className="space-y-2 border border-[color:var(--line)] bg-[color:var(--mist)] px-3 py-2"
                                   >
-                                    <span className="w-6 shrink-0 text-xs font-semibold text-[color:var(--muted)]">
-                                      {index + 1}.
-                                    </span>
-                                    <input
-                                      type="checkbox"
-                                      checked={step.done}
-                                      onChange={() =>
-                                        toggleStep(activeFlower, workshop.id, step.id)
-                                      }
-                                      className="h-4 w-4 accent-[color:var(--accent)]"
-                                      title="Marcar paso como hecho"
-                                    />
-                                    <input
-                                      value={step.title}
-                                      onChange={(e) =>
-                                        updateStepTitle(
-                                          activeFlower,
-                                          workshop.id,
-                                          step.id,
-                                          e.target.value,
-                                        )
-                                      }
-                                      className={`min-w-0 flex-1 bg-transparent text-sm outline-none ${
-                                        step.done
-                                          ? "text-[color:var(--muted)] line-through"
-                                          : "text-[color:var(--ink)]"
-                                      }`}
-                                    />
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        removeStep(activeFlower, workshop.id, step.id)
-                                      }
-                                      className="text-xs font-semibold text-[color:var(--accent)]"
-                                    >
-                                      Quitar
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                      <span className="w-6 shrink-0 text-xs font-semibold text-[color:var(--muted)]">
+                                        {index + 1}.
+                                      </span>
+                                      <input
+                                        type="checkbox"
+                                        checked={step.done}
+                                        onChange={() =>
+                                          toggleStep(activeFlower, workshop.id, step.id)
+                                        }
+                                        className="h-4 w-4 accent-[color:var(--accent)]"
+                                        title="Marcar paso como hecho"
+                                      />
+                                      <input
+                                        value={step.title}
+                                        onChange={(e) =>
+                                          updateStepTitle(
+                                            activeFlower,
+                                            workshop.id,
+                                            step.id,
+                                            e.target.value,
+                                          )
+                                        }
+                                        placeholder="Descripción del paso"
+                                        className={`min-w-0 flex-1 bg-transparent text-sm outline-none ${
+                                          step.done
+                                            ? "text-[color:var(--muted)] line-through"
+                                            : "text-[color:var(--ink)]"
+                                        }`}
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          removeStep(activeFlower, workshop.id, step.id)
+                                        }
+                                        className="text-xs font-semibold text-[color:var(--accent)]"
+                                      >
+                                        Quitar
+                                      </button>
+                                    </div>
+                                    <label className="block pl-8">
+                                      <span className="mb-1 block text-[11px] font-semibold tracking-wide text-[color:var(--muted)] uppercase">
+                                        Simbología
+                                      </span>
+                                      <textarea
+                                        value={step.simbologia || ""}
+                                        onChange={(e) =>
+                                          updateStepSimbologia(
+                                            activeFlower,
+                                            workshop.id,
+                                            step.id,
+                                            e.target.value,
+                                          )
+                                        }
+                                        rows={2}
+                                        placeholder="Notas de simbología para el documento exportado…"
+                                        className="w-full border border-[color:var(--line)] bg-white px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
+                                      />
+                                    </label>
                                   </li>
                                 ))
                               )}
@@ -1011,6 +1117,15 @@ export function WorkshopsBoard() {
         ) : null}
       </main>
       <AdminFooter />
+
+      <WorkshopsAssistant
+        open={assistantOpen}
+        flowerLabels={FLOWER_LABELS.es}
+        defaultFlowerIndex={activeFlower}
+        saving={saving}
+        onClose={() => setAssistantOpen(false)}
+        onCreate={handleAssistantCreate}
+      />
     </div>
   );
 }

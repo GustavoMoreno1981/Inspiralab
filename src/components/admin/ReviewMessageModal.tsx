@@ -3,54 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Activity, ReviewMessage, TeamMember } from "@/lib/tasks/types";
 import { createId } from "@/lib/tasks/types";
+import {
+  buildReviewWhatsAppText,
+} from "@/lib/tasks/review-message";
 import { useToast } from "@/components/admin/AdminToast";
 
 function firstName(fullName: string) {
   const part = fullName.trim().split(/\s+/).filter(Boolean)[0];
   return part || fullName.trim() || "equipo";
-}
-
-function buildReviewText({
-  activityTitle,
-  recipientName,
-  senderName,
-  body,
-  url,
-}: {
-  activityTitle: string;
-  recipientName: string;
-  senderName: string;
-  body: string;
-  url: string;
-}) {
-  const recipientFirst = firstName(recipientName);
-  const senderFull = senderName.trim() || "Inspiralab";
-
-  const lines = [
-    `Hola ${recipientFirst}, espero que te encuentres muy bien. 🌷`,
-    "",
-    `${senderFull} te envía este mensaje con el fin de solicitarte, cuando tengas un momento, que revises el avance de la actividad "${activityTitle}".`,
-    "",
-    "Nos gustaría saber cómo va el proceso y si la actividad ya está lista o si aún hace falta algo para poder apoyarte en lo que necesites.",
-  ];
-
-  if (body.trim()) {
-    lines.push("", body.trim());
-  }
-  if (url.trim()) {
-    lines.push("", `Puedes revisar aquí: ${url.trim()}`);
-  }
-
-  lines.push(
-    "",
-    "Muchas gracias por tu compromiso y dedicación.",
-    "",
-    "Un abrazo,",
-    senderFull,
-    "Inspiralab",
-  );
-
-  return lines.join("\n");
 }
 
 function resolveDefaultSenderId(
@@ -113,15 +73,15 @@ export function ReviewMessageModal({
 
   const personalizedMessages = useMemo(() => {
     if (!activity || !senderFullName) return [];
+    const baseText = buildReviewWhatsAppText({
+      activityTitle: activity.title,
+      senderName: senderFullName,
+      body,
+      url,
+    });
     return selectedMembers.map((member) => ({
       member,
-      text: buildReviewText({
-        activityTitle: activity.title,
-        recipientName: member.name,
-        senderName: senderFullName,
-        body,
-        url,
-      }),
+      text: `Hola ${firstName(member.name)},\n\n${baseText}`,
     }));
   }, [activity, selectedMembers, senderFullName, body, url]);
 
@@ -375,8 +335,8 @@ export function ReviewMessageModal({
             </button>
           </div>
           <p className="text-xs text-[color:var(--muted)]">
-            El mensaje lleva tu nombre completo para que sepa quién lo pide. Si hay varias personas,
-            WhatsApp abre el primero y el resto queda copiado.
+            Si hay varias personas, WhatsApp abre el primer contacto y el resto
+            del texto queda copiado.
           </p>
         </div>
       </div>
