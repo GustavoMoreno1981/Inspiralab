@@ -153,7 +153,7 @@ function normalizeNotes(notes: unknown): TaskNote[] {
 function normalizeReviewMessages(messages: unknown): ReviewMessage[] {
   if (!Array.isArray(messages)) return [];
   return messages
-    .map((message) => {
+    .map((message): ReviewMessage | null => {
       if (!message || typeof message !== "object") return null;
       const item = message as Partial<ReviewMessage>;
       if (!item.id || typeof item.fullText !== "string") return null;
@@ -181,7 +181,7 @@ function normalizeReviewMessages(messages: unknown): ReviewMessage[] {
         responseBy: typeof item.responseBy === "string" ? item.responseBy : "",
       };
     })
-    .filter((message): message is ReviewMessage => Boolean(message));
+    .filter((message): message is ReviewMessage => message !== null);
 }
 
 function normalizeSubtask(subtask: Partial<Subtask> & { id: string }): Subtask {
