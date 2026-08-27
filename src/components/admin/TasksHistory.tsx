@@ -45,21 +45,29 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#39;");
 }
 
-function linkHtml(url: string, label?: string) {
+function normalizeHref(url: string) {
   const trimmed = url.trim();
   if (!trimmed) return "";
-  const safe = escapeHtml(trimmed);
-  const text = escapeHtml(label?.trim() || trimmed);
-  return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+function linkHtml(url: string) {
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+  const href = normalizeHref(trimmed);
+  const safeHref = escapeHtml(href);
+  const safeText = escapeHtml(trimmed);
+  return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeText}</a>`;
 }
 
 function collectActivityUrls(activity: Activity) {
   const urls: { label: string; url: string }[] = [];
   if (activity.processUrl?.trim()) {
-    urls.push({ label: "Proceso", url: activity.processUrl.trim() });
+    urls.push({ label: "En proceso", url: activity.processUrl.trim() });
   }
   if (activity.deliverableUrl?.trim()) {
-    urls.push({ label: "Entregable", url: activity.deliverableUrl.trim() });
+    urls.push({ label: "Terminada", url: activity.deliverableUrl.trim() });
   }
   for (const task of activity.tasks) {
     if (task.url?.trim()) {
@@ -83,7 +91,7 @@ function activityUrlsHtml(activity: Activity) {
   return `<ul>${urls
     .map(
       (item) =>
-        `<li>${linkHtml(item.url, `${item.label}: ${item.url}`)}</li>`,
+        `<li>${escapeHtml(item.label)}: ${linkHtml(item.url)}</li>`,
     )
     .join("")}</ul>`;
 }
@@ -469,7 +477,7 @@ export function TasksHistory({
                             {item.label}:
                           </span>{" "}
                           <a
-                            href={item.url}
+                            href={normalizeHref(item.url)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="break-all text-[color:var(--accent)] underline"
