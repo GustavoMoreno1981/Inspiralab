@@ -64,7 +64,7 @@ function linkHtml(url: string) {
 function collectActivityUrls(activity: Activity) {
   const urls: { label: string; url: string }[] = [];
   if (activity.processUrl?.trim()) {
-    urls.push({ label: "En proceso", url: activity.processUrl.trim() });
+    urls.push({ label: "Del proceso", url: activity.processUrl.trim() });
   }
   if (activity.deliverableUrl?.trim()) {
     urls.push({ label: "Terminada", url: activity.deliverableUrl.trim() });
