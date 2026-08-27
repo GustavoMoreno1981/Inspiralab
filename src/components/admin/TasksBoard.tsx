@@ -232,6 +232,10 @@ export function TasksBoard() {
     null,
   );
   const [completeActivityId, setCompleteActivityId] = useState<string | null>(null);
+  const [deliveryDraft, setDeliveryDraft] = useState({
+    processUrl: "",
+    deliverableUrl: "",
+  });
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [notesOpenId, setNotesOpenId] = useState<string | null>(null);
   const [reviewModalActivityId, setReviewModalActivityId] = useState<string | null>(null);
@@ -904,8 +908,13 @@ export function TasksBoard() {
 
   function maybeOpenDoneModal(activityId: string, previousStatus: TaskStatus, nextStatus: TaskStatus | null) {
     if (nextStatus === "done" && previousStatus !== "done") {
+      const activity = board.activities.find((item) => item.id === activityId);
       window.setTimeout(() => {
         setExpandedActivityId(null);
+        setDeliveryDraft({
+          processUrl: activity?.processUrl || "",
+          deliverableUrl: activity?.deliverableUrl || "",
+        });
         setCompleteActivityId(activityId);
       }, 0);
     }
@@ -1122,6 +1131,10 @@ export function TasksBoard() {
     if (status === "done") {
       window.setTimeout(() => {
         setExpandedActivityId(null);
+        setDeliveryDraft({
+          processUrl: activity.processUrl || "",
+          deliverableUrl: activity.deliverableUrl || "",
+        });
         setCompleteActivityId(activityId);
       }, 0);
     }
@@ -1256,6 +1269,10 @@ export function TasksBoard() {
     if (ok && input.status === "done") {
       window.setTimeout(() => {
         setExpandedActivityId(null);
+        setDeliveryDraft({
+          processUrl: activity.processUrl || "",
+          deliverableUrl: activity.deliverableUrl || "",
+        });
         setCompleteActivityId(activity.id);
       }, 0);
     }
@@ -1363,12 +1380,33 @@ export function TasksBoard() {
   function openDeliveryModal(activity: Activity) {
     if (activity.status !== "done") return;
     setExpandedActivityId(null);
+    setDeliveryDraft({
+      processUrl: activity.processUrl || "",
+      deliverableUrl: activity.deliverableUrl || "",
+    });
     setCompleteActivityId(activity.id);
   }
 
   function saveDeliveryUrls(activityId: string) {
-    updateActivity(activityId, { status: "done" }, "Entrega guardada");
-    setCompleteActivityId(null);
+    void persist(
+      {
+        ...board,
+        activities: board.activities.map((activity) =>
+          activity.id === activityId
+            ? {
+                ...activity,
+                processUrl: deliveryDraft.processUrl.trim(),
+                deliverableUrl: deliveryDraft.deliverableUrl.trim(),
+                status: "done",
+                updatedAt: new Date().toISOString(),
+              }
+            : activity,
+        ),
+      },
+      "Entrega guardada",
+    ).then((ok) => {
+      if (ok) setCompleteActivityId(null);
+    });
   }
 
   function shareCompletedActivityOnWhatsApp(activity: Activity) {
@@ -3203,11 +3241,15 @@ export function TasksBoard() {
                     URL del proceso
                   </span>
                   <input
-                    type="url"
+                    type="text"
+                    inputMode="url"
                     placeholder="https://..."
-                    value={str(activity.processUrl)}
+                    value={deliveryDraft.processUrl}
                     onChange={(e) =>
-                      updateActivity(activity.id, { processUrl: e.target.value })
+                      setDeliveryDraft((prev) => ({
+                        ...prev,
+                        processUrl: e.target.value,
+                      }))
                     }
                     className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)]"
                   />
@@ -3218,11 +3260,15 @@ export function TasksBoard() {
                     URL del entregable
                   </span>
                   <input
-                    type="url"
+                    type="text"
+                    inputMode="url"
                     placeholder="https://..."
-                    value={str(activity.deliverableUrl)}
+                    value={deliveryDraft.deliverableUrl}
                     onChange={(e) =>
-                      updateActivity(activity.id, { deliverableUrl: e.target.value })
+                      setDeliveryDraft((prev) => ({
+                        ...prev,
+                        deliverableUrl: e.target.value,
+                      }))
                     }
                     className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)]"
                   />
@@ -3235,9 +3281,10 @@ export function TasksBoard() {
                 <button
                   type="button"
                   onClick={() => saveDeliveryUrls(activity.id)}
-                  className="w-full bg-[color:var(--accent)] py-3 text-sm font-semibold text-white"
+                  disabled={saving}
+                  className="w-full bg-[color:var(--accent)] py-3 text-sm font-semibold text-white disabled:opacity-50"
                 >
-                  Guardar y cerrar
+                  {saving ? "Guardando..." : "Guardar y cerrar"}
                 </button>
               </div>
             </div>

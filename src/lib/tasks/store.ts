@@ -640,8 +640,8 @@ async function writeTasksSupabaseRaw(board: StoredBoard) {
     const activityRows = board.activities.map((activity) => ({
       id: activity.id,
       title: activity.title,
-      date: activity.date,
-      finished_date: activity.finishedDate || null,
+      date: toSqlDate(activity.date) || new Date().toISOString().slice(0, 10),
+      finished_date: toSqlDate(activity.finishedDate),
       process_url: activity.processUrl || "",
       deliverable_url: activity.deliverableUrl || "",
       status: activity.status,
@@ -765,6 +765,25 @@ async function writeStoredBoard(board: StoredBoard) {
   await writeTasksLocalRaw(board);
 }
 
+/** Evita carreras: varios PUT a la vez borran/reinsertan y provocan 500. */
+let writeQueue: Promise<void> = Promise.resolve();
+
+function enqueueWrite(task: () => Promise<void>): Promise<void> {
+  const run = writeQueue.then(task, task);
+  writeQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+function toSqlDate(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  return trimmed;
+}
+
 export async function readTasksBoard(): Promise<TasksBoard> {
   return toPublicBoard(await readStoredBoard());
 }
@@ -773,43 +792,45 @@ export async function writeTasksBoard(
   board: TasksBoard,
   options?: { allowAuthEdit?: boolean },
 ) {
-  const existing = await readStoredBoard();
-  const allowAuthEdit = Boolean(options?.allowAuthEdit);
+  await enqueueWrite(async () => {
+    const existing = await readStoredBoard();
+    const allowAuthEdit = Boolean(options?.allowAuthEdit);
 
-  const members: StoredMember[] = (board.members || []).map((member) => {
-    const prev = existing.members.find((item) => item.id === member.id);
-    let passwordHash = prev?.passwordHash || "";
+    const members: StoredMember[] = (board.members || []).map((member) => {
+      const prev = existing.members.find((item) => item.id === member.id);
+      let passwordHash = prev?.passwordHash || "";
 
-    if (allowAuthEdit && member.newPassword && member.newPassword.trim()) {
-      passwordHash = hashPassword(member.newPassword.trim());
-    }
+      if (allowAuthEdit && member.newPassword && member.newPassword.trim()) {
+        passwordHash = hashPassword(member.newPassword.trim());
+      }
 
-    const accessRole = allowAuthEdit
-      ? normalizeAccessRole(member.accessRole)
-      : normalizeAccessRole(prev?.accessRole ?? member.accessRole);
-    const canLogin = allowAuthEdit
-      ? Boolean(member.canLogin)
-      : Boolean(prev?.canLogin ?? member.canLogin);
+      const accessRole = allowAuthEdit
+        ? normalizeAccessRole(member.accessRole)
+        : normalizeAccessRole(prev?.accessRole ?? member.accessRole);
+      const canLogin = allowAuthEdit
+        ? Boolean(member.canLogin)
+        : Boolean(prev?.canLogin ?? member.canLogin);
 
-    return normalizeStoredMember({
-      id: member.id,
-      name: member.name,
-      role: member.role,
-      email: member.email,
-      photo: member.photo,
-      phoneCountryCode: member.phoneCountryCode,
-      phone: member.phone,
-      createdAt: member.createdAt || prev?.createdAt || new Date().toISOString(),
-      accessRole,
-      canLogin,
-      passwordHash,
+      return normalizeStoredMember({
+        id: member.id,
+        name: member.name,
+        role: member.role,
+        email: member.email,
+        photo: member.photo,
+        phoneCountryCode: member.phoneCountryCode,
+        phone: member.phone,
+        createdAt: member.createdAt || prev?.createdAt || new Date().toISOString(),
+        accessRole,
+        canLogin,
+        passwordHash,
+      });
     });
-  });
 
-  await writeStoredBoard({
-    members,
-    activities: normalizeActivities(board.activities || []),
-    bank: normalizeBank(board.bank || []),
+    await writeStoredBoard({
+      members,
+      activities: normalizeActivities(board.activities || []),
+      bank: normalizeBank(board.bank || []),
+    });
   });
 }
 
