@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 const links = [
@@ -14,6 +15,8 @@ const links = [
 
 export function Header() {
   const { t, locale, setLocale } = useLanguage();
+  const pathname = usePathname();
+  const onHome = pathname === "/";
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -31,17 +34,22 @@ export function Header() {
     };
   }, [open]);
 
+  function hrefFor(id: string) {
+    if (id === "workshops" && !onHome) return "/talleres";
+    return onHome ? `#${id}` : `/#${id}`;
+  }
+
   return (
     <header
       className={`fixed inset-x-0 top-0 z-50 transition-all duration-500 ${
-        scrolled || open
+        scrolled || open || !onHome
           ? "border-b border-[color:var(--line)] bg-white/90 backdrop-blur-md"
           : "bg-transparent"
       }`}
     >
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 md:h-20 md:px-8">
         <a
-          href="#home"
+          href={onHome ? "#home" : "/"}
           className="font-[family-name:var(--font-display)] text-xl font-bold tracking-tight text-[color:var(--accent)] md:text-2xl"
           onClick={() => setOpen(false)}
         >
@@ -52,7 +60,7 @@ export function Header() {
           {links.map((link) => (
             <a
               key={link.id}
-              href={`#${link.id}`}
+              href={hrefFor(link.id)}
               className="font-[family-name:var(--font-display)] text-[15px] font-semibold tracking-tight text-[color:var(--ink)] transition-colors hover:text-[color:var(--accent)] xl:text-base"
             >
               {t.nav[link.key]}
@@ -140,7 +148,7 @@ export function Header() {
           {links.map((link) => (
             <a
               key={link.id}
-              href={`#${link.id}`}
+              href={hrefFor(link.id)}
               className="py-3 font-[family-name:var(--font-display)] text-lg font-semibold tracking-tight text-[color:var(--ink)]"
               onClick={() => setOpen(false)}
             >

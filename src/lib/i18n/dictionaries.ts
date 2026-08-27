@@ -42,6 +42,11 @@ export const dictionaries = {
       eyebrow: "Workshops",
       title: "Three flowers. Many ways to grow.",
       body: "Our programs are organized into three paths—Love, Faith, and Hope—each with workshops designed to nurture people and communities.",
+      viewAll: "View all workshops",
+      allTitle: "All workshops",
+      allBody:
+        "Explore every workshop by flower path. Choose Love, Faith, or Hope and find the experience that fits you.",
+      backHome: "Back to home",
       categories: [
         {
           title: "Flower of Love",
@@ -310,6 +315,11 @@ export const dictionaries = {
       eyebrow: "Talleres",
       title: "Tres flores. Muchas formas de crecer.",
       body: "Nuestros programas se organizan en tres caminos—Amor, Fe y Esperanza—cada uno con talleres para nutrir personas y comunidades.",
+      viewAll: "Ver todos los talleres",
+      allTitle: "Todos los talleres",
+      allBody:
+        "Explora cada taller por flor. Elige Amor, Fe o Esperanza y encuentra la experiencia que más te inspire.",
+      backHome: "Volver al inicio",
       categories: [
         {
           title: "Flor del Amor",

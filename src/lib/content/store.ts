@@ -113,6 +113,7 @@ function normalizeGalleryItem(item: Partial<GalleryItem>, fallbackId: string): G
 }
 
 function normalizeLocale(dict: Dictionary, locale: "en" | "es"): Dictionary {
+  const defaults = dictionaries[locale].workshops;
   const next = structuredClone(dict) as Dictionary & {
     hero: Dictionary["hero"] & { videoUrl?: string };
   };
@@ -120,6 +121,11 @@ function normalizeLocale(dict: Dictionary, locale: "en" | "es"): Dictionary {
   if (!next.hero.videoUrl) {
     next.hero.videoUrl = "";
   }
+
+  next.workshops.viewAll = next.workshops.viewAll || defaults.viewAll;
+  next.workshops.allTitle = next.workshops.allTitle || defaults.allTitle;
+  next.workshops.allBody = next.workshops.allBody || defaults.allBody;
+  next.workshops.backHome = next.workshops.backHome || defaults.backHome;
 
   next.workshops.categories = next.workshops.categories.map((category, catIndex) => ({
     ...category,
