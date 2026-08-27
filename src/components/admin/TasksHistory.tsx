@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   TASK_STATUS_COLORS,
   getActivityCompletionDate,
@@ -99,12 +99,15 @@ type Props = {
   members: TeamMember[];
   activities: Activity[];
   selectedMemberId?: string | "all";
+  /** Si se pasa, renderiza actividades editables (mismo editor que en Lista). */
+  children?: (filtered: Activity[]) => ReactNode;
 };
 
 export function TasksHistory({
   members,
   activities,
   selectedMemberId: initialMemberId = "all",
+  children,
 }: Props) {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState<number | "all">("all");
@@ -279,8 +282,9 @@ export function TasksHistory({
               Historial de actividades terminadas
             </h2>
             <p className="mt-1 text-sm text-[color:var(--muted)]">
-              Actividades al 100% de avance. Filtra por integrante, año, mes o
-              rango de fechas y exporta a PDF.
+              Actividades al 100% de avance. Puedes ver, editar o eliminar cada
+              una. Filtra por integrante, año, mes o rango de fechas y exporta a
+              PDF.
             </p>
           </div>
           <button
@@ -419,6 +423,8 @@ export function TasksHistory({
             ? "Aún no hay actividades terminadas al 100%."
             : "No hay resultados con estos filtros."}
         </div>
+      ) : children ? (
+        children(filtered)
       ) : (
         <div className="space-y-3">
           {filtered.map((activity) => {

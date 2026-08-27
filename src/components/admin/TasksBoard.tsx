@@ -1457,754 +1457,8 @@ export function TasksBoard() {
     toast.success("Mensaje listo para compartir por WhatsApp");
   }
 
-  if (loading) {
-    return <div className="p-10 text-sm text-[color:var(--muted)]">Cargando actividades...</div>;
-  }
-
-  return (
-    <div className="flex min-h-[100svh] flex-col bg-[color:var(--mist)]">
-      <header className="sticky top-0 z-20 border-b border-[color:var(--line)] bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-4 md:px-8">
-          <div>
-            <p className="font-[family-name:var(--font-display)] text-lg font-bold text-[color:var(--accent)]">
-              Seguimiento de actividades
-            </p>
-            <p className="text-xs text-[color:var(--muted)]">
-              {saving ? "Guardando..." : statusMsg || "Equipo y avance"}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Link href="/admin" className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold">
-              Panel
-            </Link>
-            <button
-              type="button"
-              onClick={() => setAssistantOpen(true)}
-              className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
-            >
-              Asistente guiado
-            </button>
-            <button
-              type="button"
-              onClick={() => void logout()}
-              className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
-            >
-              Salir
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto w-full max-w-6xl flex-1 px-5 py-8 pb-12 md:px-8">
-        <div className="mb-6 flex gap-2 border border-[color:var(--line)] bg-white p-1 w-fit">
-          <button
-            type="button"
-            onClick={() => setTab("tasks")}
-            className={`px-4 py-2 text-sm font-semibold ${
-              tab === "tasks" ? "bg-[color:var(--accent)] text-white" : ""
-            }`}
-          >
-            Actividades
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("team")}
-            className={`px-4 py-2 text-sm font-semibold ${
-              tab === "team" ? "bg-[color:var(--accent)] text-white" : ""
-            }`}
-          >
-            Equipo
-          </button>
-        </div>
-
-        {tab === "team" ? (
-          <section className="grid gap-6 lg:grid-cols-[340px_1fr]">
-            <form onSubmit={(e) => void saveMember(e)} className="h-fit space-y-3 border border-[color:var(--line)] bg-white p-5">
-              <div className="flex items-start justify-between gap-3">
-                <h2 className="font-[family-name:var(--font-display)] text-xl font-bold">
-                  {editingMemberId ? "Editar integrante" : "Nuevo integrante"}
-                </h2>
-                {editingMemberId && (
-                  <button
-                    type="button"
-                    onClick={cancelEditMember}
-                    className="text-xs font-semibold text-[color:var(--muted)] hover:text-[color:var(--ink)]"
-                  >
-                    Cancelar
-                  </button>
-                )}
-              </div>
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void uploadMemberPhoto(file);
-                  e.target.value = "";
-                }}
-                className="block w-full text-xs"
-              />
-              <p className="text-[11px] text-[color:var(--muted)]">
-                Formatos: JPG, PNG, WEBP o GIF (máx. 10MB).
-              </p>
-              {memberForm.photo ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={memberForm.photo} alt="" className="h-24 w-24 object-cover" />
-              ) : null}
-              <input
-                required
-                placeholder="Nombre"
-                value={str(memberForm.name)}
-                onChange={(e) =>
-                  setMemberForm((p) => ({ ...emptyMemberForm, ...p, name: e.target.value }))
-                }
-                className="w-full border border-[color:var(--line)] px-3 py-2 text-sm"
-              />
-              <input
-                placeholder="Cargo / rol"
-                value={str(memberForm.role)}
-                onChange={(e) =>
-                  setMemberForm((p) => ({ ...emptyMemberForm, ...p, role: e.target.value }))
-                }
-                className="w-full border border-[color:var(--line)] px-3 py-2 text-sm"
-              />
-              <input
-                type="email"
-                placeholder="Email"
-                value={str(memberForm.email)}
-                onChange={(e) =>
-                  setMemberForm((p) => ({ ...emptyMemberForm, ...p, email: e.target.value }))
-                }
-                className="w-full border border-[color:var(--line)] px-3 py-2 text-sm"
-              />
-              <div className="grid grid-cols-[9.5rem_1fr] gap-2">
-                <label className="block space-y-1">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">
-                    Indicativo
-                  </span>
-                  <select
-                    value={memberForm.phoneCountryCode || "+57"}
-                    onChange={(e) =>
-                      setMemberForm((p) => ({
-                        ...emptyMemberForm,
-                        ...p,
-                        phoneCountryCode: e.target.value,
-                      }))
-                    }
-                    className="w-full border border-[color:var(--line)] px-2 py-2 text-sm"
-                  >
-                    {PHONE_COUNTRY_CODES.map((item) => (
-                      <option key={item.code} value={item.code}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block space-y-1">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">
-                    WhatsApp / celular
-                  </span>
-                  <input
-                    type="tel"
-                    inputMode="numeric"
-                    placeholder="3001234567"
-                    value={str(memberForm.phone)}
-                    onChange={(e) =>
-                      setMemberForm((p) => ({
-                        ...emptyMemberForm,
-                        ...p,
-                        phone: e.target.value.replace(/\D/g, ""),
-                      }))
-                    }
-                    className="w-full border border-[color:var(--line)] px-3 py-2 text-sm"
-                  />
-                </label>
-              </div>
-              <p className="text-[11px] text-[color:var(--muted)]">
-                Se usará para recordatorios diarios de tareas pendientes por WhatsApp.
-              </p>
-              {isAdmin && (
-                <p className="border border-[color:var(--line)] bg-[color:var(--mist)] p-3 text-xs text-[color:var(--muted)]">
-                  El acceso al panel usa contraseñas compartidas por rol. El administrador puede
-                  cambiarlas en el panel principal.
-                </p>
-              )}
-              <button
-                type="submit"
-                disabled={uploadingPhoto}
-                className="w-full bg-[color:var(--accent)] py-2.5 text-sm font-semibold text-white disabled:opacity-60"
-              >
-                {editingMemberId ? "Guardar cambios" : "Agregar integrante"}
-              </button>
-            </form>
-
-            <div className="border border-[color:var(--line)] bg-white">
-              {board.members.length === 0 ? (
-                <p className="p-6 text-sm text-[color:var(--muted)]">Aún no hay integrantes.</p>
-              ) : (
-                <ul className="divide-y divide-[color:var(--line)]">
-                  {board.members.map((member) => (
-                    <li key={member.id} className="flex items-center justify-between gap-4 p-4">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <MemberAvatar name={member.name} photo={member.photo} size="md" />
-                        <div className="min-w-0">
-                          <p className="font-semibold">{member.name}</p>
-                          <p className="text-sm text-[color:var(--muted)]">
-                            {member.role || "Sin cargo"}
-                            {member.email ? ` · ${member.email}` : ""}
-                          </p>
-                          <p className="mt-0.5 text-xs text-[color:var(--muted)]">
-                            {formatMemberPhone(member)
-                              ? `WhatsApp: ${formatMemberPhone(member)}`
-                              : "Sin teléfono registrado"}
-                          </p>
-                          <label className="mt-2 inline-flex cursor-pointer text-xs font-semibold text-[color:var(--accent)]">
-                            {member.photo ? "Cambiar foto" : "Subir foto"}
-                            <input
-                              type="file"
-                              accept="image/jpeg,image/png,image/webp,image/gif"
-                              className="hidden"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) void updateMemberPhoto(member.id, file);
-                                e.target.value = "";
-                              }}
-                            />
-                          </label>
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
-                        <button
-                          type="button"
-                          onClick={() => startEditMember(member)}
-                          className="text-xs font-semibold text-[color:var(--ink)]"
-                        >
-                          {editingMemberId === member.id ? "Editando…" : "Editar"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void removeMember(member.id)}
-                          className="text-xs font-semibold text-[color:var(--accent)]"
-                        >
-                          Eliminar
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </section>
-        ) : (
-          <section className="space-y-6">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold text-[color:var(--ink)]">
-                  Visualizar actividades del equipo
-                </h1>
-                <p className="mt-2 text-sm text-[color:var(--muted)]">
-                  Lista, Gantt, Reportes, Banco o Historial de terminadas.
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex flex-wrap border border-[color:var(--line)] bg-white p-1">
-                  <button
-                    type="button"
-                    onClick={() => setViewMode("list")}
-                    className={`px-3 py-1.5 text-xs font-semibold ${
-                      viewMode === "list" ? "bg-[color:var(--accent)] text-white" : ""
-                    }`}
-                  >
-                    Lista
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode("gantt")}
-                    className={`px-3 py-1.5 text-xs font-semibold ${
-                      viewMode === "gantt" ? "bg-[color:var(--accent)] text-white" : ""
-                    }`}
-                  >
-                    Gantt
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode("reports")}
-                    className={`px-3 py-1.5 text-xs font-semibold ${
-                      viewMode === "reports" ? "bg-[color:var(--accent)] text-white" : ""
-                    }`}
-                  >
-                    Reportes
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode("bank")}
-                    className={`px-3 py-1.5 text-xs font-semibold ${
-                      viewMode === "bank" ? "bg-[color:var(--accent)] text-white" : ""
-                    }`}
-                  >
-                    Banco
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode("history")}
-                    className={`px-3 py-1.5 text-xs font-semibold ${
-                      viewMode === "history" ? "bg-[color:var(--accent)] text-white" : ""
-                    }`}
-                  >
-                    Historial
-                    {completedActivities.length > 0 ? (
-                      <span className="ml-1 opacity-80">({completedActivities.length})</span>
-                    ) : null}
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={openCreateModal}
-                  disabled={board.members.length === 0}
-                  className="bg-[color:var(--accent)] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  + Nueva actividad
-                </button>
-              </div>
-            </div>
-
-            {board.members.length === 0 ? (
-              <div className="border border-[color:var(--line)] bg-white p-8 text-center">
-                <p className="text-[color:var(--muted)]">
-                  Primero crea integrantes en la pestaña Equipo.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setTab("team")}
-                  className="mt-4 text-sm font-semibold text-[color:var(--accent)]"
-                >
-                  Ir a Equipo
-                </button>
-              </div>
-            ) : viewMode === "reports" ? (
-              <TasksReports members={board.members} activities={activeActivities} />
-            ) : viewMode === "history" ? (
-              <TasksHistory
-                members={board.members}
-                activities={completedActivities}
-                selectedMemberId={selectedMemberId}
-              />
-            ) : (
-              <>
-                <div className="flex gap-3 overflow-x-auto pb-1">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedMemberId("all")}
-                    className={`shrink-0 border px-4 py-3 text-left transition-colors ${
-                      selectedMemberId === "all"
-                        ? "border-[color:var(--accent)] bg-[#fff1f4]"
-                        : "border-[color:var(--line)] bg-white"
-                    }`}
-                  >
-                    <p className="font-[family-name:var(--font-display)] text-sm font-bold">
-                      Todo el equipo
-                    </p>
-                    <div className="space-y-0.5 text-xs text-[color:var(--muted)]">
-                      <p>
-                        {activeActivities.length}{" "}
-                        {activeActivities.length === 1
-                          ? "actividad activa"
-                          : "actividades activas"}
-                      </p>
-                      <p>
-                        {pendingBankTotal}{" "}
-                        {pendingBankTotal === 1
-                          ? "actividad en el banco"
-                          : "actividades en el banco"}
-                      </p>
-                    </div>
-                  </button>
-
-                  {board.members.map((member) => {
-                    const activeCount = activeActivityCountByMember[member.id] || 0;
-                    const bankCount = pendingBankCountByMember[member.id] || 0;
-                    const active = selectedMemberId === member.id;
-                    return (
-                      <button
-                        key={member.id}
-                        type="button"
-                        onClick={() => setSelectedMemberId(member.id)}
-                        className={`flex shrink-0 items-center gap-3 border px-4 py-3 text-left transition-colors ${
-                          active
-                            ? "border-[color:var(--accent)] bg-[#fff1f4]"
-                            : "border-[color:var(--line)] bg-white"
-                        }`}
-                      >
-                        <MemberAvatar name={member.name} photo={member.photo} size="md" />
-                        <div>
-                          <p className="font-[family-name:var(--font-display)] text-sm font-bold">
-                            {member.name}
-                          </p>
-                          <div className="space-y-0.5 text-xs text-[color:var(--muted)]">
-                            <p>
-                              {activeCount}{" "}
-                              {activeCount === 1
-                                ? "actividad activa"
-                                : "actividades activas"}
-                            </p>
-                            <p>
-                              {bankCount}{" "}
-                              {bankCount === 1
-                                ? "actividad en el banco"
-                                : "actividades en el banco"}
-                            </p>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {viewMode !== "bank" ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
-                      Estado
-                    </span>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedStatus("all")}
-                    className={`border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                      selectedStatus === "all"
-                        ? "border-[color:var(--accent)] bg-[#fff1f4] text-[color:var(--accent)]"
-                        : "border-[color:var(--line)] bg-white text-[color:var(--ink)]"
-                    }`}
-                  >
-                    Todos
-                  </button>
-                  {TASK_STATUSES.map(({ value: status, label }) => {
-                    const active = selectedStatus === status;
-                    const count = board.activities.filter((a) => {
-                      const matchesMember =
-                        selectedMemberId === "all" ||
-                        (a.assigneeIds || []).includes(selectedMemberId);
-                      return matchesMember && a.status === status;
-                    }).length;
-                    return (
-                      <button
-                        key={status}
-                        type="button"
-                        onClick={() => setSelectedStatus(status)}
-                        className={`border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                          active
-                            ? "border-transparent text-white"
-                            : "border-[color:var(--line)] bg-white text-[color:var(--ink)]"
-                        }`}
-                        style={
-                          active
-                            ? {
-                                backgroundColor: TASK_STATUS_COLORS[status].bg,
-                              }
-                            : undefined
-                        }
-                      >
-                        {label}
-                        <span
-                          className={`ml-1.5 ${active ? "opacity-80" : "text-[color:var(--muted)]"}`}
-                        >
-                          ({count})
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-                ) : null}
-
-                {viewMode === "bank" ? (
-                  <div className="space-y-5">
-                    <div className="border border-[color:var(--line)] bg-white p-5 md:p-6">
-                      <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--ink)]">
-                        Banco de tareas
-                      </h2>
-                      <p className="mt-1 text-sm text-[color:var(--muted)]">
-                        Anota todo lo que hay que convertir en actividades formales.
-                        {selectedMember
-                          ? ` Banco de ${selectedMember.name}.`
-                          : " Puedes agregar ideas para cualquier integrante."}
-                      </p>
-
-                      <form onSubmit={(e) => void addBankItem(e)} className="mt-5 grid gap-3">
-                        {selectedMemberId === "all" ? (
-                          <label className="block space-y-1">
-                            <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                              Integrante
-                            </span>
-                            <select
-                              value={bankOwnerId}
-                              onChange={(e) => setBankOwnerId(e.target.value)}
-                              className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)]"
-                            >
-                              <option value="">Selecciona integrante…</option>
-                              {board.members.map((member) => (
-                                <option key={member.id} value={member.id}>
-                                  {member.name}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        ) : null}
-                        <label className="block space-y-1">
-                          <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                            ¿Qué actividad hay que crear?
-                          </span>
-                          <input
-                            value={bankTitle}
-                            onChange={(e) => setBankTitle(e.target.value)}
-                            placeholder="Ej: Preparar lanzamiento del programa"
-                            className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)]"
-                          />
-                        </label>
-                        <label className="block space-y-1">
-                          <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                            Notas / detalles (opcional)
-                          </span>
-                          <textarea
-                            value={bankNotes}
-                            onChange={(e) => setBankNotes(e.target.value)}
-                            rows={3}
-                            placeholder="Qué implica, materiales, dependencias…"
-                            className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)]"
-                          />
-                        </label>
-                        <button
-                          type="submit"
-                          disabled={saving}
-                          className="justify-self-start bg-[color:var(--accent)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-                        >
-                          + Agregar al banco
-                        </button>
-                      </form>
-                    </div>
-
-                    <div className="space-y-3">
-                      <h3 className="text-sm font-bold text-[color:var(--ink)]">
-                        Pendientes ({pendingBank.length})
-                      </h3>
-                      {pendingBank.length === 0 ? (
-                        <div className="border border-dashed border-[color:var(--line)] bg-white p-6 text-sm text-[color:var(--muted)]">
-                          No hay ideas pendientes
-                          {selectedMember ? ` para ${selectedMember.name}` : ""}.
-                        </div>
-                      ) : (
-                        pendingBank.map((item) => {
-                          const owner = board.members.find((m) => m.id === item.ownerId);
-                          const isEditing = editingBankId === item.id;
-                          const isViewing = viewingBankId === item.id;
-                          return (
-                            <article
-                              key={item.id}
-                              className="border border-[color:var(--line)] bg-white p-4 md:p-5"
-                            >
-                              {isEditing ? (
-                                <div className="space-y-3">
-                                  <label className="block space-y-1">
-                                    <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                                      Título
-                                    </span>
-                                    <input
-                                      value={editingBankTitle}
-                                      onChange={(e) => setEditingBankTitle(e.target.value)}
-                                      className="w-full border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
-                                    />
-                                  </label>
-                                  <label className="block space-y-1">
-                                    <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                                      Notas
-                                    </span>
-                                    <textarea
-                                      value={editingBankNotes}
-                                      onChange={(e) => setEditingBankNotes(e.target.value)}
-                                      rows={3}
-                                      className="w-full border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
-                                    />
-                                  </label>
-                                  <div className="flex flex-wrap gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => void saveBankItemEdit(item.id)}
-                                      disabled={saving}
-                                      className="bg-[color:var(--accent)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-                                    >
-                                      Guardar
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={cancelEditBankItem}
-                                      className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
-                                    >
-                                      Cancelar
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <>
-                                  <div className="flex flex-wrap items-start justify-between gap-3">
-                                    <div className="min-w-0 flex-1">
-                                      <p className="font-[family-name:var(--font-display)] text-base font-bold text-[color:var(--ink)]">
-                                        {item.title}
-                                      </p>
-                                      {!isViewing && item.notes ? (
-                                        <p className="mt-1 text-sm text-[color:var(--muted)] line-clamp-2">
-                                          {item.notes}
-                                        </p>
-                                      ) : null}
-                                      <p className="mt-2 text-xs text-[color:var(--muted)]">
-                                        {owner ? `Para: ${owner.name}` : "Sin dueño"}
-                                      </p>
-                                    </div>
-                                    <div className="flex flex-wrap gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setEditingBankId(null);
-                                          setViewingBankId(isViewing ? null : item.id);
-                                        }}
-                                        className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
-                                      >
-                                        {isViewing ? "Ocultar" : "Ver"}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => startEditBankItem(item)}
-                                        className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
-                                      >
-                                        Editar
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => startConvertBankItem(item)}
-                                        className="bg-[color:var(--accent)] px-3 py-1.5 text-xs font-semibold text-white"
-                                      >
-                                        Crear actividad
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => void removeBankItem(item.id)}
-                                        className="border border-[color:var(--accent)] px-3 py-1.5 text-xs font-semibold text-[color:var(--accent)]"
-                                      >
-                                        Eliminar
-                                      </button>
-                                    </div>
-                                  </div>
-                                  {isViewing ? (
-                                    <div className="mt-4 border-t border-[color:var(--line)] pt-4 text-sm">
-                                      {item.notes ? (
-                                        <p className="whitespace-pre-wrap text-[color:var(--ink)]">
-                                          {item.notes}
-                                        </p>
-                                      ) : (
-                                        <p className="text-[color:var(--muted)]">
-                                          Sin notas adicionales.
-                                        </p>
-                                      )}
-                                      <p className="mt-3 text-xs text-[color:var(--muted)]">
-                                        Creada:{" "}
-                                        {new Date(item.createdAt).toLocaleDateString("es-CO")}
-                                        {item.updatedAt !== item.createdAt
-                                          ? ` · Actualizada: ${new Date(item.updatedAt).toLocaleDateString("es-CO")}`
-                                          : ""}
-                                      </p>
-                                    </div>
-                                  ) : null}
-                                </>
-                              )}
-                            </article>
-                          );
-                        })
-                      )}
-                    </div>
-
-                    {convertedBank.length > 0 ? (
-                      <div className="space-y-3">
-                        <h3 className="text-sm font-bold text-[color:var(--ink)]">
-                          Ya convertidas ({convertedBank.length})
-                        </h3>
-                        {convertedBank.map((item) => (
-                          <article
-                            key={item.id}
-                            className="border border-[color:var(--line)] bg-[color:var(--mist)] px-4 py-3"
-                          >
-                            <p className="text-sm font-semibold text-[color:var(--ink)] line-through opacity-70">
-                              {item.title}
-                            </p>
-                            <p className="text-xs text-[color:var(--muted)]">
-                              Convertida en actividad
-                            </p>
-                          </article>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : (
-                  <>
-                {(selectedMember || selectedStatusLabel) && (
-                  <p className="text-sm text-[color:var(--muted)]">
-                    Mostrando{" "}
-                    {selectedStatusLabel ? (
-                      <>
-                        actividades en{" "}
-                        <span className="font-semibold text-[color:var(--ink)]">
-                          {selectedStatusLabel}
-                        </span>
-                      </>
-                    ) : (
-                      "actividades"
-                    )}
-                    {selectedMember ? (
-                      <>
-                        {" "}
-                        de{" "}
-                        <span className="font-semibold text-[color:var(--ink)]">
-                          {selectedMember.name}
-                        </span>
-                      </>
-                    ) : null}
-                    {" · "}
-                    {filteredActivities.length}{" "}
-                    {filteredActivities.length === 1 ? "resultado" : "resultados"}
-                  </p>
-                )}
-
-                {viewMode === "gantt" ? (
-                  <TasksGantt
-                    members={
-                      selectedMemberId === "all"
-                        ? board.members
-                        : board.members.filter((m) => m.id === selectedMemberId)
-                    }
-                    activities={filteredActivities}
-                  />
-                ) : (
-                  <div className="grid gap-3">
-                    {filteredActivities.length === 0 ? (
-                      <div className="border border-[color:var(--line)] bg-white p-8 text-center">
-                        <p className="text-[color:var(--muted)]">
-                          No hay actividades abiertas en esta vista.
-                        </p>
-                        {completedActivities.length > 0 ? (
-                          <button
-                            type="button"
-                            onClick={() => setViewMode("history")}
-                            className="mt-3 text-sm font-semibold text-[color:var(--accent)]"
-                          >
-                            Ver historial ({completedActivities.length} terminadas)
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={openCreateModal}
-                            className="mt-3 text-sm font-semibold text-[color:var(--accent)]"
-                          >
-                            Crear una actividad
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      filteredActivities.map((activity) => {
+  function renderActivityCards(activities: Activity[]) {
+    return activities.map((activity) => {
                         const progress = getActivityProgress(activity);
                         const reviewState = latestReviewResponse(activity.reviewMessages);
                         const expanded = expandedActivityId === activity.id;
@@ -3048,7 +2302,761 @@ export function TasksBoard() {
                             )}
                           </article>
                         );
-                      })
+    });
+  }
+
+  if (loading) {
+    return <div className="p-10 text-sm text-[color:var(--muted)]">Cargando actividades...</div>;
+  }
+
+  return (
+    <div className="flex min-h-[100svh] flex-col bg-[color:var(--mist)]">
+      <header className="sticky top-0 z-20 border-b border-[color:var(--line)] bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-4 md:px-8">
+          <div>
+            <p className="font-[family-name:var(--font-display)] text-lg font-bold text-[color:var(--accent)]">
+              Seguimiento de actividades
+            </p>
+            <p className="text-xs text-[color:var(--muted)]">
+              {saving ? "Guardando..." : statusMsg || "Equipo y avance"}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href="/admin" className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold">
+              Panel
+            </Link>
+            <button
+              type="button"
+              onClick={() => setAssistantOpen(true)}
+              className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
+            >
+              Asistente guiado
+            </button>
+            <button
+              type="button"
+              onClick={() => void logout()}
+              className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
+            >
+              Salir
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-6xl flex-1 px-5 py-8 pb-12 md:px-8">
+        <div className="mb-6 flex gap-2 border border-[color:var(--line)] bg-white p-1 w-fit">
+          <button
+            type="button"
+            onClick={() => setTab("tasks")}
+            className={`px-4 py-2 text-sm font-semibold ${
+              tab === "tasks" ? "bg-[color:var(--accent)] text-white" : ""
+            }`}
+          >
+            Actividades
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("team")}
+            className={`px-4 py-2 text-sm font-semibold ${
+              tab === "team" ? "bg-[color:var(--accent)] text-white" : ""
+            }`}
+          >
+            Equipo
+          </button>
+        </div>
+
+        {tab === "team" ? (
+          <section className="grid gap-6 lg:grid-cols-[340px_1fr]">
+            <form onSubmit={(e) => void saveMember(e)} className="h-fit space-y-3 border border-[color:var(--line)] bg-white p-5">
+              <div className="flex items-start justify-between gap-3">
+                <h2 className="font-[family-name:var(--font-display)] text-xl font-bold">
+                  {editingMemberId ? "Editar integrante" : "Nuevo integrante"}
+                </h2>
+                {editingMemberId && (
+                  <button
+                    type="button"
+                    onClick={cancelEditMember}
+                    className="text-xs font-semibold text-[color:var(--muted)] hover:text-[color:var(--ink)]"
+                  >
+                    Cancelar
+                  </button>
+                )}
+              </div>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void uploadMemberPhoto(file);
+                  e.target.value = "";
+                }}
+                className="block w-full text-xs"
+              />
+              <p className="text-[11px] text-[color:var(--muted)]">
+                Formatos: JPG, PNG, WEBP o GIF (máx. 10MB).
+              </p>
+              {memberForm.photo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={memberForm.photo} alt="" className="h-24 w-24 object-cover" />
+              ) : null}
+              <input
+                required
+                placeholder="Nombre"
+                value={str(memberForm.name)}
+                onChange={(e) =>
+                  setMemberForm((p) => ({ ...emptyMemberForm, ...p, name: e.target.value }))
+                }
+                className="w-full border border-[color:var(--line)] px-3 py-2 text-sm"
+              />
+              <input
+                placeholder="Cargo / rol"
+                value={str(memberForm.role)}
+                onChange={(e) =>
+                  setMemberForm((p) => ({ ...emptyMemberForm, ...p, role: e.target.value }))
+                }
+                className="w-full border border-[color:var(--line)] px-3 py-2 text-sm"
+              />
+              <input
+                type="email"
+                placeholder="Email"
+                value={str(memberForm.email)}
+                onChange={(e) =>
+                  setMemberForm((p) => ({ ...emptyMemberForm, ...p, email: e.target.value }))
+                }
+                className="w-full border border-[color:var(--line)] px-3 py-2 text-sm"
+              />
+              <div className="grid grid-cols-[9.5rem_1fr] gap-2">
+                <label className="block space-y-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+                    Indicativo
+                  </span>
+                  <select
+                    value={memberForm.phoneCountryCode || "+57"}
+                    onChange={(e) =>
+                      setMemberForm((p) => ({
+                        ...emptyMemberForm,
+                        ...p,
+                        phoneCountryCode: e.target.value,
+                      }))
+                    }
+                    className="w-full border border-[color:var(--line)] px-2 py-2 text-sm"
+                  >
+                    {PHONE_COUNTRY_CODES.map((item) => (
+                      <option key={item.code} value={item.code}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+                    WhatsApp / celular
+                  </span>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    placeholder="3001234567"
+                    value={str(memberForm.phone)}
+                    onChange={(e) =>
+                      setMemberForm((p) => ({
+                        ...emptyMemberForm,
+                        ...p,
+                        phone: e.target.value.replace(/\D/g, ""),
+                      }))
+                    }
+                    className="w-full border border-[color:var(--line)] px-3 py-2 text-sm"
+                  />
+                </label>
+              </div>
+              <p className="text-[11px] text-[color:var(--muted)]">
+                Se usará para recordatorios diarios de tareas pendientes por WhatsApp.
+              </p>
+              {isAdmin && (
+                <p className="border border-[color:var(--line)] bg-[color:var(--mist)] p-3 text-xs text-[color:var(--muted)]">
+                  El acceso al panel usa contraseñas compartidas por rol. El administrador puede
+                  cambiarlas en el panel principal.
+                </p>
+              )}
+              <button
+                type="submit"
+                disabled={uploadingPhoto}
+                className="w-full bg-[color:var(--accent)] py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {editingMemberId ? "Guardar cambios" : "Agregar integrante"}
+              </button>
+            </form>
+
+            <div className="border border-[color:var(--line)] bg-white">
+              {board.members.length === 0 ? (
+                <p className="p-6 text-sm text-[color:var(--muted)]">Aún no hay integrantes.</p>
+              ) : (
+                <ul className="divide-y divide-[color:var(--line)]">
+                  {board.members.map((member) => (
+                    <li key={member.id} className="flex items-center justify-between gap-4 p-4">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <MemberAvatar name={member.name} photo={member.photo} size="md" />
+                        <div className="min-w-0">
+                          <p className="font-semibold">{member.name}</p>
+                          <p className="text-sm text-[color:var(--muted)]">
+                            {member.role || "Sin cargo"}
+                            {member.email ? ` · ${member.email}` : ""}
+                          </p>
+                          <p className="mt-0.5 text-xs text-[color:var(--muted)]">
+                            {formatMemberPhone(member)
+                              ? `WhatsApp: ${formatMemberPhone(member)}`
+                              : "Sin teléfono registrado"}
+                          </p>
+                          <label className="mt-2 inline-flex cursor-pointer text-xs font-semibold text-[color:var(--accent)]">
+                            {member.photo ? "Cambiar foto" : "Subir foto"}
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp,image/gif"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) void updateMemberPhoto(member.id, file);
+                                e.target.value = "";
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
+                        <button
+                          type="button"
+                          onClick={() => startEditMember(member)}
+                          className="text-xs font-semibold text-[color:var(--ink)]"
+                        >
+                          {editingMemberId === member.id ? "Editando…" : "Editar"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void removeMember(member.id)}
+                          className="text-xs font-semibold text-[color:var(--accent)]"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+        ) : (
+          <section className="space-y-6">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold text-[color:var(--ink)]">
+                  Visualizar actividades del equipo
+                </h1>
+                <p className="mt-2 text-sm text-[color:var(--muted)]">
+                  Lista, Gantt, Reportes, Banco o Historial de terminadas.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap border border-[color:var(--line)] bg-white p-1">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("list")}
+                    className={`px-3 py-1.5 text-xs font-semibold ${
+                      viewMode === "list" ? "bg-[color:var(--accent)] text-white" : ""
+                    }`}
+                  >
+                    Lista
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("gantt")}
+                    className={`px-3 py-1.5 text-xs font-semibold ${
+                      viewMode === "gantt" ? "bg-[color:var(--accent)] text-white" : ""
+                    }`}
+                  >
+                    Gantt
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("reports")}
+                    className={`px-3 py-1.5 text-xs font-semibold ${
+                      viewMode === "reports" ? "bg-[color:var(--accent)] text-white" : ""
+                    }`}
+                  >
+                    Reportes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("bank")}
+                    className={`px-3 py-1.5 text-xs font-semibold ${
+                      viewMode === "bank" ? "bg-[color:var(--accent)] text-white" : ""
+                    }`}
+                  >
+                    Banco
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("history")}
+                    className={`px-3 py-1.5 text-xs font-semibold ${
+                      viewMode === "history" ? "bg-[color:var(--accent)] text-white" : ""
+                    }`}
+                  >
+                    Historial
+                    {completedActivities.length > 0 ? (
+                      <span className="ml-1 opacity-80">({completedActivities.length})</span>
+                    ) : null}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={openCreateModal}
+                  disabled={board.members.length === 0}
+                  className="bg-[color:var(--accent)] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  + Nueva actividad
+                </button>
+              </div>
+            </div>
+
+            {board.members.length === 0 ? (
+              <div className="border border-[color:var(--line)] bg-white p-8 text-center">
+                <p className="text-[color:var(--muted)]">
+                  Primero crea integrantes en la pestaña Equipo.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setTab("team")}
+                  className="mt-4 text-sm font-semibold text-[color:var(--accent)]"
+                >
+                  Ir a Equipo
+                </button>
+              </div>
+            ) : viewMode === "reports" ? (
+              <TasksReports members={board.members} activities={activeActivities} />
+            ) : viewMode === "history" ? (
+              <TasksHistory
+                members={board.members}
+                activities={completedActivities}
+                selectedMemberId={selectedMemberId}
+              >
+                {(filtered) => (
+                  <div className="grid gap-3">{renderActivityCards(filtered)}</div>
+                )}
+              </TasksHistory>
+            ) : (
+              <>
+                <div className="flex gap-3 overflow-x-auto pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMemberId("all")}
+                    className={`shrink-0 border px-4 py-3 text-left transition-colors ${
+                      selectedMemberId === "all"
+                        ? "border-[color:var(--accent)] bg-[#fff1f4]"
+                        : "border-[color:var(--line)] bg-white"
+                    }`}
+                  >
+                    <p className="font-[family-name:var(--font-display)] text-sm font-bold">
+                      Todo el equipo
+                    </p>
+                    <div className="space-y-0.5 text-xs text-[color:var(--muted)]">
+                      <p>
+                        {activeActivities.length}{" "}
+                        {activeActivities.length === 1
+                          ? "actividad activa"
+                          : "actividades activas"}
+                      </p>
+                      <p>
+                        {pendingBankTotal}{" "}
+                        {pendingBankTotal === 1
+                          ? "actividad en el banco"
+                          : "actividades en el banco"}
+                      </p>
+                    </div>
+                  </button>
+
+                  {board.members.map((member) => {
+                    const activeCount = activeActivityCountByMember[member.id] || 0;
+                    const bankCount = pendingBankCountByMember[member.id] || 0;
+                    const active = selectedMemberId === member.id;
+                    return (
+                      <button
+                        key={member.id}
+                        type="button"
+                        onClick={() => setSelectedMemberId(member.id)}
+                        className={`flex shrink-0 items-center gap-3 border px-4 py-3 text-left transition-colors ${
+                          active
+                            ? "border-[color:var(--accent)] bg-[#fff1f4]"
+                            : "border-[color:var(--line)] bg-white"
+                        }`}
+                      >
+                        <MemberAvatar name={member.name} photo={member.photo} size="md" />
+                        <div>
+                          <p className="font-[family-name:var(--font-display)] text-sm font-bold">
+                            {member.name}
+                          </p>
+                          <div className="space-y-0.5 text-xs text-[color:var(--muted)]">
+                            <p>
+                              {activeCount}{" "}
+                              {activeCount === 1
+                                ? "actividad activa"
+                                : "actividades activas"}
+                            </p>
+                            <p>
+                              {bankCount}{" "}
+                              {bankCount === 1
+                                ? "actividad en el banco"
+                                : "actividades en el banco"}
+                            </p>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {viewMode !== "bank" ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+                      Estado
+                    </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStatus("all")}
+                    className={`border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      selectedStatus === "all"
+                        ? "border-[color:var(--accent)] bg-[#fff1f4] text-[color:var(--accent)]"
+                        : "border-[color:var(--line)] bg-white text-[color:var(--ink)]"
+                    }`}
+                  >
+                    Todos
+                  </button>
+                  {TASK_STATUSES.map(({ value: status, label }) => {
+                    const active = selectedStatus === status;
+                    const count = board.activities.filter((a) => {
+                      const matchesMember =
+                        selectedMemberId === "all" ||
+                        (a.assigneeIds || []).includes(selectedMemberId);
+                      return matchesMember && a.status === status;
+                    }).length;
+                    return (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => setSelectedStatus(status)}
+                        className={`border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                          active
+                            ? "border-transparent text-white"
+                            : "border-[color:var(--line)] bg-white text-[color:var(--ink)]"
+                        }`}
+                        style={
+                          active
+                            ? {
+                                backgroundColor: TASK_STATUS_COLORS[status].bg,
+                              }
+                            : undefined
+                        }
+                      >
+                        {label}
+                        <span
+                          className={`ml-1.5 ${active ? "opacity-80" : "text-[color:var(--muted)]"}`}
+                        >
+                          ({count})
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                ) : null}
+
+                {viewMode === "bank" ? (
+                  <div className="space-y-5">
+                    <div className="border border-[color:var(--line)] bg-white p-5 md:p-6">
+                      <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--ink)]">
+                        Banco de tareas
+                      </h2>
+                      <p className="mt-1 text-sm text-[color:var(--muted)]">
+                        Anota todo lo que hay que convertir en actividades formales.
+                        {selectedMember
+                          ? ` Banco de ${selectedMember.name}.`
+                          : " Puedes agregar ideas para cualquier integrante."}
+                      </p>
+
+                      <form onSubmit={(e) => void addBankItem(e)} className="mt-5 grid gap-3">
+                        {selectedMemberId === "all" ? (
+                          <label className="block space-y-1">
+                            <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
+                              Integrante
+                            </span>
+                            <select
+                              value={bankOwnerId}
+                              onChange={(e) => setBankOwnerId(e.target.value)}
+                              className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)]"
+                            >
+                              <option value="">Selecciona integrante…</option>
+                              {board.members.map((member) => (
+                                <option key={member.id} value={member.id}>
+                                  {member.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
+                        <label className="block space-y-1">
+                          <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
+                            ¿Qué actividad hay que crear?
+                          </span>
+                          <input
+                            value={bankTitle}
+                            onChange={(e) => setBankTitle(e.target.value)}
+                            placeholder="Ej: Preparar lanzamiento del programa"
+                            className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)]"
+                          />
+                        </label>
+                        <label className="block space-y-1">
+                          <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
+                            Notas / detalles (opcional)
+                          </span>
+                          <textarea
+                            value={bankNotes}
+                            onChange={(e) => setBankNotes(e.target.value)}
+                            rows={3}
+                            placeholder="Qué implica, materiales, dependencias…"
+                            className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)]"
+                          />
+                        </label>
+                        <button
+                          type="submit"
+                          disabled={saving}
+                          className="justify-self-start bg-[color:var(--accent)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                        >
+                          + Agregar al banco
+                        </button>
+                      </form>
+                    </div>
+
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-bold text-[color:var(--ink)]">
+                        Pendientes ({pendingBank.length})
+                      </h3>
+                      {pendingBank.length === 0 ? (
+                        <div className="border border-dashed border-[color:var(--line)] bg-white p-6 text-sm text-[color:var(--muted)]">
+                          No hay ideas pendientes
+                          {selectedMember ? ` para ${selectedMember.name}` : ""}.
+                        </div>
+                      ) : (
+                        pendingBank.map((item) => {
+                          const owner = board.members.find((m) => m.id === item.ownerId);
+                          const isEditing = editingBankId === item.id;
+                          const isViewing = viewingBankId === item.id;
+                          return (
+                            <article
+                              key={item.id}
+                              className="border border-[color:var(--line)] bg-white p-4 md:p-5"
+                            >
+                              {isEditing ? (
+                                <div className="space-y-3">
+                                  <label className="block space-y-1">
+                                    <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
+                                      Título
+                                    </span>
+                                    <input
+                                      value={editingBankTitle}
+                                      onChange={(e) => setEditingBankTitle(e.target.value)}
+                                      className="w-full border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
+                                    />
+                                  </label>
+                                  <label className="block space-y-1">
+                                    <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
+                                      Notas
+                                    </span>
+                                    <textarea
+                                      value={editingBankNotes}
+                                      onChange={(e) => setEditingBankNotes(e.target.value)}
+                                      rows={3}
+                                      className="w-full border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
+                                    />
+                                  </label>
+                                  <div className="flex flex-wrap gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => void saveBankItemEdit(item.id)}
+                                      disabled={saving}
+                                      className="bg-[color:var(--accent)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                                    >
+                                      Guardar
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={cancelEditBankItem}
+                                      className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
+                                    >
+                                      Cancelar
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div className="min-w-0 flex-1">
+                                      <p className="font-[family-name:var(--font-display)] text-base font-bold text-[color:var(--ink)]">
+                                        {item.title}
+                                      </p>
+                                      {!isViewing && item.notes ? (
+                                        <p className="mt-1 text-sm text-[color:var(--muted)] line-clamp-2">
+                                          {item.notes}
+                                        </p>
+                                      ) : null}
+                                      <p className="mt-2 text-xs text-[color:var(--muted)]">
+                                        {owner ? `Para: ${owner.name}` : "Sin dueño"}
+                                      </p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingBankId(null);
+                                          setViewingBankId(isViewing ? null : item.id);
+                                        }}
+                                        className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
+                                      >
+                                        {isViewing ? "Ocultar" : "Ver"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => startEditBankItem(item)}
+                                        className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
+                                      >
+                                        Editar
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => startConvertBankItem(item)}
+                                        className="bg-[color:var(--accent)] px-3 py-1.5 text-xs font-semibold text-white"
+                                      >
+                                        Crear actividad
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => void removeBankItem(item.id)}
+                                        className="border border-[color:var(--accent)] px-3 py-1.5 text-xs font-semibold text-[color:var(--accent)]"
+                                      >
+                                        Eliminar
+                                      </button>
+                                    </div>
+                                  </div>
+                                  {isViewing ? (
+                                    <div className="mt-4 border-t border-[color:var(--line)] pt-4 text-sm">
+                                      {item.notes ? (
+                                        <p className="whitespace-pre-wrap text-[color:var(--ink)]">
+                                          {item.notes}
+                                        </p>
+                                      ) : (
+                                        <p className="text-[color:var(--muted)]">
+                                          Sin notas adicionales.
+                                        </p>
+                                      )}
+                                      <p className="mt-3 text-xs text-[color:var(--muted)]">
+                                        Creada:{" "}
+                                        {new Date(item.createdAt).toLocaleDateString("es-CO")}
+                                        {item.updatedAt !== item.createdAt
+                                          ? ` · Actualizada: ${new Date(item.updatedAt).toLocaleDateString("es-CO")}`
+                                          : ""}
+                                      </p>
+                                    </div>
+                                  ) : null}
+                                </>
+                              )}
+                            </article>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {convertedBank.length > 0 ? (
+                      <div className="space-y-3">
+                        <h3 className="text-sm font-bold text-[color:var(--ink)]">
+                          Ya convertidas ({convertedBank.length})
+                        </h3>
+                        {convertedBank.map((item) => (
+                          <article
+                            key={item.id}
+                            className="border border-[color:var(--line)] bg-[color:var(--mist)] px-4 py-3"
+                          >
+                            <p className="text-sm font-semibold text-[color:var(--ink)] line-through opacity-70">
+                              {item.title}
+                            </p>
+                            <p className="text-xs text-[color:var(--muted)]">
+                              Convertida en actividad
+                            </p>
+                          </article>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <>
+                {(selectedMember || selectedStatusLabel) && (
+                  <p className="text-sm text-[color:var(--muted)]">
+                    Mostrando{" "}
+                    {selectedStatusLabel ? (
+                      <>
+                        actividades en{" "}
+                        <span className="font-semibold text-[color:var(--ink)]">
+                          {selectedStatusLabel}
+                        </span>
+                      </>
+                    ) : (
+                      "actividades"
+                    )}
+                    {selectedMember ? (
+                      <>
+                        {" "}
+                        de{" "}
+                        <span className="font-semibold text-[color:var(--ink)]">
+                          {selectedMember.name}
+                        </span>
+                      </>
+                    ) : null}
+                    {" · "}
+                    {filteredActivities.length}{" "}
+                    {filteredActivities.length === 1 ? "resultado" : "resultados"}
+                  </p>
+                )}
+
+                {viewMode === "gantt" ? (
+                  <TasksGantt
+                    members={
+                      selectedMemberId === "all"
+                        ? board.members
+                        : board.members.filter((m) => m.id === selectedMemberId)
+                    }
+                    activities={filteredActivities}
+                  />
+                ) : (
+                  <div className="grid gap-3">
+                    {filteredActivities.length === 0 ? (
+                      <div className="border border-[color:var(--line)] bg-white p-8 text-center">
+                        <p className="text-[color:var(--muted)]">
+                          No hay actividades abiertas en esta vista.
+                        </p>
+                        {completedActivities.length > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => setViewMode("history")}
+                            className="mt-3 text-sm font-semibold text-[color:var(--accent)]"
+                          >
+                            Ver historial ({completedActivities.length} terminadas)
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={openCreateModal}
+                            className="mt-3 text-sm font-semibold text-[color:var(--accent)]"
+                          >
+                            Crear una actividad
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      renderActivityCards(filteredActivities)
                     )}
                   </div>
                 )}
