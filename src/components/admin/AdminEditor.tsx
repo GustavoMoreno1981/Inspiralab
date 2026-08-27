@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { GalleryAdminSection } from "@/components/admin/GalleryAdminSection";
 import { AdminFooter } from "@/components/admin/AdminFooter";
+import { UnsavedChangesReminder } from "@/components/admin/UnsavedChangesReminder";
+import { useUnsavedChanges } from "@/components/admin/useUnsavedChanges";
 import { useToast } from "@/components/admin/AdminToast";
 import type { Dictionary, Locale, SiteContent } from "@/lib/i18n/dictionaries";
 
@@ -71,6 +73,7 @@ export function AdminEditor() {
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
   const toast = useToast();
+  const { isDirty, markSaved } = useUnsavedChanges(content);
 
   useEffect(() => {
     void fetch("/api/content", { cache: "no-store" })
@@ -89,6 +92,7 @@ export function AdminEditor() {
     });
     setSaving(false);
     if (res.ok) {
+      markSaved();
       setStatus("Cambios guardados");
       toast.success("Cambios del sitio guardados");
     } else {
@@ -146,9 +150,11 @@ export function AdminEditor() {
               type="button"
               onClick={() => void save()}
               disabled={saving}
-              className="bg-[color:var(--accent)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
+              className={`bg-[color:var(--accent)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-60 ${
+                isDirty ? "ring-2 ring-[#f59e0b] ring-offset-2" : ""
+              }`}
             >
-              {saving ? "Guardando..." : "Guardar"}
+              {saving ? "Guardando..." : isDirty ? "Guardar cambios" : "Guardar"}
             </button>
             <button
               type="button"
@@ -159,6 +165,11 @@ export function AdminEditor() {
             </button>
           </div>
         </div>
+        <UnsavedChangesReminder
+          visible={isDirty}
+          saving={saving}
+          onSave={() => void save()}
+        />
         {status && (
           <p className="border-t border-[color:var(--line)] bg-white px-5 py-2 text-center text-sm text-[color:var(--accent)] md:px-8">
             {status}

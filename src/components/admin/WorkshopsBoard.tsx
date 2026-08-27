@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AdminFooter } from "@/components/admin/AdminFooter";
+import { UnsavedChangesReminder } from "@/components/admin/UnsavedChangesReminder";
+import { useUnsavedChanges } from "@/components/admin/useUnsavedChanges";
 import { useToast } from "@/components/admin/AdminToast";
 import {
   WorkshopsAssistant,
@@ -219,6 +221,7 @@ export function WorkshopsBoard() {
   const [materialDrafts, setMaterialDrafts] = useState<Record<string, string>>({});
   const [activeFlower, setActiveFlower] = useState(0);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const { isDirty, markSaved } = useUnsavedChanges(content);
 
   useEffect(() => {
     void fetch("/api/content", { cache: "no-store" })
@@ -237,6 +240,7 @@ export function WorkshopsBoard() {
     });
     setSaving(false);
     if (res.ok) {
+      markSaved();
       toast.success("Talleres guardados. Ya se ven en la página principal.");
     } else {
       toast.error("Error al guardar los talleres");
@@ -561,9 +565,11 @@ export function WorkshopsBoard() {
               type="button"
               onClick={() => void save()}
               disabled={saving}
-              className="bg-[color:var(--accent)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+              className={`bg-[color:var(--accent)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50 ${
+                isDirty ? "ring-2 ring-[#f59e0b] ring-offset-2" : ""
+              }`}
             >
-              {saving ? "Guardando…" : "Guardar"}
+              {saving ? "Guardando…" : isDirty ? "Guardar cambios" : "Guardar"}
             </button>
             <button
               type="button"
@@ -574,6 +580,11 @@ export function WorkshopsBoard() {
             </button>
           </div>
         </div>
+        <UnsavedChangesReminder
+          visible={isDirty}
+          saving={saving}
+          onSave={() => void save()}
+        />
       </header>
 
       <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-5 py-8 pb-16 md:px-8">
