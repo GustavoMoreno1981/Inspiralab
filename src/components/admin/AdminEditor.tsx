@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { GalleryAdminSection } from "@/components/admin/GalleryAdminSection";
 import { AdminFooter } from "@/components/admin/AdminFooter";
 import { UnsavedChangesReminder } from "@/components/admin/UnsavedChangesReminder";
+import { UnsavedLeaveDialog } from "@/components/admin/UnsavedLeaveDialog";
 import { useUnsavedChanges } from "@/components/admin/useUnsavedChanges";
 import { useToast } from "@/components/admin/AdminToast";
 import type { Dictionary, Locale, SiteContent } from "@/lib/i18n/dictionaries";
@@ -72,8 +72,11 @@ export function AdminEditor() {
   const [content, setContent] = useState<SiteContent | null>(null);
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
+  const [leaveTarget, setLeaveTarget] = useState<string | null>(null);
+  const [leaveLogout, setLeaveLogout] = useState(false);
   const toast = useToast();
   const { isDirty, markSaved } = useUnsavedChanges(content);
+  const leaveDialogOpen = leaveTarget !== null || leaveLogout;
 
   useEffect(() => {
     void fetch("/api/content", { cache: "no-store" })
@@ -81,8 +84,8 @@ export function AdminEditor() {
       .then((data: SiteContent) => setContent(data));
   }, []);
 
-  async function save() {
-    if (!content) return;
+  async function save(): Promise<boolean> {
+    if (!content) return false;
     setSaving(true);
     setStatus("");
     const res = await fetch("/api/content", {
@@ -95,16 +98,64 @@ export function AdminEditor() {
       markSaved();
       setStatus("Cambios guardados");
       toast.success("Cambios del sitio guardados");
-    } else {
-      setStatus("Error al guardar");
-      toast.error("Error al guardar los cambios del sitio");
+      return true;
     }
+    setStatus("Error al guardar");
+    toast.error("Error al guardar los cambios del sitio");
+    return false;
   }
 
-  async function logout() {
+  async function doLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
     router.refresh();
+  }
+
+  function requestNavigate(href: string) {
+    if (!isDirty) {
+      router.push(href);
+      return;
+    }
+    setLeaveLogout(false);
+    setLeaveTarget(href);
+  }
+
+  function requestLogout() {
+    if (!isDirty) {
+      void doLogout();
+      return;
+    }
+    setLeaveTarget(null);
+    setLeaveLogout(true);
+  }
+
+  function closeLeaveDialog() {
+    setLeaveTarget(null);
+    setLeaveLogout(false);
+  }
+
+  async function handleSaveAndLeave() {
+    const ok = await save();
+    if (!ok) return;
+    const href = leaveTarget;
+    const shouldLogout = leaveLogout;
+    closeLeaveDialog();
+    if (shouldLogout) {
+      await doLogout();
+      return;
+    }
+    if (href) router.push(href);
+  }
+
+  function handleLeaveWithoutSaving() {
+    const href = leaveTarget;
+    const shouldLogout = leaveLogout;
+    closeLeaveDialog();
+    if (shouldLogout) {
+      void doLogout();
+      return;
+    }
+    if (href) router.push(href);
   }
 
   if (!content) {
@@ -140,12 +191,20 @@ export function AdminEditor() {
                 EN
               </button>
             </div>
-            <Link href="/admin" className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => requestNavigate("/admin")}
+              className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
+            >
               Panel
-            </Link>
-            <Link href="/" className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold">
+            </button>
+            <button
+              type="button"
+              onClick={() => requestNavigate("/")}
+              className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
+            >
               Ver sitio
-            </Link>
+            </button>
             <button
               type="button"
               onClick={() => void save()}
@@ -158,7 +217,7 @@ export function AdminEditor() {
             </button>
             <button
               type="button"
-              onClick={() => void logout()}
+              onClick={requestLogout}
               className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
             >
               Salir
@@ -176,6 +235,14 @@ export function AdminEditor() {
           </p>
         )}
       </header>
+
+      <UnsavedLeaveDialog
+        open={leaveDialogOpen}
+        saving={saving}
+        onSaveAndLeave={() => void handleSaveAndLeave()}
+        onLeaveWithoutSaving={handleLeaveWithoutSaving}
+        onCancel={closeLeaveDialog}
+      />
 
       <div className="mx-auto grid w-full max-w-5xl flex-1 gap-5 px-5 py-8 pb-12 md:px-8">
         <Section title="Navegación">
@@ -323,12 +390,13 @@ export function AdminEditor() {
             Los talleres de las tres flores se gestionan en su propio módulo para
             organizarlos y publicarlos en la página principal.
           </p>
-          <Link
-            href="/admin/talleres"
+          <button
+            type="button"
+            onClick={() => requestNavigate("/admin/talleres")}
             className="mt-4 inline-flex bg-[color:var(--accent)] px-4 py-2.5 text-sm font-semibold text-white"
           >
             Ir a Talleres
-          </Link>
+          </button>
         </section>
 
         <Section title="Impact">

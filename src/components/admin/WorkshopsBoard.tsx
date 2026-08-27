@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AdminFooter } from "@/components/admin/AdminFooter";
 import { UnsavedChangesReminder } from "@/components/admin/UnsavedChangesReminder";
+import { UnsavedLeaveDialog } from "@/components/admin/UnsavedLeaveDialog";
 import { useUnsavedChanges } from "@/components/admin/useUnsavedChanges";
 import { useToast } from "@/components/admin/AdminToast";
 import {
@@ -221,7 +221,10 @@ export function WorkshopsBoard() {
   const [materialDrafts, setMaterialDrafts] = useState<Record<string, string>>({});
   const [activeFlower, setActiveFlower] = useState(0);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [leaveTarget, setLeaveTarget] = useState<string | null>(null);
+  const [leaveLogout, setLeaveLogout] = useState(false);
   const { isDirty, markSaved } = useUnsavedChanges(content);
+  const leaveDialogOpen = leaveTarget !== null || leaveLogout;
 
   useEffect(() => {
     void fetch("/api/content", { cache: "no-store" })
@@ -230,8 +233,8 @@ export function WorkshopsBoard() {
       .catch(() => {});
   }, []);
 
-  async function save() {
-    if (!content) return;
+  async function save(): Promise<boolean> {
+    if (!content) return false;
     setSaving(true);
     const res = await fetch("/api/content", {
       method: "PUT",
@@ -242,15 +245,63 @@ export function WorkshopsBoard() {
     if (res.ok) {
       markSaved();
       toast.success("Talleres guardados. Ya se ven en la página principal.");
-    } else {
-      toast.error("Error al guardar los talleres");
+      return true;
     }
+    toast.error("Error al guardar los talleres");
+    return false;
   }
 
-  async function logout() {
+  async function doLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
     router.refresh();
+  }
+
+  function requestNavigate(href: string) {
+    if (!isDirty) {
+      router.push(href);
+      return;
+    }
+    setLeaveLogout(false);
+    setLeaveTarget(href);
+  }
+
+  function requestLogout() {
+    if (!isDirty) {
+      void doLogout();
+      return;
+    }
+    setLeaveTarget(null);
+    setLeaveLogout(true);
+  }
+
+  function closeLeaveDialog() {
+    setLeaveTarget(null);
+    setLeaveLogout(false);
+  }
+
+  async function handleSaveAndLeave() {
+    const ok = await save();
+    if (!ok) return;
+    const href = leaveTarget;
+    const shouldLogout = leaveLogout;
+    closeLeaveDialog();
+    if (shouldLogout) {
+      await doLogout();
+      return;
+    }
+    if (href) router.push(href);
+  }
+
+  function handleLeaveWithoutSaving() {
+    const href = leaveTarget;
+    const shouldLogout = leaveLogout;
+    closeLeaveDialog();
+    if (shouldLogout) {
+      void doLogout();
+      return;
+    }
+    if (href) router.push(href);
   }
 
   function toggleExpanded(id: string) {
@@ -549,18 +600,20 @@ export function WorkshopsBoard() {
                 EN
               </button>
             </div>
-            <Link
-              href="/"
+            <button
+              type="button"
+              onClick={() => requestNavigate("/")}
               className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
             >
               Ver sitio
-            </Link>
-            <Link
-              href="/admin"
+            </button>
+            <button
+              type="button"
+              onClick={() => requestNavigate("/admin")}
               className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
             >
               Panel
-            </Link>
+            </button>
             <button
               type="button"
               onClick={() => void save()}
@@ -573,7 +626,7 @@ export function WorkshopsBoard() {
             </button>
             <button
               type="button"
-              onClick={() => void logout()}
+              onClick={requestLogout}
               className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
             >
               Salir
@@ -586,6 +639,14 @@ export function WorkshopsBoard() {
           onSave={() => void save()}
         />
       </header>
+
+      <UnsavedLeaveDialog
+        open={leaveDialogOpen}
+        saving={saving}
+        onSaveAndLeave={() => void handleSaveAndLeave()}
+        onLeaveWithoutSaving={handleLeaveWithoutSaving}
+        onCancel={closeLeaveDialog}
+      />
 
       <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-5 py-8 pb-16 md:px-8">
         <section className="border border-[color:var(--line)] bg-white p-5 md:p-6">
