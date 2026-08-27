@@ -220,8 +220,14 @@ function statusHeuristic(status: TaskStatus): number {
 
 export function getTaskProgress(task: Task): number {
   if (!task.subtasks.length) return statusHeuristic(task.status);
+  if (isTaskDone(task)) return 100;
   const done = task.subtasks.filter(isSubtaskDone).length;
-  return Math.round((done / task.subtasks.length) * 100);
+  const fromSubs = Math.round((done / task.subtasks.length) * 100);
+  // Si la tarea ya avanzó de estado pero aún no hay subtareas listas, refleja algo de avance.
+  if (fromSubs === 0 && task.status === "in_progress") return 40;
+  if (fromSubs === 0 && task.status === "pending_review") return 80;
+  if (fromSubs === 0 && task.status === "paused") return 40;
+  return fromSubs;
 }
 
 export function getActivityProgress(activity: Activity): number {
@@ -252,6 +258,10 @@ export function areAllTasksDone(activity: Activity): boolean {
   return activity.tasks.every(isTaskDone);
 }
 
+/**
+ * Deriva el estado padre a partir de hijos (tareas o subtareas).
+ * Si hay avance parcial (algo terminado o en proceso), no queda en espera.
+ */
 function deriveStatusFromItems(
   items: { status: TaskStatus; done?: boolean }[],
 ): TaskStatus | null {
@@ -259,6 +269,8 @@ function deriveStatusFromItems(
   if (items.every(isItemDone)) return "done";
   if (items.some((item) => item.status === "pending_review")) return "pending_review";
   if (items.some((item) => item.status === "in_progress")) return "in_progress";
+  // Alguna terminada y otras no → la actividad/tarea ya está en proceso.
+  if (items.some(isItemDone)) return "in_progress";
   if (items.some((item) => item.status === "paused")) return "paused";
   return "waiting";
 }

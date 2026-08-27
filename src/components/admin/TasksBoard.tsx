@@ -919,13 +919,24 @@ export function TasksBoard() {
     if (!task) return;
 
     const label = TASK_STATUSES.find((item) => item.value === status)?.label || status;
-    const nextTasks = activity.tasks.map((item) =>
-      item.id === taskId
-        ? { ...item, status, done: status === "done" }
-        : item,
-    );
-    const derivedActivity =
-      nextTasks.length === 1 ? status : deriveActivityStatusFromTasks(nextTasks);
+    const nextTasks = activity.tasks.map((item) => {
+      if (item.id !== taskId) return item;
+      const nextSubtasks =
+        status === "done" && item.subtasks.length
+          ? item.subtasks.map((sub) => ({
+              ...sub,
+              status: "done" as TaskStatus,
+              done: true,
+            }))
+          : item.subtasks;
+      return {
+        ...item,
+        status,
+        done: status === "done",
+        subtasks: nextSubtasks,
+      };
+    });
+    const derivedActivity = deriveActivityStatusFromTasks(nextTasks);
 
     if (
       derivedActivity === "pending_review" &&
@@ -981,9 +992,7 @@ export function TasksBoard() {
     });
 
     const derivedTaskStatus = patch.status
-      ? nextSubtasks.length === 1
-        ? patch.status
-        : deriveTaskStatusFromSubtasks(nextSubtasks)
+      ? deriveTaskStatusFromSubtasks(nextSubtasks)
       : null;
 
     const nextTasks = activity.tasks.map((item) => {
@@ -997,11 +1006,7 @@ export function TasksBoard() {
       };
     });
 
-    const derivedActivityStatus = derivedTaskStatus
-      ? nextTasks.length === 1
-        ? derivedTaskStatus
-        : deriveActivityStatusFromTasks(nextTasks)
-      : null;
+    const derivedActivityStatus = deriveActivityStatusFromTasks(nextTasks);
 
     if (
       derivedActivityStatus === "pending_review" &&
