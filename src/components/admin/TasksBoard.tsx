@@ -13,6 +13,7 @@ import {
   deriveTaskStatusFromSubtasks,
   formatMemberPhone,
   getActivityProgress,
+  isActivityFullyComplete,
   normalizeItemStatus,
   type Activity,
   type Task,
@@ -30,6 +31,7 @@ import {
   reviewResponseLabel,
 } from "@/lib/tasks/review-message";
 import { TasksGantt } from "@/components/admin/TasksGantt";
+import { TasksHistory } from "@/components/admin/TasksHistory";
 import { TasksReports } from "@/components/admin/TasksReports";
 import { AdminFooter } from "@/components/admin/AdminFooter";
 import { TaskSemaphore } from "@/components/admin/AdminAlarms";
@@ -209,7 +211,9 @@ export function TasksBoard() {
   const [sessionName, setSessionName] = useState("");
   const [sessionMemberId, setSessionMemberId] = useState("");
   const [tab, setTab] = useState<"tasks" | "team">("tasks");
-  const [viewMode, setViewMode] = useState<"list" | "gantt" | "reports" | "bank">("list");
+  const [viewMode, setViewMode] = useState<
+    "list" | "gantt" | "reports" | "bank" | "history"
+  >("list");
   const [selectedMemberId, setSelectedMemberId] = useState<string | "all">("all");
   const [selectedStatus, setSelectedStatus] = useState<TaskStatus | "all">("all");
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -291,8 +295,18 @@ export function TasksBoard() {
     void load();
   }, [load]);
 
+  const completedActivities = useMemo(
+    () => board.activities.filter((activity) => isActivityFullyComplete(activity)),
+    [board.activities],
+  );
+
+  const activeActivities = useMemo(
+    () => board.activities.filter((activity) => !isActivityFullyComplete(activity)),
+    [board.activities],
+  );
+
   const filteredActivities = useMemo(() => {
-    return board.activities.filter((activity) => {
+    return activeActivities.filter((activity) => {
       const matchesMember =
         selectedMemberId === "all" ||
         (activity.assigneeIds || []).includes(selectedMemberId);
@@ -300,7 +314,7 @@ export function TasksBoard() {
         selectedStatus === "all" || activity.status === selectedStatus;
       return matchesMember && matchesStatus;
     });
-  }, [board.activities, selectedMemberId, selectedStatus]);
+  }, [activeActivities, selectedMemberId, selectedStatus]);
 
   const selectedMember =
     selectedMemberId === "all"
@@ -1640,11 +1654,11 @@ export function TasksBoard() {
                   Visualizar actividades del equipo
                 </h1>
                 <p className="mt-2 text-sm text-[color:var(--muted)]">
-                  Lista, Gantt, Reportes o Banco de ideas por integrante.
+                  Lista, Gantt, Reportes, Banco o Historial de terminadas.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <div className="flex border border-[color:var(--line)] bg-white p-1">
+                <div className="flex flex-wrap border border-[color:var(--line)] bg-white p-1">
                   <button
                     type="button"
                     onClick={() => setViewMode("list")}
@@ -1681,6 +1695,18 @@ export function TasksBoard() {
                   >
                     Banco
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("history")}
+                    className={`px-3 py-1.5 text-xs font-semibold ${
+                      viewMode === "history" ? "bg-[color:var(--accent)] text-white" : ""
+                    }`}
+                  >
+                    Historial
+                    {completedActivities.length > 0 ? (
+                      <span className="ml-1 opacity-80">({completedActivities.length})</span>
+                    ) : null}
+                  </button>
                 </div>
                 <button
                   type="button"
@@ -1707,7 +1733,13 @@ export function TasksBoard() {
                 </button>
               </div>
             ) : viewMode === "reports" ? (
-              <TasksReports members={board.members} activities={board.activities} />
+              <TasksReports members={board.members} activities={activeActivities} />
+            ) : viewMode === "history" ? (
+              <TasksHistory
+                members={board.members}
+                activities={completedActivities}
+                selectedMemberId={selectedMemberId}
+              />
             ) : (
               <>
                 <div className="flex gap-3 overflow-x-auto pb-1">
@@ -2090,15 +2122,25 @@ export function TasksBoard() {
                     {filteredActivities.length === 0 ? (
                       <div className="border border-[color:var(--line)] bg-white p-8 text-center">
                         <p className="text-[color:var(--muted)]">
-                          No hay actividades en esta vista.
+                          No hay actividades abiertas en esta vista.
                         </p>
-                        <button
-                          type="button"
-                          onClick={openCreateModal}
-                          className="mt-3 text-sm font-semibold text-[color:var(--accent)]"
-                        >
-                          Crear una actividad
-                        </button>
+                        {completedActivities.length > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => setViewMode("history")}
+                            className="mt-3 text-sm font-semibold text-[color:var(--accent)]"
+                          >
+                            Ver historial ({completedActivities.length} terminadas)
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={openCreateModal}
+                            className="mt-3 text-sm font-semibold text-[color:var(--accent)]"
+                          >
+                            Crear una actividad
+                          </button>
+                        )}
                       </div>
                     ) : (
                       filteredActivities.map((activity) => {

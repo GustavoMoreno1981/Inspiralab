@@ -5,6 +5,7 @@ import {
   TASK_STATUSES,
   createId,
   deriveTaskStatusFromSubtasks,
+  getActivityProgress,
   type Activity,
   type Subtask,
   type Task,
@@ -168,7 +169,10 @@ export function TasksAssistant({
   const openActivities = useMemo(
     () =>
       activities
-        .filter((activity) => activity.status !== "done")
+        .filter(
+          (activity) =>
+            activity.status !== "done" && getActivityProgress(activity) < 100,
+        )
         .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)),
     [activities],
   );

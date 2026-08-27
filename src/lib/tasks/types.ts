@@ -230,6 +230,18 @@ export function getActivityProgress(activity: Activity): number {
   return Math.round(total / activity.tasks.length);
 }
 
+/** Actividad al 100%: todas las tareas/subtareas terminadas (o sin tareas y estado Terminada). */
+export function isActivityFullyComplete(activity: Activity): boolean {
+  return getActivityProgress(activity) >= 100;
+}
+
+/** Fecha usada para historial / filtros (fin planeado, última actualización o inicio). */
+export function getActivityCompletionDate(activity: Activity): string {
+  if (activity.finishedDate) return activity.finishedDate;
+  if (activity.updatedAt) return activity.updatedAt.slice(0, 10);
+  return activity.date;
+}
+
 export function areAllSubtasksDone(task: Task): boolean {
   if (!task.subtasks.length) return isTaskDone(task);
   return task.subtasks.every(isSubtaskDone);
