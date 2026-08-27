@@ -9,6 +9,7 @@ drop policy if exists "anon_all_subtasks" on public.subtasks;
 drop policy if exists "anon_all_task_bank" on public.task_bank;
 drop policy if exists "anon_all_workshop_sessions" on public.workshop_sessions;
 drop policy if exists "anon_all_workshop_evaluations" on public.workshop_evaluations;
+drop policy if exists "anon_all_auth_credentials" on public.auth_credentials;
 
 create policy "anon_all_site_content"
   on public.site_content
@@ -61,6 +62,13 @@ create policy "anon_all_workshop_sessions"
 
 create policy "anon_all_workshop_evaluations"
   on public.workshop_evaluations
+  for all
+  to anon
+  using (true)
+  with check (true);
+
+create policy "anon_all_auth_credentials"
+  on public.auth_credentials
   for all
   to anon
   using (true)

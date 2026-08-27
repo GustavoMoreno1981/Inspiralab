@@ -1,5 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
+import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/admin";
 
 export type AuthCredentials = {
   adminPassword: string;
@@ -17,8 +18,6 @@ export const DEFAULT_CREDENTIALS: AuthCredentials = {
 };
 
 function normalize(data: Partial<AuthCredentials> | null): AuthCredentials {
-  // Prioridad: archivo guardado por el admin → defaults del sistema.
-  // No usamos ADMIN_PASSWORD del .env aquí para no pisar las claves compartidas.
   const adminPassword =
     (typeof data?.adminPassword === "string" && data.adminPassword.trim()) ||
     DEFAULT_CREDENTIALS.adminPassword;
@@ -33,13 +32,60 @@ function normalize(data: Partial<AuthCredentials> | null): AuthCredentials {
   };
 }
 
-export async function readCredentials(): Promise<AuthCredentials> {
+async function readCredentialsLocal(): Promise<AuthCredentials> {
   try {
     const raw = await fs.readFile(AUTH_PATH, "utf8");
     return normalize(JSON.parse(raw) as Partial<AuthCredentials>);
   } catch {
     return normalize(null);
   }
+}
+
+async function writeCredentialsLocal(credentials: AuthCredentials) {
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  await fs.writeFile(AUTH_PATH, JSON.stringify(credentials, null, 2), "utf8");
+}
+
+async function readCredentialsSupabase(): Promise<AuthCredentials> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("auth_credentials")
+    .select("admin_password, member_password, updated_at")
+    .eq("id", "main")
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return normalize(null);
+
+  return normalize({
+    adminPassword: data.admin_password,
+    memberPassword: data.member_password,
+    updatedAt: data.updated_at || "",
+  });
+}
+
+async function writeCredentialsSupabase(credentials: AuthCredentials) {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("auth_credentials").upsert({
+    id: "main",
+    admin_password: credentials.adminPassword,
+    member_password: credentials.memberPassword,
+    updated_at: credentials.updatedAt || new Date().toISOString(),
+  });
+
+  if (error) throw error;
+}
+
+export async function readCredentials(): Promise<AuthCredentials> {
+  if (isSupabaseConfigured()) {
+    try {
+      return await readCredentialsSupabase();
+    } catch (error) {
+      console.error("Supabase auth credentials read failed, using local fallback:", error);
+      return readCredentialsLocal();
+    }
+  }
+  return readCredentialsLocal();
 }
 
 export async function writeCredentials(input: {
@@ -63,8 +109,12 @@ export async function writeCredentials(input: {
     throw new Error("Las contraseñas de administrador y equipo deben ser distintas");
   }
 
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(AUTH_PATH, JSON.stringify(next, null, 2), "utf8");
+  if (isSupabaseConfigured()) {
+    await writeCredentialsSupabase(next);
+    return next;
+  }
+
+  await writeCredentialsLocal(next);
   return next;
 }
 
