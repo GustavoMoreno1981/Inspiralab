@@ -222,18 +222,38 @@ export function getTaskProgress(task: Task): number {
   if (!task.subtasks.length) return statusHeuristic(task.status);
   if (isTaskDone(task)) return 100;
   const done = task.subtasks.filter(isSubtaskDone).length;
-  const fromSubs = Math.round((done / task.subtasks.length) * 100);
-  // Si la tarea ya avanzó de estado pero aún no hay subtareas listas, refleja algo de avance.
-  if (fromSubs === 0 && task.status === "in_progress") return 40;
-  if (fromSubs === 0 && task.status === "pending_review") return 80;
-  if (fromSubs === 0 && task.status === "paused") return 40;
-  return fromSubs;
+  return Math.round((done / task.subtasks.length) * 100);
+}
+
+/**
+ * Cuenta cada tarea y cada subtarea como unidad de avance.
+ * Ejemplo: 3 tareas + 1 subtarea = 4 unidades; 1 terminada → 25%.
+ */
+export function getActivityWorkCounts(activity: Activity): {
+  done: number;
+  total: number;
+} {
+  let done = 0;
+  let total = 0;
+
+  for (const task of activity.tasks || []) {
+    total += 1;
+    if (isTaskDone(task)) done += 1;
+
+    for (const subtask of task.subtasks || []) {
+      total += 1;
+      if (isSubtaskDone(subtask)) done += 1;
+    }
+  }
+
+  return { done, total };
 }
 
 export function getActivityProgress(activity: Activity): number {
   if (!activity.tasks.length) return statusHeuristic(activity.status);
-  const total = activity.tasks.reduce((sum, task) => sum + getTaskProgress(task), 0);
-  return Math.round(total / activity.tasks.length);
+  const { done, total } = getActivityWorkCounts(activity);
+  if (!total) return statusHeuristic(activity.status);
+  return Math.round((done / total) * 100);
 }
 
 /** Actividad al 100%: todas las tareas/subtareas terminadas (o sin tareas y estado Terminada). */

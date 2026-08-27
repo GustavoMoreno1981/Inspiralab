@@ -753,17 +753,17 @@ export function TasksBoard() {
     patch: Partial<Activity>,
     successMessage?: string,
   ) {
-    void persist(
-      {
-        ...board,
-        activities: board.activities.map((activity) =>
-          activity.id === activityId
-            ? { ...activity, ...patch, updatedAt: new Date().toISOString() }
-            : activity,
-        ),
-      },
-      successMessage,
-    );
+    const nextBoard: TasksBoard = {
+      ...board,
+      activities: board.activities.map((activity) =>
+        activity.id === activityId
+          ? { ...activity, ...patch, updatedAt: new Date().toISOString() }
+          : activity,
+      ),
+    };
+    // Actualiza la UI de inmediato (progreso / estado) y luego persiste.
+    setBoard(nextBoard);
+    void persist(nextBoard, successMessage);
   }
 
   function removeActivity(activityId: string) {
@@ -2406,14 +2406,14 @@ export function TasksBoard() {
                                     <div className="h-2 bg-[color:var(--mist)]">
                                       <div
                                         className="h-full bg-[color:var(--accent)] transition-all"
-                                        style={{ width: `${progress}%` }}
+                                        style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
                                       />
                                     </div>
-                                    {!activity.tasks.length ? (
-                                      <p className="mt-1 text-[11px] text-[color:var(--muted)]">
-                                        Sin tareas: el avance sigue el estado de la actividad.
-                                      </p>
-                                    ) : null}
+                                    <p className="mt-1 text-[11px] text-[color:var(--muted)]">
+                                      {!activity.tasks.length
+                                        ? "Sin tareas: el avance sigue el estado de la actividad."
+                                        : "Cada tarea y subtarea Terminada suma al porcentaje."}
+                                    </p>
                                   </div>
 
                                   {activity.status === "pending_review" && (
