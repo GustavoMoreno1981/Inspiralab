@@ -45,6 +45,49 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#39;");
 }
 
+function linkHtml(url: string, label?: string) {
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+  const safe = escapeHtml(trimmed);
+  const text = escapeHtml(label?.trim() || trimmed);
+  return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+}
+
+function collectActivityUrls(activity: Activity) {
+  const urls: { label: string; url: string }[] = [];
+  if (activity.processUrl?.trim()) {
+    urls.push({ label: "Proceso", url: activity.processUrl.trim() });
+  }
+  if (activity.deliverableUrl?.trim()) {
+    urls.push({ label: "Entregable", url: activity.deliverableUrl.trim() });
+  }
+  for (const task of activity.tasks) {
+    if (task.url?.trim()) {
+      urls.push({ label: task.title || "Tarea", url: task.url.trim() });
+    }
+    for (const subtask of task.subtasks) {
+      if (subtask.url?.trim()) {
+        urls.push({
+          label: subtask.title || "Subtarea",
+          url: subtask.url.trim(),
+        });
+      }
+    }
+  }
+  return urls;
+}
+
+function activityUrlsHtml(activity: Activity) {
+  const urls = collectActivityUrls(activity);
+  if (urls.length === 0) return "—";
+  return `<ul>${urls
+    .map(
+      (item) =>
+        `<li>${linkHtml(item.url, `${item.label}: ${item.url}`)}</li>`,
+    )
+    .join("")}</ul>`;
+}
+
 function memberNames(activity: Activity, members: TeamMember[]) {
   return (activity.assigneeIds || [])
     .map((id) => members.find((member) => member.id === id)?.name)
@@ -142,6 +185,7 @@ export function TasksHistory({
           <td>${escapeHtml(formatDate(getActivityCompletionDate(activity)))}</td>
           <td>${escapeHtml(status)}</td>
           <td>${progress}%</td>
+          <td>${activityUrlsHtml(activity)}</td>
           <td>${tasksHtml}</td>
         </tr>`;
       })
@@ -172,6 +216,7 @@ export function TasksHistory({
     th, td { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; }
     th { background: #f3f3f3; font-size: 10px; text-transform: uppercase; }
     ul { margin: 0; padding-left: 16px; }
+    a { color: #e00d45; word-break: break-all; }
     @media print {
       body { padding: 0; }
       @page { margin: 12mm; size: landscape; }
@@ -192,13 +237,14 @@ export function TasksHistory({
         <th>Fecha cierre</th>
         <th>Estado</th>
         <th>Avance</th>
+        <th>URLs del proyecto</th>
         <th>Tareas</th>
       </tr>
     </thead>
     <tbody>
       ${
         rows ||
-        `<tr><td colspan="7">No hay actividades terminadas con este filtro.</td></tr>`
+        `<tr><td colspan="8">No hay actividades terminadas con este filtro.</td></tr>`
       }
     </tbody>
   </table>
@@ -378,6 +424,7 @@ export function TasksHistory({
           {filtered.map((activity) => {
             const progress = getActivityProgress(activity);
             const names = memberNames(activity, members);
+            const urls = collectActivityUrls(activity);
             const statusColor =
               TASK_STATUS_COLORS[activity.status] || TASK_STATUS_COLORS.done;
             return (
@@ -408,6 +455,25 @@ export function TasksHistory({
                     {formatDate(getActivityCompletionDate(activity))}
                     {names ? ` · ${names}` : ""}
                   </p>
+                  {urls.length > 0 ? (
+                    <ul className="mt-3 space-y-1 text-xs">
+                      {urls.map((item) => (
+                        <li key={`${item.label}-${item.url}`}>
+                          <span className="font-semibold text-[color:var(--ink)]">
+                            {item.label}:
+                          </span>{" "}
+                          <a
+                            href={item.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="break-all text-[color:var(--accent)] underline"
+                          >
+                            {item.url}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                   {activity.tasks.length > 0 ? (
                     <ul className="mt-3 space-y-1 text-xs text-[color:var(--muted)]">
                       {activity.tasks.map((task) => (
