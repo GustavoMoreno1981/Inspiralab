@@ -342,6 +342,30 @@ export function TasksBoard() {
     () => filteredBank.filter((item) => Boolean(item.convertedActivityId)),
     [filteredBank],
   );
+  /** Ideas pendientes del banco por integrante (para las tarjetas). */
+  const pendingBankCountByMember = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const item of board.bank || []) {
+      if (item.convertedActivityId) continue;
+      counts[item.ownerId] = (counts[item.ownerId] || 0) + 1;
+    }
+    return counts;
+  }, [board.bank]);
+  const pendingBankTotal = useMemo(
+    () =>
+      Object.values(pendingBankCountByMember).reduce((sum, n) => sum + n, 0),
+    [pendingBankCountByMember],
+  );
+  /** Actividades abiertas (no al 100 %) por integrante — para las tarjetas. */
+  const activeActivityCountByMember = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const activity of activeActivities) {
+      for (const id of activity.assigneeIds || []) {
+        counts[id] = (counts[id] || 0) + 1;
+      }
+    }
+    return counts;
+  }, [activeActivities]);
 
   async function persist(next: TasksBoard, successMessage?: string) {
     setSaving(true);
@@ -1780,24 +1804,25 @@ export function TasksBoard() {
                     <p className="font-[family-name:var(--font-display)] text-sm font-bold">
                       Todo el equipo
                     </p>
-                    <p className="text-xs text-[color:var(--muted)]">
-                      {
-                        board.activities.filter(
-                          (a) =>
-                            selectedStatus === "all" || a.status === selectedStatus,
-                        ).length
-                      }{" "}
-                      actividades
-                    </p>
+                    <div className="space-y-0.5 text-xs text-[color:var(--muted)]">
+                      <p>
+                        {activeActivities.length}{" "}
+                        {activeActivities.length === 1
+                          ? "actividad activa"
+                          : "actividades activas"}
+                      </p>
+                      <p>
+                        {pendingBankTotal}{" "}
+                        {pendingBankTotal === 1
+                          ? "actividad en el banco"
+                          : "actividades en el banco"}
+                      </p>
+                    </div>
                   </button>
 
                   {board.members.map((member) => {
-                    const count = board.activities.filter(
-                      (activity) =>
-                        (activity.assigneeIds || []).includes(member.id) &&
-                        (selectedStatus === "all" ||
-                          activity.status === selectedStatus),
-                    ).length;
+                    const activeCount = activeActivityCountByMember[member.id] || 0;
+                    const bankCount = pendingBankCountByMember[member.id] || 0;
                     const active = selectedMemberId === member.id;
                     return (
                       <button
@@ -1815,9 +1840,20 @@ export function TasksBoard() {
                           <p className="font-[family-name:var(--font-display)] text-sm font-bold">
                             {member.name}
                           </p>
-                          <p className="text-xs text-[color:var(--muted)]">
-                            {count} {count === 1 ? "actividad" : "actividades"}
-                          </p>
+                          <div className="space-y-0.5 text-xs text-[color:var(--muted)]">
+                            <p>
+                              {activeCount}{" "}
+                              {activeCount === 1
+                                ? "actividad activa"
+                                : "actividades activas"}
+                            </p>
+                            <p>
+                              {bankCount}{" "}
+                              {bankCount === 1
+                                ? "actividad en el banco"
+                                : "actividades en el banco"}
+                            </p>
+                          </div>
                         </div>
                       </button>
                     );
