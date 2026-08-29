@@ -23,6 +23,8 @@ import {
   type OperationalExpense,
 } from "@/lib/accounting/types";
 import { AdminFooter } from "@/components/admin/AdminFooter";
+import { AdminLanguageSwitcher } from "@/components/admin/AdminLanguageSwitcher";
+import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 import { AccountingReports } from "@/components/admin/AccountingReports";
 import { BUDGET_WARNING_PERCENT, getBudgetAlarm } from "@/lib/alarms";
 import { useToast } from "@/components/admin/AdminToast";
@@ -71,6 +73,7 @@ async function uploadSupport(file: File): Promise<AttachmentFile | { error: stri
 export function AccountingBoard() {
   const router = useRouter();
   const toast = useToast();
+  const { t } = useAdminLanguage();
   const [board, setBoard] = useState<AccountingBoard>(emptyBoard());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -184,13 +187,13 @@ export function AccountingBoard() {
       if (successMessage) {
         toast.success(successMessage);
       } else {
-        setStatusMsg("Guardado");
+        setStatusMsg(t.common.saved);
         window.setTimeout(() => setStatusMsg(""), 1800);
       }
       return true;
     }
     const payload = (await res.json().catch(() => null)) as { error?: string } | null;
-    const errorMsg = payload?.error || "Error al guardar";
+    const errorMsg = payload?.error || t.common.errorSave;
     setStatusMsg(errorMsg);
     toast.error(errorMsg);
     return false;
@@ -208,7 +211,7 @@ export function AccountingBoard() {
     const salariesUsd = numInput(budgetSalariesUsd);
     const usdRate = numInput(budgetRate) || 4000;
     if (amountUsd <= 0) {
-      toast.error("Indica el monto en dólares");
+      toast.error(t.accounting.amountRequired);
       return;
     }
     const amountCop = toCop(amountUsd, usdRate);
@@ -556,7 +559,7 @@ export function AccountingBoard() {
         files: [...prev[category].files, uploaded],
       },
     }));
-    toast.success("Soporte adjuntado");
+    toast.success(t.accounting.attachmentAdded);
   }
 
   function removeCostFile(category: CostCategory, fileId: string) {
@@ -658,7 +661,7 @@ export function AccountingBoard() {
   const activityDraftBalance = activityDraftReceived - activityDraftTotal;
 
   if (loading) {
-    return <div className="p-10 text-sm text-[color:var(--muted)]">Cargando contabilidad...</div>;
+    return <div className="p-10 text-sm text-[color:var(--muted)]">{t.accounting.loading}</div>;
   }
 
   return (
@@ -667,13 +670,14 @@ export function AccountingBoard() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-4 md:px-8">
           <div>
             <p className="font-[family-name:var(--font-display)] text-lg font-bold text-[color:var(--accent)]">
-              Contabilidad
+              {t.accounting.pageTitle}
             </p>
             <p className="text-xs text-[color:var(--muted)]">
-              {saving ? "Guardando..." : statusMsg || "Presupuesto anual y control de costos"}
+              {saving ? t.common.saving : statusMsg || t.accounting.pageSubtitle}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <AdminLanguageSwitcher />
             <label className="flex items-center gap-2 text-xs font-semibold text-[color:var(--muted)]">
               Año
               <select
@@ -690,14 +694,14 @@ export function AccountingBoard() {
               </select>
             </label>
             <Link href="/admin" className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold">
-              Panel
+              {t.common.panel}
             </Link>
             <button
               type="button"
               onClick={() => void logout()}
               className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
             >
-              Salir
+              {t.common.logout}
             </button>
           </div>
         </div>
@@ -707,12 +711,12 @@ export function AccountingBoard() {
         <div className="mb-6 flex flex-wrap gap-2 border border-[color:var(--line)] bg-white p-1 w-fit">
           {(
             [
-              ["summary", "Resumen"],
-              ["budget", "Presupuesto"],
-              ["beneficiaries", "Beneficiarios"],
-              ["activities", "Actividades"],
-              ["expenses", "Gastos operativos"],
-              ["reports", "Reportes"],
+              ["summary", t.accounting.tabSummary],
+              ["budget", t.accounting.tabBudget],
+              ["beneficiaries", t.accounting.tabBeneficiaries],
+              ["activities", t.accounting.tabActivities],
+              ["expenses", t.accounting.tabExpenses],
+              ["reports", t.accounting.tabReports],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -732,7 +736,7 @@ export function AccountingBoard() {
           <section className="space-y-5">
             <div>
               <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold">
-                Control {year}
+                {t.accounting.control} {year}
               </h1>
                 <p className="mt-2 text-sm text-[color:var(--muted)]">
                   Del presupuesto sale lo dispuesto a talleres, salarios y operativos. En cada
@@ -752,8 +756,8 @@ export function AccountingBoard() {
                 >
                   <p className="font-semibold">
                     {critical
-                      ? "Alarma: presupuesto anual excedido"
-                      : `Alarma: cerca del tope (≥${BUDGET_WARNING_PERCENT}%)`}
+                      ? t.accounting.alarmExceeded
+                      : t.accounting.alarmNearLimit}
                   </p>
                   <p className="mt-1 text-sm text-[color:var(--muted)]">{budgetAlarm.message}</p>
                 </div>
@@ -762,17 +766,17 @@ export function AccountingBoard() {
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               {[
-                { label: "Presupuesto", cop: summary.totalCop },
-                { label: "Salarios", cop: summary.salariesCop },
+                { label: t.accounting.budget, cop: summary.totalCop },
+                { label: t.accounting.salaries, cop: summary.salariesCop },
                 {
-                  label: "Dispuesto a talleres",
+                  label: t.accounting.workshopFunds,
                   cop: summary.activitiesReceivedCop,
                 },
                 {
-                  label: "Operativos",
+                  label: t.accounting.operational,
                   cop: summary.expensesCop,
                 },
-                { label: "Disponible", cop: summary.availableCop },
+                { label: t.accounting.available, cop: summary.availableCop },
               ].map((card) => (
                 <div key={card.label} className="border border-[color:var(--line)] bg-white p-4">
                   <p className="text-[10px] font-semibold uppercase text-[color:var(--muted)]">
@@ -789,18 +793,18 @@ export function AccountingBoard() {
             <div className="grid gap-3 sm:grid-cols-3">
               {[
                 {
-                  label: "Recibido en talleres",
+                  label: t.accounting.received,
                   cop: summary.activitiesReceivedCop,
                 },
                 {
-                  label: "Gastado en talleres",
+                  label: t.accounting.spent,
                   cop: summary.activitiesSpentCop,
                 },
                 {
                   label:
                     summary.activitiesBalanceCop >= 0
-                      ? "Sobrante (cruce)"
-                      : "Faltante (cruce)",
+                      ? t.accounting.surplus
+                      : t.accounting.shortfall,
                   cop: Math.abs(summary.activitiesBalanceCop),
                 },
               ].map((card) => (
@@ -861,7 +865,7 @@ export function AccountingBoard() {
             <form onSubmit={saveBudget} className="h-fit space-y-3 border border-[color:var(--line)] bg-white p-5">
               <div className="flex items-start justify-between gap-3">
                 <h2 className="font-[family-name:var(--font-display)] text-xl font-bold">
-                  {editingBudgetId ? "Editar presupuesto" : "Nuevo presupuesto"}
+                  {editingBudgetId ? `${t.common.edit} ${t.accounting.budget.toLowerCase()}` : t.accounting.newBudget}
                 </h2>
                 {editingBudgetId ? (
                   <button
@@ -869,7 +873,7 @@ export function AccountingBoard() {
                     onClick={resetBudgetForm}
                     className="text-xs font-semibold text-[color:var(--muted)]"
                   >
-                    Cancelar
+                    {t.common.cancel}
                   </button>
                 ) : null}
               </div>
@@ -893,7 +897,7 @@ export function AccountingBoard() {
 
               <label className="block space-y-1">
                 <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                  Monto en USD
+                  {t.accounting.amountUsd}
                 </span>
                 <input
                   required
@@ -906,7 +910,7 @@ export function AccountingBoard() {
 
               <label className="block space-y-1">
                 <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                  Salarios en USD (valor general)
+                  {t.accounting.salariesUsd}
                 </span>
                 <input
                   value={budgetSalariesUsd}
@@ -918,7 +922,7 @@ export function AccountingBoard() {
 
               <label className="block space-y-1">
                 <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                  Tipo de cambio (COP por 1 USD)
+                  {t.accounting.exchangeRate}
                 </span>
                 <input
                   required
@@ -945,7 +949,7 @@ export function AccountingBoard() {
 
               <label className="block space-y-1">
                 <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                  Nota
+                  {t.common.notes}
                 </span>
                 <textarea
                   value={budgetNotes}
@@ -960,7 +964,7 @@ export function AccountingBoard() {
                 type="submit"
                 className="w-full bg-[color:var(--accent)] py-2.5 text-sm font-semibold text-white"
               >
-                {editingBudgetId ? "Actualizar presupuesto" : "Crear presupuesto"}
+                {editingBudgetId ? t.common.saveChanges : t.accounting.createBudget}
               </button>
             </form>
 
@@ -1013,14 +1017,14 @@ export function AccountingBoard() {
                                 onClick={() => editBudget(budget)}
                                 className="text-xs font-semibold text-[color:var(--accent)]"
                               >
-                                Editar
+                                {t.common.edit}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => removeBudget(budget.id)}
                                 className="text-xs font-semibold text-[color:var(--muted)]"
                               >
-                                Eliminar
+                                {t.common.delete}
                               </button>
                             </div>
                           </td>
@@ -1037,11 +1041,11 @@ export function AccountingBoard() {
           <section className="grid gap-6 lg:grid-cols-[340px_1fr]">
             <form onSubmit={addBeneficiary} className="h-fit space-y-3 border border-[color:var(--line)] bg-white p-5">
               <h2 className="font-[family-name:var(--font-display)] text-xl font-bold">
-                Nuevo beneficiario
+                {t.accounting.newBeneficiary}
               </h2>
               <input
                 required
-                placeholder="Nombre (ej: Ángeles Custodios)"
+                placeholder={t.accounting.beneficiaryName}
                 value={beneficiaryName}
                 onChange={(e) => setBeneficiaryName(e.target.value)}
                 className="w-full border border-[color:var(--line)] px-3 py-2 text-sm"
@@ -1063,7 +1067,7 @@ export function AccountingBoard() {
                 type="submit"
                 className="w-full bg-[color:var(--accent)] py-2.5 text-sm font-semibold text-white"
               >
-                Agregar beneficiario
+                {t.accounting.addBeneficiary}
               </button>
             </form>
 
@@ -1090,7 +1094,7 @@ export function AccountingBoard() {
                           onClick={() => removeBeneficiary(item.id)}
                           className="text-xs font-semibold text-[color:var(--accent)]"
                         >
-                          Eliminar
+                          {t.common.delete}
                         </button>
                       </li>
                     );
@@ -1106,7 +1110,7 @@ export function AccountingBoard() {
             <form onSubmit={(e) => void saveActivity(e)} className="space-y-4 border border-[color:var(--line)] bg-white p-5">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <h2 className="font-[family-name:var(--font-display)] text-xl font-bold">
-                  {editingActivityId ? "Editar actividad" : "Nueva actividad / taller"}
+                  {editingActivityId ? `${t.common.edit} ${t.accounting.tabActivities.toLowerCase()}` : t.accounting.newActivity}
                 </h2>
                 {editingActivityId ? (
                   <button
@@ -1114,7 +1118,7 @@ export function AccountingBoard() {
                     onClick={resetActivityForm}
                     className="text-sm font-semibold text-[color:var(--muted)]"
                   >
-                    Cancelar edición
+                    {t.common.cancel}
                   </button>
                 ) : null}
               </div>
@@ -1135,7 +1139,7 @@ export function AccountingBoard() {
                   <div className="grid gap-3 md:grid-cols-2">
                     <label className="block space-y-1">
                       <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                        Nombre del taller
+                        {t.accounting.activityName}
                       </span>
                       <input
                         required
@@ -1147,7 +1151,7 @@ export function AccountingBoard() {
                     </label>
                     <label className="block space-y-1">
                       <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                        Beneficiario
+                        {t.accounting.colBeneficiary}
                       </span>
                       <select
                         required
@@ -1186,7 +1190,7 @@ export function AccountingBoard() {
                     </label>
                     <label className="block space-y-1 md:col-span-2">
                       <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                        Dinero dispuesto / recibido para el taller (COP)
+                        {t.accounting.activityFunds}
                       </span>
                       <input
                         required
@@ -1295,7 +1299,7 @@ export function AccountingBoard() {
                   <div className="grid gap-3 border border-[color:var(--line)] bg-[color:var(--mist)]/50 p-4 sm:grid-cols-3">
                     <div>
                       <p className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                        Recibido
+                        {t.accounting.received}
                       </p>
                       <p className="font-[family-name:var(--font-display)] text-base font-bold">
                         {formatCop(activityDraftReceived)}
@@ -1309,7 +1313,7 @@ export function AccountingBoard() {
                     </div>
                     <div>
                       <p className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                        Gastado
+                        {t.accounting.spent}
                       </p>
                       <p className="font-[family-name:var(--font-display)] text-base font-bold">
                         {formatCop(activityDraftTotal)}
@@ -1345,7 +1349,7 @@ export function AccountingBoard() {
                       type="submit"
                       className="bg-[color:var(--accent)] px-5 py-2.5 text-sm font-semibold text-white"
                     >
-                      {editingActivityId ? "Actualizar actividad" : "Guardar actividad"}
+                      {editingActivityId ? t.common.saveChanges : t.common.save}
                     </button>
                   </div>
 
@@ -1364,12 +1368,12 @@ export function AccountingBoard() {
               <table className="min-w-full text-left text-sm">
                 <thead className="bg-[color:var(--mist)]/70 text-[10px] font-semibold uppercase text-[color:var(--muted)]">
                   <tr>
-                    <th className="px-3 py-3">Taller</th>
-                    <th className="px-3 py-3">Beneficiario</th>
-                    <th className="px-3 py-3">Fecha</th>
-                    <th className="px-3 py-3">Recibido</th>
-                    <th className="px-3 py-3">Gastado</th>
-                    <th className="px-3 py-3">Cruce</th>
+                    <th className="px-3 py-3">{t.accounting.colWorkshop}</th>
+                    <th className="px-3 py-3">{t.accounting.colBeneficiary}</th>
+                    <th className="px-3 py-3">{t.schedule.date}</th>
+                    <th className="px-3 py-3">{t.accounting.colReceived}</th>
+                    <th className="px-3 py-3">{t.accounting.colSpent}</th>
+                    <th className="px-3 py-3">{t.accounting.colCross}</th>
                     <th className="px-3 py-3">Acciones</th>
                   </tr>
                 </thead>
@@ -1413,7 +1417,7 @@ export function AccountingBoard() {
                                   : "text-[color:var(--accent)]"
                               }`}
                             >
-                              {balance >= 0 ? "Sobra " : "Falta "}
+                              {balance >= 0 ? `${t.accounting.surplusLabel} ` : `${t.accounting.shortfallLabel} `}
                               {formatCop(Math.abs(balance))}
                             </div>
                           </td>
@@ -1424,28 +1428,28 @@ export function AccountingBoard() {
                                 onClick={() => setInvoicesActivityId(activity.id)}
                                 className="text-xs font-semibold text-[color:var(--accent)]"
                               >
-                                Ver facturas
+                                {t.accounting.invoices}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => printActivityReport(activity)}
                                 className="text-xs font-semibold text-[color:var(--accent)]"
                               >
-                                Imprimir informe
+                                {t.common.view}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => editActivity(activity)}
                                 className="text-xs font-semibold text-[color:var(--accent)]"
                               >
-                                Editar
+                                {t.common.edit}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => removeActivity(activity.id)}
                                 className="text-xs font-semibold text-[color:var(--muted)]"
                               >
-                                Eliminar
+                                {t.common.delete}
                               </button>
                             </div>
                           </td>
@@ -1464,7 +1468,7 @@ export function AccountingBoard() {
             <form onSubmit={(e) => void saveExpense(e)} className="space-y-4 border border-[color:var(--line)] bg-white p-5">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <h2 className="font-[family-name:var(--font-display)] text-xl font-bold">
-                  {editingExpenseId ? "Editar gasto operativo" : "Nuevo gasto operativo"}
+                  {editingExpenseId ? `${t.common.edit} ${t.accounting.tabExpenses.toLowerCase()}` : t.accounting.newExpense}
                 </h2>
                 {editingExpenseId ? (
                   <button
@@ -1472,7 +1476,7 @@ export function AccountingBoard() {
                     onClick={resetExpenseForm}
                     className="text-sm font-semibold text-[color:var(--muted)]"
                   >
-                    Cancelar edición
+                    {t.common.cancel}
                   </button>
                 ) : null}
               </div>
@@ -1480,7 +1484,7 @@ export function AccountingBoard() {
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="block space-y-1">
                   <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                    Concepto
+                    {t.accounting.concept}
                   </span>
                   <input
                     required
@@ -1492,7 +1496,7 @@ export function AccountingBoard() {
                 </label>
                 <label className="block space-y-1">
                   <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                    Categoría
+                    {t.accounting.category}
                   </span>
                   <select
                     value={expenseCategory}
@@ -1508,7 +1512,7 @@ export function AccountingBoard() {
                 </label>
                 <label className="block space-y-1">
                   <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                    Fecha
+                    {t.schedule.date}
                   </span>
                   <input
                     type="date"
@@ -1531,7 +1535,7 @@ export function AccountingBoard() {
                 </label>
                 <label className="block space-y-1">
                   <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                    Tipo de cambio
+                    {t.accounting.exchangeRate}
                   </span>
                   <input
                     value={expenseRate}
@@ -1572,7 +1576,7 @@ export function AccountingBoard() {
                           }
                           className="text-[color:var(--muted)]"
                         >
-                          Quitar
+                          {t.common.remove}
                         </button>
                       </li>
                     ))}
@@ -1597,7 +1601,7 @@ export function AccountingBoard() {
                 type="submit"
                 className="bg-[color:var(--accent)] px-5 py-2.5 text-sm font-semibold text-white"
               >
-                {editingExpenseId ? "Actualizar gasto" : "Guardar gasto"}
+                {editingExpenseId ? t.common.saveChanges : t.accounting.saveExpense}
               </button>
             </form>
 
@@ -1605,9 +1609,9 @@ export function AccountingBoard() {
               <table className="min-w-full text-left text-sm">
                 <thead className="bg-[color:var(--mist)]/70 text-[10px] font-semibold uppercase text-[color:var(--muted)]">
                   <tr>
-                    <th className="px-3 py-3">Concepto</th>
-                    <th className="px-3 py-3">Categoría</th>
-                    <th className="px-3 py-3">Fecha</th>
+                    <th className="px-3 py-3">{t.accounting.concept}</th>
+                    <th className="px-3 py-3">{t.accounting.category}</th>
+                    <th className="px-3 py-3">{t.schedule.date}</th>
                     <th className="px-3 py-3">COP</th>
                     <th className="px-3 py-3">USD</th>
                     <th className="px-3 py-3">Acciones</th>
@@ -1640,14 +1644,14 @@ export function AccountingBoard() {
                               onClick={() => editExpense(expense)}
                               className="text-xs font-semibold text-[color:var(--accent)]"
                             >
-                              Editar
+                              {t.common.edit}
                             </button>
                             <button
                               type="button"
                               onClick={() => removeExpense(expense.id)}
                               className="text-xs font-semibold text-[color:var(--muted)]"
                             >
-                              Eliminar
+                              {t.common.delete}
                             </button>
                           </div>
                         </td>
@@ -1676,7 +1680,7 @@ export function AccountingBoard() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <h2 className="font-[family-name:var(--font-display)] text-xl font-bold">
-                      Facturas
+                      {t.accounting.invoices}
                     </h2>
                     <p className="mt-1 text-sm text-[color:var(--muted)]">{activity.title}</p>
                   </div>
@@ -1685,13 +1689,13 @@ export function AccountingBoard() {
                     onClick={() => setInvoicesActivityId(null)}
                     className="text-sm font-semibold text-[color:var(--muted)]"
                   >
-                    Cerrar
+                    {t.common.close}
                   </button>
                 </div>
 
                 {attachments.length === 0 ? (
                   <p className="text-sm text-[color:var(--muted)]">
-                    Esta actividad no tiene facturas adjuntas.
+                    {t.accounting.noInvoices}
                   </p>
                 ) : (
                   <ul className="divide-y divide-[color:var(--line)] border border-[color:var(--line)]">
@@ -1710,7 +1714,7 @@ export function AccountingBoard() {
                           rel="noreferrer"
                           className="shrink-0 text-xs font-semibold text-[color:var(--accent)]"
                         >
-                          Abrir
+                          {t.accounting.open}
                         </a>
                       </li>
                     ))}

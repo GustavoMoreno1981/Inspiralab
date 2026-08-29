@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AdminFooter } from "@/components/admin/AdminFooter";
+import { AdminLanguageSwitcher } from "@/components/admin/AdminLanguageSwitcher";
+import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 import {
   BeforeEvaluationSection,
   mergeBeforeIntoEvaluation,
@@ -84,11 +86,12 @@ function sessionDisplayTitle(session: WorkshopSession) {
 function beneficiaryNames(
   session: WorkshopSession,
   beneficiaries: ScheduleBeneficiary[],
+  noBeneficiary = "Sin beneficiario",
 ) {
   const names = (session.beneficiaryIds || [])
     .map((id) => beneficiaries.find((item) => item.id === id)?.name)
     .filter(Boolean) as string[];
-  return names.length ? names.join(", ") : "Sin beneficiario";
+  return names.length ? names.join(", ") : noBeneficiary;
 }
 
 function SessionCardMeta({
@@ -98,26 +101,27 @@ function SessionCardMeta({
   session: WorkshopSession;
   beneficiaries: ScheduleBeneficiary[];
 }) {
+  const { t } = useAdminLanguage();
   return (
     <dl className="mt-2 space-y-1 text-xs">
       <div className="flex gap-1.5">
-        <dt className="shrink-0 font-semibold text-[color:var(--ink)]">Dónde:</dt>
+        <dt className="shrink-0 font-semibold text-[color:var(--ink)]">{t.schedule.where}</dt>
         <dd className="text-[color:var(--ink)]">
-          {session.location?.trim() || "Sin lugar"}
+          {session.location?.trim() || t.schedule.noPlace}
         </dd>
       </div>
       <div className="flex gap-1.5">
         <dt className="shrink-0 font-semibold text-[color:var(--ink)]">
-          Beneficiario:
+          {t.schedule.beneficiary}
         </dt>
         <dd className="text-[color:var(--ink)]">
-          {beneficiaryNames(session, beneficiaries)}
+          {beneficiaryNames(session, beneficiaries, t.schedule.noBeneficiary)}
         </dd>
       </div>
       <div className="flex gap-1.5">
-        <dt className="shrink-0 font-semibold text-[color:var(--ink)]">Coach:</dt>
+        <dt className="shrink-0 font-semibold text-[color:var(--ink)]">{t.schedule.coach}</dt>
         <dd className="text-[color:var(--ink)]">
-          {session.coach?.trim() || "Sin coach"}
+          {session.coach?.trim() || t.schedule.noCoach}
         </dd>
       </div>
     </dl>
@@ -181,6 +185,7 @@ function blankForm(date = ""): WorkshopSession {
 export function ScheduleBoard() {
   const router = useRouter();
   const toast = useToast();
+  const { t } = useAdminLanguage();
   const [board, setBoard] = useState<ScheduleBoard>(emptyBoard());
   const [workshops, setWorkshops] = useState<WorkshopOption[]>([]);
   const [beneficiaries, setBeneficiaries] = useState<ScheduleBeneficiary[]>([]);
@@ -370,10 +375,10 @@ export function ScheduleBoard() {
         throw new Error(data?.error || "No se pudo guardar");
       }
       setBoard(next);
-      toast.success(successMessage || "Cronograma guardado");
+      toast.success(successMessage || t.schedule.saved);
       return true;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Error al guardar");
+      toast.error(error instanceof Error ? error.message : t.common.errorSave);
       return false;
     } finally {
       setSaving(false);
@@ -546,7 +551,7 @@ export function ScheduleBoard() {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!form.date.trim()) {
-      toast.error("Elige una fecha");
+      toast.error(t.schedule.pickDate);
       return;
     }
     const kind: SessionKind = form.kind === "event" ? "event" : "workshop";
@@ -928,7 +933,7 @@ export function ScheduleBoard() {
     const win = window.open(url, "_blank");
     if (!win) {
       URL.revokeObjectURL(url);
-      toast.error("Permite ventanas emergentes para exportar el PDF");
+      toast.error(t.schedule.allowPopups);
       return;
     }
     window.setTimeout(() => {
@@ -951,17 +956,18 @@ export function ScheduleBoard() {
             <p className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--accent)]">
               Inspiralab
             </p>
-            <p className="text-sm text-[color:var(--muted)]">Cronograma de talleres</p>
+            <p className="text-sm text-[color:var(--muted)]">{t.schedule.pageTitle}</p>
             <p className="mt-1 text-[11px] text-[color:var(--muted)]">
-              Recordatorios por correo a 5, 3 y 1 día antes (admin@inspiralab.org y equipo)
+              {t.schedule.pageSubtitle}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <AdminLanguageSwitcher />
             <Link
               href="/admin"
               className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
             >
-              Panel
+              {t.common.panel}
             </Link>
             <button
               type="button"
@@ -969,21 +975,21 @@ export function ScheduleBoard() {
               disabled={loading}
               className="border border-[color:var(--line)] bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50"
             >
-              Exportar PDF
+              {t.schedule.exportPdf}
             </button>
             <button
               type="button"
               onClick={() => setAssistantOpen(true)}
               className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
             >
-              Asistente guiado
+              {t.common.guidedAssistant}
             </button>
             <button
               type="button"
               onClick={() => openCreate(todayIso)}
               className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
             >
-              Programar
+              {t.schedule.schedule}
             </button>
           </div>
         </div>
@@ -992,7 +998,7 @@ export function ScheduleBoard() {
       <main className="mx-auto w-full max-w-6xl flex-1 px-5 py-8 md:px-8 md:py-10">
         <div>
           <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold text-[color:var(--ink)]">
-            Cronograma
+            {t.dashboard.schedule}
           </h1>
           <p className="mt-2 max-w-xl text-sm text-[color:var(--muted)]">
             Programa talleres y eventos. El Gantt va arriba; debajo, el calendario
@@ -1001,14 +1007,14 @@ export function ScheduleBoard() {
         </div>
 
         {loading ? (
-          <p className="mt-10 text-sm text-[color:var(--muted)]">Cargando calendario…</p>
+          <p className="mt-10 text-sm text-[color:var(--muted)]">{t.schedule.loading}</p>
         ) : (
           <div className="mt-8 space-y-8">
             <section className="space-y-3">
               <div className="flex flex-wrap items-end justify-between gap-2">
                 <div>
                   <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--ink)]">
-                    Gantt por beneficiario
+                    {t.schedule.gantt}
                   </h2>
                   <p className="mt-1 text-sm text-[color:var(--muted)]">
                     Vista temporal de talleres y eventos. Haz clic en una barra
@@ -1031,7 +1037,7 @@ export function ScheduleBoard() {
               <section className="space-y-3">
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--ink)]">
-                    Calendario
+                    {t.schedule.calendar}
                   </h2>
                   <div className="flex items-center gap-2">
                     <button
@@ -1039,7 +1045,7 @@ export function ScheduleBoard() {
                       onClick={() => shiftMonth(-1)}
                       className="border border-[color:var(--line)] bg-white px-3 py-2 text-xs font-semibold"
                     >
-                      Anterior
+                      {t.schedule.prev}
                     </button>
                     <p className="min-w-[10rem] text-center text-sm font-semibold text-[color:var(--ink)]">
                       {monthLabel(cursor.year, cursor.month)}
@@ -1049,7 +1055,7 @@ export function ScheduleBoard() {
                       onClick={() => shiftMonth(1)}
                       className="border border-[color:var(--line)] bg-white px-3 py-2 text-xs font-semibold"
                     >
-                      Siguiente
+                      {t.schedule.next}
                     </button>
                     <button
                       type="button"
@@ -1061,7 +1067,7 @@ export function ScheduleBoard() {
                       }
                       className="border border-[color:var(--line)] bg-white px-3 py-2 text-xs font-semibold"
                     >
-                      Hoy
+                      {t.schedule.today}
                     </button>
                   </div>
                 </div>
@@ -1167,11 +1173,10 @@ export function ScheduleBoard() {
               <aside className="space-y-4">
                 <div className="border border-amber-200 bg-amber-50/80 p-4">
                   <h2 className="text-sm font-semibold text-amber-950">
-                    Pendientes de aprobación
+                    {t.schedule.pendingApproval}
                   </h2>
                   <p className="mt-1 text-xs text-amber-900">
-                    Don Saul o quien autorice debe aprobar para que aparezcan en
-                    el calendario.
+                    {t.schedule.approvalHint}
                   </p>
                   {pendingProposals.length === 0 ? (
                     <p className="mt-3 text-sm text-amber-900/80">
@@ -1209,28 +1214,28 @@ export function ScheduleBoard() {
                               onClick={() => void approveProposal(session.id)}
                               className="bg-[color:var(--accent)] px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50"
                             >
-                              Aprobar
+                              {t.schedule.approve}
                             </button>
                             <button
                               type="button"
                               onClick={() => printPendingProposal(session)}
                               className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
                             >
-                              Imprimir propuesta
+                              {t.schedule.printProposal}
                             </button>
                             <button
                               type="button"
                               onClick={() => openViewProposal(session)}
                               className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
                             >
-                              Ver
+                              {t.common.view}
                             </button>
                             <button
                               type="button"
                               onClick={() => openEdit(session)}
                               className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
                             >
-                              Editar
+                              {t.common.edit}
                             </button>
                           </div>
                         </li>
@@ -1241,7 +1246,7 @@ export function ScheduleBoard() {
 
                 <div className="border border-[color:var(--line)] bg-white p-4">
                   <h2 className="text-sm font-semibold text-[color:var(--ink)]">
-                    Próximas sesiones
+                    {t.schedule.upcoming}
                   </h2>
                   {upcoming.length === 0 ? (
                     <p className="mt-3 text-sm text-[color:var(--muted)]">
@@ -1281,7 +1286,7 @@ export function ScheduleBoard() {
                               onClick={() => openEdit(session)}
                               className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
                             >
-                              Editar
+                              {t.common.edit}
                             </button>
                             <button
                               type="button"
@@ -1289,7 +1294,7 @@ export function ScheduleBoard() {
                               disabled={saving}
                               className="border border-red-200 px-2 py-1 text-[10px] font-semibold text-red-700 disabled:opacity-50"
                             >
-                              Eliminar
+                              {t.common.delete}
                             </button>
                           </div>
                         </li>
@@ -1360,11 +1365,11 @@ export function ScheduleBoard() {
                 <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--ink)]">
                   {editingId
                     ? form.status === "pending_approval"
-                      ? "Editar propuesta"
+                      ? t.schedule.editProposal
                       : form.kind === "event"
-                        ? "Editar evento"
-                        : "Editar taller"
-                    : "Programar en calendario"}
+                        ? t.schedule.editEvent
+                        : t.schedule.editWorkshop
+                    : t.schedule.scheduleSession}
                 </h2>
                 <p className="mt-1 text-sm text-[color:var(--muted)]">
                   {editingId
@@ -1379,14 +1384,14 @@ export function ScheduleBoard() {
                 onClick={() => setModalOpen(false)}
                 className="border border-[color:var(--line)] px-2 py-1 text-xs font-semibold"
               >
-                Cerrar
+                {t.common.close}
               </button>
             </div>
 
             <div className="mt-5 space-y-3">
               <label className="block space-y-1.5">
                 <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
-                  Tipo
+                  {t.schedule.type}
                 </span>
                 <select
                   value={form.kind || "workshop"}
@@ -1458,9 +1463,9 @@ export function ScheduleBoard() {
                 </>
               ) : (
                 <label className="block space-y-1.5">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
-                    Taller del catálogo
-                  </span>
+                    <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+                      {t.schedule.catalogWorkshop}
+                    </span>
                   <select
                     value={form.workshopId}
                     onChange={(event) => applyWorkshop(event.target.value)}
@@ -1479,7 +1484,7 @@ export function ScheduleBoard() {
               {form.kind !== "event" ? (
                 <label className="block space-y-1.5">
                   <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
-                    Título
+                    {t.common.title}
                   </span>
                   <input
                     required
@@ -1495,7 +1500,7 @@ export function ScheduleBoard() {
               <div className="grid gap-3 sm:grid-cols-3">
                 <label className="block space-y-1.5 sm:col-span-1">
                   <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
-                    Fecha
+                    {t.schedule.date}
                   </span>
                   <input
                     type="date"
@@ -1509,7 +1514,7 @@ export function ScheduleBoard() {
                 </label>
                 <label className="block space-y-1.5">
                   <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
-                    Inicio
+                    {t.schedule.startTime}
                   </span>
                   <input
                     type="time"
@@ -1525,7 +1530,7 @@ export function ScheduleBoard() {
                 </label>
                 <label className="block space-y-1.5">
                   <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
-                    Fin
+                    {t.schedule.endTime}
                   </span>
                   <input
                     type="time"
@@ -1544,7 +1549,7 @@ export function ScheduleBoard() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block space-y-1.5">
                   <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
-                    Lugar
+                    {t.schedule.place}
                   </span>
                   <input
                     value={form.location}
@@ -1554,13 +1559,13 @@ export function ScheduleBoard() {
                         location: event.target.value,
                       }))
                     }
-                    placeholder="Salón, sede, virtual…"
+                    placeholder={t.schedule.placePlaceholder}
                     className="w-full border border-[color:var(--line)] bg-white px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
                   />
                 </label>
                 <label className="block space-y-1.5">
                   <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
-                    Coach / facilita
+                    {t.schedule.coach}
                   </span>
                   <input
                     value={form.coach}
@@ -1582,7 +1587,7 @@ export function ScheduleBoard() {
               ) : (
                 <label className="block space-y-1.5">
                   <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
-                    Estado
+                    {t.common.status}
                   </span>
                   <select
                     value={form.status}
@@ -1605,7 +1610,7 @@ export function ScheduleBoard() {
 
               <fieldset className="space-y-2 border border-[color:var(--line)] p-3">
                 <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
-                  Beneficiarios
+                  {t.schedule.beneficiaries}
                 </legend>
                 {beneficiaries.length === 0 ? (
                   <p className="text-sm text-[color:var(--muted)]">
@@ -1661,7 +1666,7 @@ export function ScheduleBoard() {
 
               <label className="block space-y-1.5">
                 <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
-                  Notas
+                  {t.schedule.notes}
                 </span>
                 <textarea
                   rows={3}
@@ -1705,7 +1710,7 @@ export function ScheduleBoard() {
                     }
                     className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
                   >
-                    Aprobar y programar
+                    {t.schedule.approveAndSchedule}
                   </button>
                   <button
                     type="button"
@@ -1718,7 +1723,7 @@ export function ScheduleBoard() {
                     }
                     className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
                   >
-                    Imprimir propuesta
+                    {t.schedule.printProposal}
                   </button>
                 </div>
               ) : editingId ? (
@@ -1728,7 +1733,7 @@ export function ScheduleBoard() {
                   className="border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"
                   disabled={saving}
                 >
-                  {form.kind === "event" ? "Eliminar evento" : "Eliminar taller"}
+                  {t.schedule.deleteWorkshop}
                 </button>
               ) : (
                 <span />
@@ -1739,7 +1744,7 @@ export function ScheduleBoard() {
                   onClick={() => setModalOpen(false)}
                   className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
                 >
-                  Cancelar
+                  {t.common.cancel}
                 </button>
                 <button
                   type="submit"
@@ -1747,12 +1752,12 @@ export function ScheduleBoard() {
                   className="bg-[color:var(--accent)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
                 >
                   {saving
-                    ? "Guardando…"
+                    ? t.common.saving
                     : editingId
                       ? form.status === "pending_approval"
-                        ? "Guardar propuesta"
-                        : "Guardar cambios"
-                      : "Guardar"}
+                        ? t.schedule.saveProposal
+                        : t.schedule.saveChanges
+                      : t.schedule.save}
                 </button>
               </div>
             </div>

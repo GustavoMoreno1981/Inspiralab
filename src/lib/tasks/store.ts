@@ -8,6 +8,7 @@ import {
   normalizeItemStatus,
   type AccessRole,
   type Activity,
+  type ActivityDateExtension,
   type ReviewMessage,
   type Subtask,
   type Task,
@@ -35,6 +36,7 @@ type ActivityRow = {
   assignee_ids: string[] | null;
   notes?: unknown;
   review_messages?: unknown;
+  date_extensions?: unknown;
   created_at: string;
   updated_at: string;
   visibility?: string | null;
@@ -138,6 +140,31 @@ function normalizeStoredMember(
     hasPassword: Boolean(member.passwordHash),
     passwordHash: member.passwordHash || "",
   };
+}
+
+function normalizeDateExtensions(extensions: unknown): ActivityDateExtension[] {
+  if (!Array.isArray(extensions)) return [];
+  return extensions
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const item = entry as Partial<ActivityDateExtension>;
+      if (
+        !item.id ||
+        typeof item.previousDate !== "string" ||
+        typeof item.newDate !== "string" ||
+        typeof item.reason !== "string"
+      ) {
+        return null;
+      }
+      return {
+        id: String(item.id),
+        previousDate: item.previousDate,
+        newDate: item.newDate,
+        reason: item.reason,
+        createdAt: item.createdAt || new Date().toISOString(),
+      };
+    })
+    .filter((entry): entry is ActivityDateExtension => Boolean(entry));
 }
 
 function normalizeNotes(notes: unknown): TaskNote[] {
@@ -259,6 +286,7 @@ function normalizeActivities(activities: Activity[]): Activity[] {
     assigneeIds: activity.assigneeIds || [],
     notes: normalizeNotes(activity.notes),
     reviewMessages: normalizeReviewMessages(activity.reviewMessages),
+    dateExtensions: normalizeDateExtensions(activity.dateExtensions),
     visibility: normalizeVisibility(activity.visibility),
     createdById: activity.createdById || "",
     tasks: (activity.tasks || []).map((task) =>
@@ -339,6 +367,7 @@ function migrateLegacyBoard(data: Record<string, unknown>): StoredBoard {
         : [],
       notes: normalizeNotes(legacy.notes),
       reviewMessages: normalizeReviewMessages(legacy.reviewMessages),
+      dateExtensions: normalizeDateExtensions(legacy.dateExtensions),
       tasks,
       createdAt: String(legacy.createdAt || new Date().toISOString()),
       updatedAt: String(legacy.updatedAt || new Date().toISOString()),
@@ -469,6 +498,7 @@ async function readTasksSupabaseRaw(): Promise<StoredBoard> {
     assigneeIds: row.assignee_ids || [],
     notes: normalizeNotes(row.notes),
     reviewMessages: normalizeReviewMessages(row.review_messages),
+    dateExtensions: normalizeDateExtensions(row.date_extensions),
     tasks: tasksByActivity.get(row.id) || [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -582,6 +612,7 @@ async function readLegacyTasksSupabaseRaw(): Promise<StoredBoard> {
       assigneeIds: row.assignee_ids || [],
       notes: normalizeNotes(row.notes),
       reviewMessages: normalizeReviewMessages(row.review_messages),
+      dateExtensions: normalizeDateExtensions(row.date_extensions),
       tasks,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -671,6 +702,7 @@ async function writeTasksSupabaseRaw(board: StoredBoard) {
       assignee_ids: activity.assigneeIds || [],
       notes: activity.notes || [],
       review_messages: activity.reviewMessages || [],
+      date_extensions: activity.dateExtensions || [],
       created_at: activity.createdAt || new Date().toISOString(),
       updated_at: activity.updatedAt || new Date().toISOString(),
       visibility: normalizeVisibility(activity.visibility),
@@ -699,13 +731,28 @@ async function writeTasksSupabaseRaw(board: StoredBoard) {
     if (
       activitiesError &&
       (activitiesError.code === "PGRST204" ||
+        String(activitiesError.message || "").includes("date_extensions"))
+    ) {
+      ({ error: activitiesError } = await supabase.from("activities").insert(
+        activityRows.map(({ date_extensions: _de, ...rest }) => rest),
+      ));
+    }
+    if (
+      activitiesError &&
+      (activitiesError.code === "PGRST204" ||
         String(activitiesError.message || "").includes("visibility") ||
         String(activitiesError.message || "").includes("created_by_id"))
     ) {
       ({ error: activitiesError } = await supabase.from("activities").insert(
         activityRows.map(
-          ({ visibility: _v, created_by_id: _c, notes: _n, review_messages: _rm, ...rest }) =>
-            rest,
+          ({
+            visibility: _v,
+            created_by_id: _c,
+            notes: _n,
+            review_messages: _rm,
+            date_extensions: _de,
+            ...rest
+          }) => rest,
         ),
       ));
     }

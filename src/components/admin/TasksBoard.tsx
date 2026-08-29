@@ -4,8 +4,6 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  TASK_STATUSES,
-  TASK_STATUS_COLORS,
   PHONE_COUNTRY_CODES,
   createId,
   emptyBoard,
@@ -17,6 +15,7 @@ import {
   normalizeItemStatus,
   normalizeVisibility,
   type Activity,
+  type ActivityDateExtension,
   type Task,
   type Subtask,
   type TaskBankItem,
@@ -52,8 +51,12 @@ import { PrivateLockedCard } from "@/components/admin/PrivateLockedCard";
 import { usePrivateUnlock } from "@/hooks/usePrivateUnlock";
 import type { PrivateItemType } from "@/lib/tasks/private-auth";
 import { useToast } from "@/components/admin/AdminToast";
+import { AdminLanguageSwitcher } from "@/components/admin/AdminLanguageSwitcher";
 import { DragHandle } from "@/components/admin/DragHandle";
 import { moveItemById } from "@/lib/reorder";
+import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
+import { formatAdmin } from "@/lib/i18n/admin/helpers";
+import { getTaskStatuses, getTaskStatusColors } from "@/lib/i18n/admin";
 
 const DRAG_TASK_TYPE = "application/x-inspiralab-task-id";
 const DRAG_SUBTASK_TYPE = "application/x-inspiralab-subtask-id";
@@ -127,6 +130,17 @@ function normalizeTask(
   };
 }
 
+function formatShortDate(value: string) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return value || "—";
+  const [y, m, d] = value.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("es-CO", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 function normalizeActivity(activity: Partial<Activity> & { id: string }): Activity {
   const status = normalizeItemStatus(activity.status);
   return {
@@ -167,6 +181,15 @@ function normalizeActivity(activity: Partial<Activity> & { id: string }): Activi
               : null,
           responseAt: message.responseAt || "",
           responseBy: message.responseBy || "",
+        }))
+      : [],
+    dateExtensions: Array.isArray(activity.dateExtensions)
+      ? activity.dateExtensions.map((entry) => ({
+          id: entry.id,
+          previousDate: entry.previousDate || "",
+          newDate: entry.newDate || "",
+          reason: entry.reason || "",
+          createdAt: entry.createdAt || "",
         }))
       : [],
     createdAt: activity.createdAt || "",
@@ -223,6 +246,9 @@ const emptyMemberForm = {
 export function TasksBoard() {
   const router = useRouter();
   const toast = useToast();
+  const { t } = useAdminLanguage();
+  const taskStatuses = useMemo(() => getTaskStatuses(t), [t]);
+  const statusColors = useMemo(() => getTaskStatusColors(t), [t]);
   const [board, setBoard] = useState<TasksBoard>(emptyBoard());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -265,6 +291,12 @@ export function TasksBoard() {
     status: TaskStatus;
     tasks: Task[];
   } | null>(null);
+  const [dateExtensionModal, setDateExtensionModal] = useState<{
+    activityId: string;
+    previousDate: string;
+    newDate: string;
+  } | null>(null);
+  const [dateExtensionReason, setDateExtensionReason] = useState("");
 
   const [memberForm, setMemberForm] = useState(emptyMemberForm);
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
@@ -400,7 +432,7 @@ export function TasksBoard() {
   const selectedStatusLabel =
     selectedStatus === "all"
       ? null
-      : TASK_STATUSES.find((item) => item.value === selectedStatus)?.label ||
+      : taskStatuses.find((item) => item.value === selectedStatus)?.label ||
         selectedStatus;
 
   const filteredBank = useMemo(() => {
@@ -456,13 +488,13 @@ export function TasksBoard() {
       if (successMessage) {
         toast.success(successMessage);
       } else {
-        setStatusMsg("Guardado");
+        setStatusMsg(t.common.saved);
         window.setTimeout(() => setStatusMsg(""), 1800);
       }
       return true;
     }
     const payload = (await res.json().catch(() => null)) as { error?: string } | null;
-    const errorMsg = payload?.error || "Error al guardar";
+    const errorMsg = payload?.error || t.common.errorSave;
     setStatusMsg(errorMsg);
     toast.error(errorMsg);
     return false;
@@ -482,12 +514,12 @@ export function TasksBoard() {
       const res = await fetch("/api/upload", { method: "POST", body: form });
       if (!res.ok) {
         const payload = (await res.json().catch(() => null)) as { error?: string } | null;
-        toast.error(payload?.error || "Error al subir la foto");
+        toast.error(payload?.error || t.common.errorSave);
         return;
       }
       const data = (await res.json()) as { url: string };
       setMemberForm((p) => ({ ...emptyMemberForm, ...p, photo: data.url }));
-      toast.success("Foto lista para el nuevo integrante");
+      toast.success(t.tasks.toast.memberPhotoUpdated);
     } finally {
       setUploadingPhoto(false);
     }
@@ -499,14 +531,14 @@ export function TasksBoard() {
     const res = await fetch("/api/upload", { method: "POST", body: form });
     if (!res.ok) {
       const payload = (await res.json().catch(() => null)) as { error?: string } | null;
-      toast.error(payload?.error || "Error al subir la foto");
+      toast.error(payload?.error || t.common.errorSave);
       return;
     }
     const data = (await res.json()) as { url: string };
     const members = board.members.map((member) =>
       member.id === memberId ? { ...member, photo: data.url } : member,
     );
-    const ok = await persist({ ...board, members }, "Foto del integrante actualizada");
+    const ok = await persist({ ...board, members }, t.tasks.toast.memberPhotoUpdated);
     if (ok && editingMemberId === memberId) {
       setMemberForm((prev) => ({ ...prev, photo: data.url }));
     }
@@ -515,11 +547,11 @@ export function TasksBoard() {
   async function saveMember(event: FormEvent) {
     event.preventDefault();
     if (!memberForm.name.trim()) {
-      toast.error("Escribe el nombre del integrante");
+      toast.error(t.tasks.toast.memberNameRequired);
       return;
     }
     if (!memberForm.photo) {
-      toast.error("Sube la foto del integrante");
+      toast.error(t.tasks.memberPhoto);
       return;
     }
 
@@ -539,7 +571,7 @@ export function TasksBoard() {
       );
       const ok = await persist(
         { ...board, members },
-        `Integrante “${memberForm.name.trim()}” actualizado`,
+        t.tasks.toast.memberUpdated,
       );
       if (ok) {
         setMemberForm(emptyMemberForm);
@@ -563,7 +595,7 @@ export function TasksBoard() {
     };
     const ok = await persist(
       { ...board, members: [...board.members, member] },
-      `Integrante “${member.name}” agregado`,
+      t.tasks.toast.memberAdded,
     );
     if (ok) setMemberForm(emptyMemberForm);
   }
@@ -586,7 +618,7 @@ export function TasksBoard() {
   }
 
   async function removeMember(id: string) {
-    if (!window.confirm("¿Eliminar este integrante?")) return;
+    if (!window.confirm(t.tasks.confirmDeleteMember)) return;
     const member = board.members.find((item) => item.id === id);
     const ok = await persist(
       {
@@ -604,7 +636,7 @@ export function TasksBoard() {
             ),
           })),
       },
-      member ? `Integrante “${member.name}” eliminado` : "Integrante eliminado",
+      t.tasks.toast.memberDeleted,
     );
     if (ok) {
       if (selectedMemberId === id) setSelectedMemberId("all");
@@ -646,10 +678,10 @@ export function TasksBoard() {
       ? current.filter((id) => id !== memberId)
       : [...current, memberId];
     if (!next.length) {
-      toast.error("La actividad debe tener al menos una persona asignada");
+      toast.error(t.tasks.toast.atLeastOneAssignee);
       return;
     }
-    updateActivity(activityId, { assigneeIds: next }, "Asignación actualizada");
+    updateActivity(activityId, { assigneeIds: next }, t.tasks.toast.assignmentUpdated);
   }
 
   function resolveCreatorId(fallbackId: string) {
@@ -685,7 +717,7 @@ export function TasksBoard() {
     });
     const data = (await res.json().catch(() => null)) as { error?: string } | null;
     if (!res.ok) {
-      throw new Error(data?.error || "No se pudo guardar la clave privada");
+      throw new Error(data?.error || t.tasks.toast.privateKeyError);
     }
   }
 
@@ -702,26 +734,26 @@ export function TasksBoard() {
     });
     const data = (await res.json().catch(() => null)) as { error?: string } | null;
     if (!res.ok) {
-      throw new Error(data?.error || "No se pudo copiar la clave privada");
+      throw new Error(data?.error || t.tasks.toast.privateKeyError);
     }
   }
 
   async function createActivity(event: FormEvent) {
     event.preventDefault();
     if (!newTitle.trim()) {
-      toast.error("Escribe el título de la actividad");
+      toast.error(t.tasks.toast.titleRequired);
       return;
     }
     if (!newAssigneeIds.length) {
-      toast.error("Selecciona al menos una persona o un grupo");
+      toast.error(t.tasks.toast.assigneeRequired);
       return;
     }
     if (!newEndDate) {
-      toast.error("Indica la fecha de fin");
+      toast.error(t.tasks.toast.endDateRequired);
       return;
     }
     if (newEndDate < newDate) {
-      toast.error("La fecha de fin no puede ser anterior al inicio");
+      toast.error(t.tasks.toast.endBeforeStart);
       return;
     }
 
@@ -731,7 +763,7 @@ export function TasksBoard() {
     const sourceBankPrivate = sourceBankItem?.visibility === "private";
 
     if (newVisibility === "private" && !sourceBankPrivate) {
-      const validation = validatePrivateSetup(newPrivateSetup);
+      const validation = validatePrivateSetup(newPrivateSetup, t.private);
       if (validation) {
         toast.error(validation);
         return;
@@ -778,6 +810,7 @@ export function TasksBoard() {
       tasks,
       notes: [],
       reviewMessages: [],
+      dateExtensions: [],
       createdAt: now,
       updatedAt: now,
       visibility: newVisibility,
@@ -804,8 +837,8 @@ export function TasksBoard() {
         bank: nextBank,
       },
       convertingBankId
-        ? `Actividad “${activity.title}” creada desde el banco`
-        : `Actividad “${activity.title}” creada`,
+        ? t.tasks.toast.activityFromBank
+        : t.tasks.toast.activityCreated,
     );
     if (ok) {
       if (activity.visibility === "private") {
@@ -817,7 +850,7 @@ export function TasksBoard() {
           }
         } catch (error) {
           toast.error(
-            error instanceof Error ? error.message : "No se pudo configurar la clave privada",
+            error instanceof Error ? error.message : t.tasks.toast.privateKeyError,
           );
         }
       }
@@ -836,15 +869,15 @@ export function TasksBoard() {
     const ownerId =
       selectedMemberId !== "all" ? selectedMemberId : bankOwnerId;
     if (!ownerId) {
-      toast.error("Selecciona un integrante para el banco de tareas");
+      toast.error(t.tasks.toast.bankOwnerRequired);
       return;
     }
     if (!bankTitle.trim()) {
-      toast.error("Escribe qué hay que hacer / la actividad propuesta");
+      toast.error(t.tasks.toast.bankTitleRequired);
       return;
     }
     if (bankVisibility === "private") {
-      const validation = validatePrivateSetup(bankPrivateSetup);
+      const validation = validatePrivateSetup(bankPrivateSetup, t.private);
       if (validation) {
         toast.error(validation);
         return;
@@ -865,7 +898,7 @@ export function TasksBoard() {
     };
     const ok = await persist(
       { ...board, bank: [item, ...(board.bank || [])] },
-      "Idea agregada al banco",
+      t.tasks.toast.bankIdeaAdded,
     );
     if (ok) {
       if (item.visibility === "private") {
@@ -873,7 +906,7 @@ export function TasksBoard() {
           await setupPrivateItem("bank", item.id, bankPrivateSetup);
         } catch (error) {
           toast.error(
-            error instanceof Error ? error.message : "No se pudo configurar la clave privada",
+            error instanceof Error ? error.message : t.tasks.toast.privateKeyError,
           );
         }
       }
@@ -898,7 +931,7 @@ export function TasksBoard() {
 
   async function saveBankItemEdit(id: string) {
     if (!editingBankTitle.trim()) {
-      toast.error("Escribe un título para la idea");
+      toast.error(t.tasks.toast.bankTitleRequiredEdit);
       return;
     }
     const now = new Date().toISOString();
@@ -916,16 +949,16 @@ export function TasksBoard() {
             : item,
         ),
       },
-      "Idea actualizada en el banco",
+      t.tasks.toast.bankIdeaUpdated,
     );
     if (ok) cancelEditBankItem();
   }
 
   async function removeBankItem(id: string) {
-    if (!window.confirm("¿Eliminar esta idea del banco?")) return;
+    if (!window.confirm(t.tasks.confirmDeleteBank)) return;
     await persist(
       { ...board, bank: (board.bank || []).filter((item) => item.id !== id) },
-      "Idea eliminada del banco",
+      t.tasks.toast.bankIdeaDeleted,
     );
   }
 
@@ -970,22 +1003,74 @@ export function TasksBoard() {
     void persist(nextBoard, successMessage);
   }
 
+  function requestFinishedDateChange(activityId: string, newDate: string) {
+    const activity = board.activities.find((item) => item.id === activityId);
+    if (!activity) return;
+
+    const previousDate = activity.finishedDate || "";
+    if (!newDate || newDate === previousDate) return;
+
+    if (previousDate && newDate > previousDate) {
+      setDateExtensionModal({ activityId, previousDate, newDate });
+      setDateExtensionReason("");
+      return;
+    }
+
+    updateActivity(activityId, { finishedDate: newDate });
+  }
+
+  function cancelDateExtension() {
+    setDateExtensionModal(null);
+    setDateExtensionReason("");
+  }
+
+  function confirmDateExtension() {
+    if (!dateExtensionModal) return;
+
+    const reason = dateExtensionReason.trim();
+    if (!reason) {
+      toast.error(t.tasks.toast.dateExtensionRequired);
+      return;
+    }
+
+    const activity = board.activities.find((item) => item.id === dateExtensionModal.activityId);
+    if (!activity) return;
+
+    const extension: ActivityDateExtension = {
+      id: createId("ext"),
+      previousDate: dateExtensionModal.previousDate,
+      newDate: dateExtensionModal.newDate,
+      reason,
+      createdAt: new Date().toISOString(),
+    };
+
+    updateActivity(
+      dateExtensionModal.activityId,
+      {
+        finishedDate: dateExtensionModal.newDate,
+        dateExtensions: [...(activity.dateExtensions || []), extension],
+      },
+      t.tasks.toast.dateExtensionSaved,
+    );
+    cancelDateExtension();
+  }
+
   function removeActivity(activityId: string) {
-    if (!window.confirm("¿Eliminar esta actividad?")) return;
+    if (!window.confirm(t.tasks.confirmDeleteActivity)) return;
     const activity = board.activities.find((item) => item.id === activityId);
     void persist(
       {
         ...board,
         activities: board.activities.filter((item) => item.id !== activityId),
       },
-      activity ? `Actividad “${activity.title}” eliminada` : "Actividad eliminada",
+      t.common.saved,
     );
   }
 
   function addNote(activityId: string) {
     const text = (noteDrafts[activityId] || "").trim();
     if (!text) {
-      toast.error("Escribe la nota");
+      toast.error(t.tasks.toast.noteRequired);
       return;
     }
     const note: TaskNote = {
@@ -995,7 +1080,7 @@ export function TasksBoard() {
     };
     const activity = board.activities.find((item) => item.id === activityId);
     if (!activity) return;
-    updateActivity(activityId, { notes: [note, ...(activity.notes || [])] }, "Nota agregada");
+    updateActivity(activityId, { notes: [note, ...(activity.notes || [])] }, t.tasks.toast.noteAdded);
     setNoteDrafts((prev) => ({ ...prev, [activityId]: "" }));
     setNotesOpenId(activityId);
   }
@@ -1006,7 +1091,7 @@ export function TasksBoard() {
     updateActivity(
       activityId,
       { notes: (activity.notes || []).filter((note) => note.id !== noteId) },
-      "Nota eliminada",
+      t.tasks.toast.noteDeleted,
     );
   }
 
@@ -1014,7 +1099,7 @@ export function TasksBoard() {
     const draft = newTaskDraft[activityId] || { title: "", url: "" };
     const title = draft.title.trim();
     if (!title) {
-      toast.error("Escribe el título de la tarea");
+      toast.error(t.tasks.toast.taskTitleRequired);
       return;
     }
     const activity = board.activities.find((item) => item.id === activityId);
@@ -1035,7 +1120,7 @@ export function TasksBoard() {
           },
         ],
       },
-      "Tarea agregada",
+      t.tasks.toast.taskAdded,
     );
     setNewTaskDraft((prev) => ({ ...prev, [activityId]: { title: "", url: "" } }));
     setExpandedActivityId(activityId);
@@ -1052,7 +1137,7 @@ export function TasksBoard() {
         tasks: nextTasks,
         ...(derived && derived !== activity.status ? { status: derived } : {}),
       },
-      "Tarea eliminada",
+      t.tasks.toast.taskDeleted,
     );
     if (expandedTaskId === taskId) setExpandedTaskId(null);
   }
@@ -1122,7 +1207,7 @@ export function TasksBoard() {
     const task = activity.tasks.find((item) => item.id === taskId);
     if (!task) return;
 
-    const label = TASK_STATUSES.find((item) => item.value === status)?.label || status;
+    const label = taskStatuses.find((item) => item.value === status)?.label || status;
     const nextTasks = activity.tasks.map((item) => {
       if (item.id !== taskId) return item;
       const nextSubtasks =
@@ -1151,7 +1236,7 @@ export function TasksBoard() {
     }
 
     const activityLabel = derivedActivity
-      ? TASK_STATUSES.find((item) => item.value === derivedActivity)?.label
+      ? taskStatuses.find((item) => item.value === derivedActivity)?.label
       : null;
     const message =
       activityLabel && derivedActivity && derivedActivity !== activity.status
@@ -1182,7 +1267,7 @@ export function TasksBoard() {
     if (!task) return;
 
     const statusLabel = patch.status
-      ? TASK_STATUSES.find((item) => item.value === patch.status)?.label
+      ? taskStatuses.find((item) => item.value === patch.status)?.label
       : null;
 
     const nextSubtasks = task.subtasks.map((item) => {
@@ -1221,10 +1306,10 @@ export function TasksBoard() {
     }
 
     const taskStatusLabel = derivedTaskStatus
-      ? TASK_STATUSES.find((item) => item.value === derivedTaskStatus)?.label
+      ? taskStatuses.find((item) => item.value === derivedTaskStatus)?.label
       : null;
     const activityStatusLabel = derivedActivityStatus
-      ? TASK_STATUSES.find((item) => item.value === derivedActivityStatus)?.label
+      ? taskStatuses.find((item) => item.value === derivedActivityStatus)?.label
       : null;
 
     let message: string | undefined = successMessage;
@@ -1258,7 +1343,7 @@ export function TasksBoard() {
     const draft = newSubtaskDraft[taskId] || { title: "", url: "" };
     const title = draft.title.trim();
     if (!title) {
-      toast.error("Escribe el título de la subtarea");
+      toast.error(t.tasks.toast.subtaskTitleRequired);
       return;
     }
     const activity = board.activities.find((item) => item.id === activityId);
@@ -1281,7 +1366,7 @@ export function TasksBoard() {
           },
         ],
       },
-      "Subtarea agregada",
+      t.tasks.toast.subtaskAdded,
     );
     setNewSubtaskDraft((prev) => ({ ...prev, [taskId]: { title: "", url: "" } }));
     setExpandedTaskId(taskId);
@@ -1313,7 +1398,7 @@ export function TasksBoard() {
           ? { status: derivedActivity }
           : {}),
       },
-      "Subtarea eliminada",
+      t.tasks.toast.subtaskDeleted,
     );
   }
 
@@ -1346,7 +1431,7 @@ export function TasksBoard() {
   function setActivityStatus(activityId: string, status: TaskStatus) {
     const activity = board.activities.find((item) => item.id === activityId);
     if (!activity) return;
-    const label = TASK_STATUSES.find((item) => item.value === status)?.label || status;
+    const label = taskStatuses.find((item) => item.value === status)?.label || status;
 
     if (status === "pending_review" && activity.status !== "pending_review") {
       beginPendingReview(activity, activity.tasks, "pending_review");
@@ -1372,7 +1457,7 @@ export function TasksBoard() {
         ...board,
         activities: [activity, ...board.activities],
       },
-      `Actividad “${activity.title}” creada`,
+      t.tasks.toast.activityCreated,
     );
     if (ok) {
       if (activity.visibility === "private" && privateSetup) {
@@ -1380,7 +1465,7 @@ export function TasksBoard() {
           await setupPrivateItem("activity", activity.id, privateSetup);
         } catch (error) {
           toast.error(
-            error instanceof Error ? error.message : "No se pudo configurar la clave privada",
+            error instanceof Error ? error.message : t.tasks.toast.privateKeyError,
           );
         }
       }
@@ -1416,7 +1501,7 @@ export function TasksBoard() {
         activities: [activity, ...board.activities],
         bank: nextBank,
       },
-      `Actividad “${activity.title}” creada desde el banco`,
+      t.tasks.toast.activityFromBank,
     );
     if (ok) {
       if (activity.visibility === "private") {
@@ -1428,7 +1513,7 @@ export function TasksBoard() {
           }
         } catch (error) {
           toast.error(
-            error instanceof Error ? error.message : "No se pudo configurar la clave privada",
+            error instanceof Error ? error.message : t.tasks.toast.privateKeyError,
           );
         }
       }
@@ -1493,7 +1578,7 @@ export function TasksBoard() {
     }
 
     const label =
-      TASK_STATUSES.find((item) => item.value === input.status)?.label || input.status;
+      taskStatuses.find((item) => item.value === input.status)?.label || input.status;
     const ok = await persist(
       {
         ...board,
@@ -1528,7 +1613,7 @@ export function TasksBoard() {
   function closeReviewModal() {
     if (reviewRevert && reviewRevert.activityId === reviewModalActivityId) {
       const previousLabel =
-        TASK_STATUSES.find((item) => item.value === reviewRevert.status)?.label ||
+        taskStatuses.find((item) => item.value === reviewRevert.status)?.label ||
         reviewRevert.status;
       setBoard((prev) => ({
         ...prev,
@@ -1568,7 +1653,7 @@ export function TasksBoard() {
             : activity,
         ),
       };
-      void persist(next, "Mensaje de revisión guardado");
+      void persist(next, t.tasks.toast.reviewSaved);
       return next;
     });
     setReviewHistoryOpenId(activityId);
@@ -1687,7 +1772,7 @@ export function TasksBoard() {
     const text = lines.join("\n");
     const href = `https://wa.me/?text=${encodeURIComponent(text)}`;
     window.open(href, "_blank", "noopener,noreferrer");
-    toast.success("Mensaje listo para compartir por WhatsApp");
+    toast.success(t.tasks.toast.whatsappReady);
   }
 
   function renderActivityCards(activities: Activity[]) {
@@ -1719,7 +1804,7 @@ export function TasksBoard() {
                         const expanded = expandedActivityId === activity.id;
                         const canComplete = activity.status === "done";
                         const statusColor =
-                          TASK_STATUS_COLORS[activity.status] || TASK_STATUS_COLORS.waiting;
+                          statusColors[activity.status] || statusColors.waiting;
                         const assignees = (activity.assigneeIds || [])
                           .map((id) => board.members.find((m) => m.id === id))
                           .filter(Boolean) as TeamMember[];
@@ -1735,21 +1820,21 @@ export function TasksBoard() {
                                   <div className="flex flex-wrap items-center gap-2">
                                     <TaskSemaphore color={statusColor.bg} />
                                     <input
-                                      aria-label="Título de la actividad"
+                                      aria-label={t.common.title}
                                       defaultValue={str(activity.title)}
                                       key={`activity-title-${activity.id}-${activity.updatedAt}`}
                                       onBlur={(e) => {
                                         const title = e.target.value.trim();
                                         if (!title) {
                                           e.target.value = activity.title;
-                                          toast.error("El título de la actividad no puede quedar vacío");
+                                          toast.error(t.tasks.toast.titleRequired);
                                           return;
                                         }
                                         if (title !== activity.title) {
                                           updateActivity(
                                             activity.id,
                                             { title },
-                                            "Actividad actualizada",
+                                            t.common.saved,
                                           );
                                         }
                                       }}
@@ -1766,7 +1851,7 @@ export function TasksBoard() {
                                     </span>
                                     {activity.visibility === "private" ? (
                                       <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-[#1e293b] text-white">
-                                        Privada
+                                        {t.common.private}
                                       </span>
                                     ) : null}
                                     {assignees.length > 0 ? (
@@ -1793,7 +1878,7 @@ export function TasksBoard() {
                                   <div className="flex flex-wrap gap-4">
                                     <label className="space-y-1 text-sm text-[color:var(--muted)]">
                                       <span className="block text-[10px] font-semibold uppercase">
-                                        Estado de la actividad
+                                        {t.tasks.statusActivity}
                                       </span>
                                       <select
                                         value={str(activity.status) || "waiting"}
@@ -1807,7 +1892,7 @@ export function TasksBoard() {
                                           STATUS_STYLES[activity.status] || STATUS_STYLES.waiting
                                         }`}
                                       >
-                                        {TASK_STATUSES.map((item) => (
+                                        {taskStatuses.map((item) => (
                                           <option key={item.value} value={item.value}>
                                             {item.label}
                                           </option>
@@ -1816,7 +1901,7 @@ export function TasksBoard() {
                                     </label>
                                     <label className="space-y-1 text-sm text-[color:var(--muted)]">
                                       <span className="block text-[10px] font-semibold uppercase">
-                                        Inicio
+                                        {t.common.start}
                                       </span>
                                       <input
                                         type="date"
@@ -1829,23 +1914,54 @@ export function TasksBoard() {
                                     </label>
                                     <label className="space-y-1 text-sm text-[color:var(--muted)]">
                                       <span className="block text-[10px] font-semibold uppercase">
-                                        Fin
+                                        {t.common.end}
                                       </span>
                                       <input
                                         type="date"
                                         value={str(activity.finishedDate)}
                                         onChange={(e) =>
-                                          updateActivity(activity.id, {
-                                            finishedDate: e.target.value,
-                                          })
+                                          requestFinishedDateChange(
+                                            activity.id,
+                                            e.target.value,
+                                          )
                                         }
                                         className="border border-[color:var(--line)] bg-white px-2 py-1.5 text-sm text-[color:var(--ink)]"
                                       />
                                     </label>
+                                    {(activity.dateExtensions || []).length > 0 ? (
+                                      <div className="space-y-2 text-sm text-[color:var(--muted)] md:col-span-2">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <span className="block text-[10px] font-semibold uppercase">
+                                            {t.tasks.dateExtensionsHistory}
+                                          </span>
+                                          <span className="rounded-full bg-[#fff1f4] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--accent)]">
+                                            {formatAdmin(t.tasks.dateExtensionsCount, {
+                                              count: (activity.dateExtensions || []).length,
+                                            })}
+                                          </span>
+                                        </div>
+                                        <ul className="space-y-2 border border-[color:var(--line)] bg-[color:var(--mist)]/30 p-3 text-xs">
+                                          {(activity.dateExtensions || []).map((entry) => (
+                                            <li key={entry.id} className="space-y-1">
+                                              <p className="font-semibold text-[color:var(--ink)]">
+                                                {formatAdmin(t.tasks.dateExtensionFromTo, {
+                                                  from: formatShortDate(entry.previousDate),
+                                                  to: formatShortDate(entry.newDate),
+                                                })}
+                                              </p>
+                                              <p>{entry.reason}</p>
+                                              <p className="text-[10px] text-[color:var(--muted)]">
+                                                {new Date(entry.createdAt).toLocaleString()}
+                                              </p>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    ) : null}
                                     <div className="space-y-1 text-sm text-[color:var(--muted)] md:col-span-2">
                                       <div className="flex flex-wrap items-center justify-between gap-2">
                                         <span className="block text-[10px] font-semibold uppercase">
-                                          Quién la hace
+                                          {t.tasks.whoDoesIt}
                                         </span>
                                         <button
                                           type="button"
@@ -1857,8 +1973,8 @@ export function TasksBoard() {
                                           className="text-[11px] font-semibold text-[color:var(--accent)]"
                                         >
                                           {editingAssigneesActivityId === activity.id
-                                            ? "Listo"
-                                            : "Agregar o quitar"}
+                                            ? t.common.confirm
+                                            : `${t.common.add} / ${t.common.remove}`}
                                         </button>
                                       </div>
                                       {assignees.length === 0 ? (
@@ -1889,9 +2005,9 @@ export function TasksBoard() {
                                                     )
                                                   }
                                                   className="text-[11px] font-semibold text-[color:var(--accent)]"
-                                                  title="Quitar de la actividad"
+                                                  title={t.common.remove}
                                                 >
-                                                  Quitar
+                                                  {t.common.remove}
                                                 </button>
                                               ) : null}
                                             </div>
@@ -1950,7 +2066,7 @@ export function TasksBoard() {
 
                                   <div>
                                     <div className="mb-1 flex justify-between text-xs font-semibold">
-                                      <span className="text-[color:var(--muted)]">Progreso</span>
+                                      <span className="text-[color:var(--muted)]">{t.common.progress}</span>
                                       <span>{progress}%</span>
                                     </div>
                                     <div className="h-2 bg-[color:var(--mist)]">
@@ -2029,7 +2145,7 @@ export function TasksBoard() {
                                         }
                                         className="inline-flex items-center gap-1.5 bg-[#25D366] px-3 py-2 text-xs font-semibold text-white"
                                       >
-                                        Compartir por WhatsApp
+                                        {t.tasks.shareWhatsapp}
                                       </button>
                                     </div>
                                   )}
@@ -2051,7 +2167,7 @@ export function TasksBoard() {
                                         : "cursor-not-allowed border border-[color:var(--line)] text-[color:var(--muted)] opacity-50"
                                     }`}
                                   >
-                                    URLs de entrega
+                                    {t.tasks.deliveryUrls}
                                   </button>
                                   <button
                                     type="button"
@@ -2062,7 +2178,7 @@ export function TasksBoard() {
                                     }
                                     className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
                                   >
-                                    Notas ({(activity.notes || []).length})
+                                    {t.tasks.notes} ({(activity.notes || []).length})
                                   </button>
                                   <button
                                     type="button"
@@ -2075,7 +2191,7 @@ export function TasksBoard() {
                                     }}
                                     className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
                                   >
-                                    Avisar revisión
+                                    {t.tasks.notifyReview}
                                   </button>
                                   {(activity.reviewMessages || []).length > 0 && (
                                     <button
@@ -2089,7 +2205,7 @@ export function TasksBoard() {
                                       }
                                       className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
                                     >
-                                      Historial ({(activity.reviewMessages || []).length})
+                                      {t.tasks.reviewMessages} ({(activity.reviewMessages || []).length})
                                     </button>
                                   )}
                                   <button
@@ -2100,15 +2216,15 @@ export function TasksBoard() {
                                     className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
                                   >
                                     {activity.tasks.length
-                                      ? `Tareas (${activity.tasks.length})`
-                                      : "Agregar tareas"}
+                                      ? `${t.tasks.tasksSection} (${activity.tasks.length})`
+                                      : `${t.common.add} ${t.tasks.tasksSection.toLowerCase()}`}
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => removeActivity(activity.id)}
                                     className="text-xs font-semibold text-[color:var(--accent)]"
                                   >
-                                    Eliminar
+                                    {t.common.delete}
                                   </button>
                                 </div>
                               </div>
@@ -2116,7 +2232,7 @@ export function TasksBoard() {
 
                             {notesOpenId === activity.id && (
                               <div className="border-t border-[color:var(--line)] p-4">
-                                <h4 className="text-sm font-bold">Notas de la actividad</h4>
+                                <h4 className="text-sm font-bold">{t.tasks.notes}</h4>
                                 <p className="mt-1 text-xs text-[color:var(--muted)]">
                                   Registra pendientes u observaciones. Cada nota guarda la fecha
                                   en que se escribió.
@@ -2125,7 +2241,7 @@ export function TasksBoard() {
                                 <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                                   <textarea
                                     rows={2}
-                                    placeholder="Escribe una nota..."
+                                    placeholder={t.tasks.notePlaceholder}
                                     value={noteDrafts[activity.id] || ""}
                                     onChange={(e) =>
                                       setNoteDrafts((prev) => ({
@@ -2140,7 +2256,7 @@ export function TasksBoard() {
                                     onClick={() => addNote(activity.id)}
                                     className="shrink-0 bg-[color:var(--accent)] px-4 py-2 text-xs font-semibold text-white"
                                   >
-                                    Agregar nota
+                                    {t.tasks.addNote}
                                   </button>
                                 </div>
 
@@ -2169,7 +2285,7 @@ export function TasksBoard() {
                                             onClick={() => removeNote(activity.id, note.id)}
                                             className="shrink-0 text-xs font-semibold text-[color:var(--accent)]"
                                           >
-                                            Quitar
+                                            {t.common.remove}
                                           </button>
                                         </div>
                                       </li>
@@ -2181,7 +2297,7 @@ export function TasksBoard() {
 
                             {reviewHistoryOpenId === activity.id && (
                               <div className="border-t border-[color:var(--line)] p-4">
-                                <h4 className="text-sm font-bold">Historial de revisión</h4>
+                                <h4 className="text-sm font-bold">{t.tasks.reviewMessages}</h4>
                                 <p className="mt-1 text-xs text-[color:var(--muted)]">
                                   Mensajes enviados o copiados para pedir revisión al equipo.
                                 </p>
@@ -2226,10 +2342,9 @@ export function TasksBoard() {
 
                             {expanded && (
                               <div className="border-t border-[color:var(--line)] p-4">
-                                <h4 className="text-sm font-bold">Tareas</h4>
+                                <h4 className="text-sm font-bold">{t.tasks.tasksSection}</h4>
                                 <p className="mt-1 text-xs text-[color:var(--muted)]">
-                                  Cada tarea puede tener subtareas con su propio estado y
-                                  URL. Arrastra el ícono ⋮⋮ para reordenar.
+                                  {t.tasks.tasksSectionHint}
                                 </p>
                                 <ul className="mt-3 space-y-3">
                                   {activity.tasks.map((task) => {
@@ -2284,7 +2399,7 @@ export function TasksBoard() {
                                                 if (!title) {
                                                   e.target.value = task.title;
                                                   toast.error(
-                                                    "El título de la tarea no puede quedar vacío",
+                                                    t.tasks.toast.taskTitleRequired,
                                                   );
                                                   return;
                                                 }
@@ -2293,7 +2408,7 @@ export function TasksBoard() {
                                                     activity.id,
                                                     task.id,
                                                     { title },
-                                                    "Tarea actualizada",
+                                                    t.tasks.toast.taskUpdated,
                                                   );
                                                 }
                                               }}
@@ -2306,7 +2421,7 @@ export function TasksBoard() {
                                             </div>
                                             <div className="flex shrink-0 flex-wrap items-center gap-2">
                                               <select
-                                                aria-label="Estado de la tarea"
+                                                aria-label={t.tasks.statusTask}
                                                 value={str(task.status) || "waiting"}
                                                 onChange={(e) =>
                                                   setTaskStatus(
@@ -2320,7 +2435,7 @@ export function TasksBoard() {
                                                   STATUS_STYLES.waiting
                                                 }`}
                                               >
-                                                {TASK_STATUSES.map((item) => (
+                                                {taskStatuses.map((item) => (
                                                   <option key={item.value} value={item.value}>
                                                     {item.label}
                                                   </option>
@@ -2336,8 +2451,8 @@ export function TasksBoard() {
                                                 className="border border-[color:var(--line)] bg-white px-2 py-1.5 text-xs font-semibold"
                                               >
                                                 {task.subtasks.length
-                                                  ? `Subtareas (${task.subtasks.length})`
-                                                  : "Subtareas"}
+                                                  ? `${t.tasks.subtasks} (${task.subtasks.length})`
+                                                  : t.tasks.subtasks}
                                               </button>
                                               <button
                                                 type="button"
@@ -2346,13 +2461,13 @@ export function TasksBoard() {
                                                 }
                                                 className="text-xs font-semibold text-[color:var(--accent)]"
                                               >
-                                                Quitar
+                                                {t.common.remove}
                                               </button>
                                             </div>
                                           </div>
                                           <input
                                             type="url"
-                                            placeholder="URL de la tarea (opcional)"
+                                            placeholder={t.tasks.taskUrl}
                                             value={str(task.url)}
                                             onChange={(e) =>
                                               updateTaskFields(activity.id, task.id, {
@@ -2376,7 +2491,7 @@ export function TasksBoard() {
                                         {taskExpanded && (
                                           <div className="border-t border-[color:var(--line)] bg-white p-3">
                                             <h5 className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted)]">
-                                              Subtareas
+                                              {t.tasks.subtasks}
                                             </h5>
                                             <ul className="mt-2 space-y-2">
                                               {task.subtasks.map((subtask) => {
@@ -2453,7 +2568,7 @@ export function TasksBoard() {
                                                         if (!title) {
                                                           e.target.value = subtask.title;
                                                           toast.error(
-                                                            "El título de la subtarea no puede quedar vacío",
+                                                            t.tasks.toast.subtaskTitleRequired,
                                                           );
                                                           return;
                                                         }
@@ -2463,7 +2578,7 @@ export function TasksBoard() {
                                                             task.id,
                                                             subtask.id,
                                                             { title },
-                                                            "Subtarea actualizada",
+                                                            t.tasks.toast.subtaskUpdated,
                                                           );
                                                         }
                                                       }}
@@ -2476,7 +2591,7 @@ export function TasksBoard() {
                                                     </div>
                                                     <div className="flex shrink-0 items-center gap-2">
                                                       <select
-                                                        aria-label="Estado de la subtarea"
+                                                        aria-label={t.tasks.statusSubtask}
                                                         value={str(subtask.status) || "waiting"}
                                                         onChange={(e) =>
                                                           updateSubtask(
@@ -2494,7 +2609,7 @@ export function TasksBoard() {
                                                           STATUS_STYLES.waiting
                                                         }`}
                                                       >
-                                                        {TASK_STATUSES.map((item) => (
+                                                        {taskStatuses.map((item) => (
                                                           <option
                                                             key={item.value}
                                                             value={item.value}
@@ -2514,13 +2629,13 @@ export function TasksBoard() {
                                                         }
                                                         className="text-xs font-semibold text-[color:var(--accent)]"
                                                       >
-                                                        Quitar
+                                                        {t.common.remove}
                                                       </button>
                                                     </div>
                                                   </div>
                                                   <input
                                                     type="url"
-                                                    placeholder="URL de la subtarea (opcional)"
+                                                    placeholder={t.tasks.subtaskUrl}
                                                     value={str(subtask.url)}
                                                     onChange={(e) =>
                                                       updateSubtask(
@@ -2558,7 +2673,7 @@ export function TasksBoard() {
                                                     },
                                                   }))
                                                 }
-                                                placeholder="Nueva subtarea..."
+                                                placeholder={t.tasks.newSubtask}
                                                 className="border border-[color:var(--line)] px-3 py-2 text-sm"
                                                 onKeyDown={(e) => {
                                                   if (e.key === "Enter") {
@@ -2579,7 +2694,7 @@ export function TasksBoard() {
                                                     },
                                                   }))
                                                 }
-                                                placeholder="URL (opcional)"
+                                                placeholder={t.common.urlOptional}
                                                 className="border border-[color:var(--line)] px-3 py-2 text-sm"
                                                 onKeyDown={(e) => {
                                                   if (e.key === "Enter") {
@@ -2595,7 +2710,7 @@ export function TasksBoard() {
                                                 }
                                                 className="bg-[color:var(--accent)] px-4 py-2 text-sm font-semibold text-white"
                                               >
-                                                Agregar
+                                                {t.common.add}
                                               </button>
                                             </div>
                                           </div>
@@ -2616,7 +2731,7 @@ export function TasksBoard() {
                                         },
                                       }))
                                     }
-                                    placeholder="Nueva tarea..."
+                                    placeholder={t.tasks.newTask}
                                     className="border border-[color:var(--line)] px-3 py-2 text-sm"
                                     onKeyDown={(e) => {
                                       if (e.key === "Enter") {
@@ -2637,7 +2752,7 @@ export function TasksBoard() {
                                         },
                                       }))
                                     }
-                                    placeholder="URL (opcional)"
+                                    placeholder={t.common.urlOptional}
                                     className="border border-[color:var(--line)] px-3 py-2 text-sm"
                                     onKeyDown={(e) => {
                                       if (e.key === "Enter") {
@@ -2651,7 +2766,7 @@ export function TasksBoard() {
                                     onClick={() => addTask(activity.id)}
                                     className="bg-[color:var(--accent)] px-4 py-2 text-sm font-semibold text-white"
                                   >
-                                    Agregar
+                                    {t.common.add}
                                   </button>
                                 </div>
                               </div>
@@ -2662,7 +2777,7 @@ export function TasksBoard() {
   }
 
   if (loading) {
-    return <div className="p-10 text-sm text-[color:var(--muted)]">Cargando actividades...</div>;
+    return <div className="p-10 text-sm text-[color:var(--muted)]">{t.tasks.loading}</div>;
   }
 
   return (
@@ -2671,29 +2786,30 @@ export function TasksBoard() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-4 md:px-8">
           <div>
             <p className="font-[family-name:var(--font-display)] text-lg font-bold text-[color:var(--accent)]">
-              Seguimiento de actividades
+              {t.tasks.pageTitle}
             </p>
             <p className="text-xs text-[color:var(--muted)]">
-              {saving ? "Guardando..." : statusMsg || "Equipo y avance"}
+              {saving ? t.common.saving : statusMsg || t.tasks.pageSubtitle}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <AdminLanguageSwitcher />
             <Link href="/admin" className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold">
-              Panel
+              {t.common.panel}
             </Link>
             <button
               type="button"
               onClick={() => setAssistantOpen(true)}
               className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
             >
-              Asistente guiado
+              {t.common.guidedAssistant}
             </button>
             <button
               type="button"
               onClick={() => void logout()}
               className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
             >
-              Salir
+              {t.common.logout}
             </button>
           </div>
         </div>
@@ -2708,7 +2824,7 @@ export function TasksBoard() {
               tab === "tasks" ? "bg-[color:var(--accent)] text-white" : ""
             }`}
           >
-            Actividades
+            {t.tasks.tabActivities}
           </button>
           <button
             type="button"
@@ -2717,7 +2833,7 @@ export function TasksBoard() {
               tab === "team" ? "bg-[color:var(--accent)] text-white" : ""
             }`}
           >
-            Equipo
+            {t.tasks.tabTeam}
           </button>
         </div>
 
@@ -2726,7 +2842,7 @@ export function TasksBoard() {
             <form onSubmit={(e) => void saveMember(e)} className="h-fit space-y-3 border border-[color:var(--line)] bg-white p-5">
               <div className="flex items-start justify-between gap-3">
                 <h2 className="font-[family-name:var(--font-display)] text-xl font-bold">
-                  {editingMemberId ? "Editar integrante" : "Nuevo integrante"}
+                  {editingMemberId ? t.tasks.editMember : t.tasks.newMember}
                 </h2>
                 {editingMemberId && (
                   <button
@@ -2734,7 +2850,7 @@ export function TasksBoard() {
                     onClick={cancelEditMember}
                     className="text-xs font-semibold text-[color:var(--muted)] hover:text-[color:var(--ink)]"
                   >
-                    Cancelar
+                    {t.common.cancel}
                   </button>
                 )}
               </div>
@@ -2757,7 +2873,7 @@ export function TasksBoard() {
               ) : null}
               <input
                 required
-                placeholder="Nombre"
+                placeholder={t.tasks.memberName}
                 value={str(memberForm.name)}
                 onChange={(e) =>
                   setMemberForm((p) => ({ ...emptyMemberForm, ...p, name: e.target.value }))
@@ -2765,7 +2881,7 @@ export function TasksBoard() {
                 className="w-full border border-[color:var(--line)] px-3 py-2 text-sm"
               />
               <input
-                placeholder="Cargo / rol"
+                placeholder={t.tasks.memberRole}
                 value={str(memberForm.role)}
                 onChange={(e) =>
                   setMemberForm((p) => ({ ...emptyMemberForm, ...p, role: e.target.value }))
@@ -2774,7 +2890,7 @@ export function TasksBoard() {
               />
               <input
                 type="email"
-                placeholder="Email"
+                placeholder={t.tasks.memberEmail}
                 value={str(memberForm.email)}
                 onChange={(e) =>
                   setMemberForm((p) => ({ ...emptyMemberForm, ...p, email: e.target.value }))
@@ -2806,7 +2922,7 @@ export function TasksBoard() {
                 </label>
                 <label className="block space-y-1">
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">
-                    WhatsApp / celular
+                    {t.tasks.memberPhone}
                   </span>
                   <input
                     type="tel"
@@ -2838,7 +2954,7 @@ export function TasksBoard() {
                 disabled={uploadingPhoto}
                 className="w-full bg-[color:var(--accent)] py-2.5 text-sm font-semibold text-white disabled:opacity-60"
               >
-                {editingMemberId ? "Guardar cambios" : "Agregar integrante"}
+                {editingMemberId ? t.common.saveChanges : t.tasks.addMember}
               </button>
             </form>
 
@@ -2883,14 +2999,14 @@ export function TasksBoard() {
                           onClick={() => startEditMember(member)}
                           className="text-xs font-semibold text-[color:var(--ink)]"
                         >
-                          {editingMemberId === member.id ? "Editando…" : "Editar"}
+                          {editingMemberId === member.id ? "…" : t.common.edit}
                         </button>
                         <button
                           type="button"
                           onClick={() => void removeMember(member.id)}
                           className="text-xs font-semibold text-[color:var(--accent)]"
                         >
-                          Eliminar
+                          {t.common.delete}
                         </button>
                       </div>
                     </li>
@@ -2904,10 +3020,11 @@ export function TasksBoard() {
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold text-[color:var(--ink)]">
-                  Visualizar actividades del equipo
+                  {t.tasks.visualizeTeam}
                 </h1>
                 <p className="mt-2 text-sm text-[color:var(--muted)]">
-                  Lista, Gantt, Reportes, Banco o Historial de terminadas.
+                  {t.tasks.viewList}, {t.tasks.viewGantt}, {t.tasks.viewReports}, {t.tasks.viewBank}{" "}
+                  {t.tasks.viewHistory.toLowerCase()}.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -2919,7 +3036,7 @@ export function TasksBoard() {
                       viewMode === "list" ? "bg-[color:var(--accent)] text-white" : ""
                     }`}
                   >
-                    Lista
+                    {t.tasks.viewList}
                   </button>
                   <button
                     type="button"
@@ -2928,7 +3045,7 @@ export function TasksBoard() {
                       viewMode === "gantt" ? "bg-[color:var(--accent)] text-white" : ""
                     }`}
                   >
-                    Gantt
+                    {t.tasks.viewGantt}
                   </button>
                   <button
                     type="button"
@@ -2937,7 +3054,7 @@ export function TasksBoard() {
                       viewMode === "reports" ? "bg-[color:var(--accent)] text-white" : ""
                     }`}
                   >
-                    Reportes
+                    {t.tasks.viewReports}
                   </button>
                   <button
                     type="button"
@@ -2946,7 +3063,7 @@ export function TasksBoard() {
                       viewMode === "bank" ? "bg-[color:var(--accent)] text-white" : ""
                     }`}
                   >
-                    Banco
+                    {t.tasks.viewBank}
                   </button>
                   <button
                     type="button"
@@ -2955,7 +3072,7 @@ export function TasksBoard() {
                       viewMode === "history" ? "bg-[color:var(--accent)] text-white" : ""
                     }`}
                   >
-                    Historial
+                    {t.tasks.viewHistory}
                     {completedActivities.length > 0 ? (
                       <span className="ml-1 opacity-80">({completedActivities.length})</span>
                     ) : null}
@@ -2967,7 +3084,7 @@ export function TasksBoard() {
                   disabled={board.members.length === 0}
                   className="bg-[color:var(--accent)] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
                 >
-                  + Nueva actividad
+                  {t.tasks.newActivity}
                 </button>
               </div>
             </div>
@@ -2982,7 +3099,7 @@ export function TasksBoard() {
                   onClick={() => setTab("team")}
                   className="mt-4 text-sm font-semibold text-[color:var(--accent)]"
                 >
-                  Ir a Equipo
+                  {t.tasks.tabTeam}
                 </button>
               </div>
             ) : viewMode === "reports" ? (
@@ -3010,20 +3127,14 @@ export function TasksBoard() {
                     }`}
                   >
                     <p className="font-[family-name:var(--font-display)] text-sm font-bold">
-                      Todo el equipo
+                      {t.tasks.filterAllTeam}
                     </p>
                     <div className="space-y-0.5 text-xs text-[color:var(--muted)]">
                       <p>
-                        {activeActivities.length}{" "}
-                        {activeActivities.length === 1
-                          ? "actividad activa"
-                          : "actividades activas"}
+                        {activeActivities.length} {t.tasks.filterActive}
                       </p>
                       <p>
-                        {pendingBankTotal}{" "}
-                        {pendingBankTotal === 1
-                          ? "actividad en el banco"
-                          : "actividades en el banco"}
+                        {pendingBankTotal} {t.tasks.filterInBank}
                       </p>
                     </div>
                   </button>
@@ -3050,16 +3161,10 @@ export function TasksBoard() {
                           </p>
                           <div className="space-y-0.5 text-xs text-[color:var(--muted)]">
                             <p>
-                              {activeCount}{" "}
-                              {activeCount === 1
-                                ? "actividad activa"
-                                : "actividades activas"}
+                              {activeCount} {t.tasks.filterActive}
                             </p>
                             <p>
-                              {bankCount}{" "}
-                              {bankCount === 1
-                                ? "actividad en el banco"
-                                : "actividades en el banco"}
+                              {bankCount} {t.tasks.filterInBank}
                             </p>
                           </div>
                         </div>
@@ -3071,7 +3176,7 @@ export function TasksBoard() {
                 {viewMode !== "bank" ? (
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
-                      Estado
+                      {t.common.status}
                     </span>
                   <button
                     type="button"
@@ -3082,9 +3187,9 @@ export function TasksBoard() {
                         : "border-[color:var(--line)] bg-white text-[color:var(--ink)]"
                     }`}
                   >
-                    Todos
+                    {t.tasks.filterAllStatuses}
                   </button>
-                  {TASK_STATUSES.map(({ value: status, label }) => {
+                  {taskStatuses.map(({ value: status, label }) => {
                     const active = selectedStatus === status;
                     const count = board.activities.filter((a) => {
                       const matchesMember =
@@ -3105,7 +3210,7 @@ export function TasksBoard() {
                         style={
                           active
                             ? {
-                                backgroundColor: TASK_STATUS_COLORS[status].bg,
+                                backgroundColor: statusColors[status].bg,
                               }
                             : undefined
                         }
@@ -3126,20 +3231,20 @@ export function TasksBoard() {
                   <div className="space-y-5">
                     <div className="border border-[color:var(--line)] bg-white p-5 md:p-6">
                       <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--ink)]">
-                        Banco de tareas
+                        {t.tasks.bankTitle}
                       </h2>
                       <p className="mt-1 text-sm text-[color:var(--muted)]">
-                        Anota todo lo que hay que convertir en actividades formales.
+                        {t.tasks.bankWhatToCreate}
                         {selectedMember
-                          ? ` Banco de ${selectedMember.name}.`
-                          : " Puedes agregar ideas para cualquier integrante."}
+                          ? ` ${t.tasks.bankFor}: ${selectedMember.name}.`
+                          : ""}
                       </p>
 
                       <form onSubmit={(e) => void addBankItem(e)} className="mt-5 grid gap-3">
                         {selectedMemberId === "all" ? (
                           <label className="block space-y-1">
                             <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                              Integrante
+                              {t.tasks.bankOwner}
                             </span>
                             <select
                               value={bankOwnerId}
@@ -3157,7 +3262,7 @@ export function TasksBoard() {
                         ) : null}
                         <label className="block space-y-1">
                           <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                            ¿Qué actividad hay que crear?
+                            {t.tasks.bankWhatToCreate}
                           </span>
                           <input
                             value={bankTitle}
@@ -3168,7 +3273,7 @@ export function TasksBoard() {
                         </label>
                         <label className="block space-y-1">
                           <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                            Notas / detalles (opcional)
+                            {t.tasks.bankNotes} ({t.common.optional})
                           </span>
                           <textarea
                             value={bankNotes}
@@ -3180,7 +3285,7 @@ export function TasksBoard() {
                         </label>
                         <div className="space-y-2">
                           <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                            Visibilidad
+                            {t.common.visibility}
                           </span>
                           <div className="flex gap-2">
                             <button
@@ -3192,7 +3297,7 @@ export function TasksBoard() {
                                   : "border-[color:var(--line)]"
                               }`}
                             >
-                              Pública
+                              {t.common.public}
                             </button>
                             <button
                               type="button"
@@ -3203,7 +3308,7 @@ export function TasksBoard() {
                                   : "border-[color:var(--line)]"
                               }`}
                             >
-                              Privada
+                              {t.common.private}
                             </button>
                           </div>
                           {bankVisibility === "private" ? (
@@ -3218,19 +3323,19 @@ export function TasksBoard() {
                           disabled={saving}
                           className="justify-self-start bg-[color:var(--accent)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
                         >
-                          + Agregar al banco
+                          {t.tasks.bankAdd}
                         </button>
                       </form>
                     </div>
 
                     <div className="space-y-3">
                       <h3 className="text-sm font-bold text-[color:var(--ink)]">
-                        Pendientes ({pendingBank.length})
+                        {t.tasks.bankPending} ({pendingBank.length})
                       </h3>
                       {pendingBank.length === 0 ? (
                         <div className="border border-dashed border-[color:var(--line)] bg-white p-6 text-sm text-[color:var(--muted)]">
-                          No hay ideas pendientes
-                          {selectedMember ? ` para ${selectedMember.name}` : ""}.
+                          {t.tasks.bankEmpty}
+                          {selectedMember ? ` ${t.tasks.bankEmptyFor} ${selectedMember.name}` : ""}.
                         </div>
                       ) : (
                         pendingBank.map((item) => {
@@ -3268,7 +3373,7 @@ export function TasksBoard() {
                                 <div className="space-y-3">
                                   <label className="block space-y-1">
                                     <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                                      Título
+                                      {t.common.title}
                                     </span>
                                     <input
                                       value={editingBankTitle}
@@ -3278,7 +3383,7 @@ export function TasksBoard() {
                                   </label>
                                   <label className="block space-y-1">
                                     <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                                      Notas
+                                      {t.tasks.bankNotes}
                                     </span>
                                     <textarea
                                       value={editingBankNotes}
@@ -3294,14 +3399,14 @@ export function TasksBoard() {
                                       disabled={saving}
                                       className="bg-[color:var(--accent)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                                     >
-                                      Guardar
+                                      {t.common.save}
                                     </button>
                                     <button
                                       type="button"
                                       onClick={cancelEditBankItem}
                                       className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
                                     >
-                                      Cancelar
+                                      {t.common.cancel}
                                     </button>
                                   </div>
                                 </div>
@@ -3314,7 +3419,7 @@ export function TasksBoard() {
                                       </p>
                                       {item.visibility === "private" ? (
                                         <span className="mt-1 inline-block px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-[#1e293b] text-white">
-                                          Privada
+                                          {t.common.private}
                                         </span>
                                       ) : null}
                                       {!isViewing && item.notes ? (
@@ -3323,7 +3428,7 @@ export function TasksBoard() {
                                         </p>
                                       ) : null}
                                       <p className="mt-2 text-xs text-[color:var(--muted)]">
-                                        {owner ? `Para: ${owner.name}` : "Sin dueño"}
+                                        {owner ? `${t.tasks.bankFor}: ${owner.name}` : t.tasks.bankNoOwner}
                                       </p>
                                     </div>
                                     <div className="flex flex-wrap gap-2">
@@ -3335,28 +3440,28 @@ export function TasksBoard() {
                                         }}
                                         className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
                                       >
-                                        {isViewing ? "Ocultar" : "Ver"}
+                                        {isViewing ? t.common.hide : t.common.view}
                                       </button>
                                       <button
                                         type="button"
                                         onClick={() => startEditBankItem(item)}
                                         className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
                                       >
-                                        Editar
+                                        {t.common.edit}
                                       </button>
                                       <button
                                         type="button"
                                         onClick={() => startConvertBankItem(item)}
                                         className="bg-[color:var(--accent)] px-3 py-1.5 text-xs font-semibold text-white"
                                       >
-                                        Crear actividad
+                                        {t.tasks.createFromBank}
                                       </button>
                                       <button
                                         type="button"
                                         onClick={() => void removeBankItem(item.id)}
                                         className="border border-[color:var(--accent)] px-3 py-1.5 text-xs font-semibold text-[color:var(--accent)]"
                                       >
-                                        Eliminar
+                                        {t.common.delete}
                                       </button>
                                     </div>
                                   </div>
@@ -3368,14 +3473,14 @@ export function TasksBoard() {
                                         </p>
                                       ) : (
                                         <p className="text-[color:var(--muted)]">
-                                          Sin notas adicionales.
+                                          {t.common.noNotes}
                                         </p>
                                       )}
                                       <p className="mt-3 text-xs text-[color:var(--muted)]">
-                                        Creada:{" "}
+                                        {t.common.created}:{" "}
                                         {new Date(item.createdAt).toLocaleDateString("es-CO")}
                                         {item.updatedAt !== item.createdAt
-                                          ? ` · Actualizada: ${new Date(item.updatedAt).toLocaleDateString("es-CO")}`
+                                          ? ` · ${t.common.updated}: ${new Date(item.updatedAt).toLocaleDateString("es-CO")}`
                                           : ""}
                                       </p>
                                     </div>
@@ -3391,7 +3496,7 @@ export function TasksBoard() {
                     {convertedBank.length > 0 ? (
                       <div className="space-y-3">
                         <h3 className="text-sm font-bold text-[color:var(--ink)]">
-                          Ya convertidas ({convertedBank.length})
+                          {t.tasks.bankConverted} ({convertedBank.length})
                         </h3>
                         {convertedBank.map((item) =>
                           item.visibility === "private" &&
@@ -3416,7 +3521,7 @@ export function TasksBoard() {
                             className="border border-[color:var(--line)] bg-[color:var(--mist)] px-4 py-3"
                           >
                             <p className="text-sm font-semibold text-[color:var(--ink)] line-through opacity-70">
-                              {item.title || "Idea privada"}
+                              {item.title || t.tasks.privateIdea}
                             </p>
                             <p className="text-xs text-[color:var(--muted)]">
                               Convertida en actividad
@@ -3530,12 +3635,12 @@ export function TasksBoard() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="font-[family-name:var(--font-display)] text-xl font-bold">
-                  {convertingBankId ? "Crear actividad desde el banco" : "Nueva actividad"}
+                  {convertingBankId ? t.tasks.newActivityFromBank : t.tasks.newActivityTitle}
                 </h2>
                 <p className="mt-1 text-sm text-[color:var(--muted)]">
                   {convertingBankId
-                    ? "Confirma fechas y quién la hace para convertir la idea en actividad."
-                    : "Incluye inicio y fin para el Gantt. Puedes agregar la primera tarea y subtarea."}
+                    ? t.tasks.newActivityFromBankDesc
+                    : t.tasks.newActivityDesc}
                 </p>
               </div>
               <button
@@ -3546,27 +3651,27 @@ export function TasksBoard() {
                 }}
                 className="text-sm font-semibold text-[color:var(--muted)]"
               >
-                Cerrar
+                {t.common.close}
               </button>
             </div>
 
             <label className="block space-y-1">
               <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                ¿Qué hay que lograr?
+                {t.tasks.activityGoal}
               </span>
               <input
                 required
                 autoFocus
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
-                placeholder="Ej: Lanzar el programa"
+                placeholder={t.tasks.activityGoalPlaceholder}
                 className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)]"
               />
             </label>
 
             <div className="space-y-2">
               <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                Visibilidad
+                {t.common.visibility}
               </span>
               <div className="flex gap-2">
                 <button
@@ -3578,7 +3683,7 @@ export function TasksBoard() {
                       : "border-[color:var(--line)]"
                   }`}
                 >
-                  Pública
+                  {t.common.public}
                 </button>
                 <button
                   type="button"
@@ -3589,7 +3694,7 @@ export function TasksBoard() {
                       : "border-[color:var(--line)]"
                   }`}
                 >
-                  Privada
+                  {t.common.private}
                 </button>
               </div>
               {newVisibility === "private" ? (
@@ -3597,7 +3702,7 @@ export function TasksBoard() {
                 (board.bank || []).find((item) => item.id === convertingBankId)?.visibility ===
                   "private" ? (
                   <p className="text-xs text-[color:var(--muted)]">
-                    Se conservará la misma clave privada de la idea del banco.
+                    {t.tasks.keepPrivateKey}
                   </p>
                 ) : (
                   <PrivateItemSetupFields
@@ -3610,12 +3715,12 @@ export function TasksBoard() {
 
             <div className="block space-y-1">
               <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                ¿Quién la hace?
+                {t.tasks.whoDoesIt}
               </span>
               <p className="text-xs text-[color:var(--muted)]">
-                Elige una persona o varias para formar un grupo.
+                {t.tasks.whoDoesItHint}
                 {newAssigneeIds.length > 0
-                  ? ` · ${newAssigneeIds.length} seleccionad${newAssigneeIds.length === 1 ? "a" : "as"}`
+                  ? ` · ${newAssigneeIds.length} ${t.tasks.selectedCount}`
                   : ""}
               </p>
               <div className="grid grid-cols-2 gap-2">
@@ -3642,7 +3747,7 @@ export function TasksBoard() {
 
             <label className="block space-y-1">
               <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                Fecha de inicio
+                {t.tasks.activityStart}
               </span>
               <input
                 type="date"
@@ -3659,7 +3764,7 @@ export function TasksBoard() {
 
             <label className="block space-y-1">
               <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                Fecha de fin
+                {t.tasks.activityEnd}
               </span>
               <input
                 type="date"
@@ -3673,7 +3778,7 @@ export function TasksBoard() {
 
             <label className="block space-y-1">
               <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                Primera tarea (opcional)
+                {t.tasks.firstTask}
               </span>
               <input
                 value={newFirstTask}
@@ -3687,7 +3792,7 @@ export function TasksBoard() {
               <>
                 <label className="block space-y-1">
                   <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                    Primera subtarea (opcional)
+                    {t.tasks.firstSubtask}
                   </span>
                   <input
                     value={newFirstSubtask}
@@ -3699,7 +3804,7 @@ export function TasksBoard() {
                 {newFirstSubtask.trim() ? (
                   <label className="block space-y-1">
                     <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                      URL de la subtarea (opcional)
+                      {t.tasks.subtaskUrl}
                     </span>
                     <input
                       type="url"
@@ -3718,7 +3823,7 @@ export function TasksBoard() {
               disabled={saving}
               className="w-full bg-[color:var(--accent)] py-3 text-sm font-semibold text-white disabled:opacity-50"
             >
-              Crear actividad
+              {t.tasks.createFromBank}
             </button>
           </form>
         </div>
@@ -3767,6 +3872,63 @@ export function TasksBoard() {
         onClose={() => setUnlockTarget(null)}
         onUnlocked={applyPrivateReveal}
       />
+
+      {dateExtensionModal ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="date-extension-title"
+            className="w-full max-w-lg border border-[color:var(--line)] bg-white p-5 shadow-lg sm:p-6"
+          >
+            <h2
+              id="date-extension-title"
+              className="font-[family-name:var(--font-display)] text-lg font-bold"
+            >
+              {t.tasks.dateExtensionTitle}
+            </h2>
+            <p className="mt-2 text-sm text-[color:var(--muted)]">
+              {t.tasks.dateExtensionQuestion}
+            </p>
+            <p className="mt-3 text-sm font-semibold text-[color:var(--ink)]">
+              {formatAdmin(t.tasks.dateExtensionFromTo, {
+                from: formatShortDate(dateExtensionModal.previousDate),
+                to: formatShortDate(dateExtensionModal.newDate),
+              })}
+            </p>
+            <label className="mt-4 block space-y-1 text-sm">
+              <span className="text-[10px] font-semibold uppercase text-[color:var(--muted)]">
+                {t.tasks.dateExtensionReasonLabel}
+              </span>
+              <textarea
+                value={dateExtensionReason}
+                onChange={(e) => setDateExtensionReason(e.target.value)}
+                placeholder={t.tasks.dateExtensionReasonPlaceholder}
+                rows={4}
+                className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm"
+                autoFocus
+              />
+            </label>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={cancelDateExtension}
+                className="border border-[color:var(--line)] px-4 py-2 text-sm font-semibold"
+              >
+                {t.common.cancel}
+              </button>
+              <button
+                type="button"
+                onClick={confirmDateExtension}
+                disabled={saving}
+                className="bg-[color:var(--accent)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {t.tasks.dateExtensionConfirm}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

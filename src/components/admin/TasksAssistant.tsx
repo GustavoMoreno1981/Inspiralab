@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  TASK_STATUSES,
   createId,
   deriveTaskStatusFromSubtasks,
   getActivityProgress,
@@ -20,6 +19,8 @@ import {
   validatePrivateSetup,
   type PrivateSetupValues,
 } from "@/components/admin/PrivateItemSetupFields";
+import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
+import { formatAdmin, getTaskStatuses } from "@/lib/i18n/admin";
 
 type Intent = "create" | "update" | "bank";
 
@@ -157,10 +158,6 @@ function cloneActivityTasks(tasks: Task[]): Task[] {
   }));
 }
 
-function statusLabel(status: TaskStatus) {
-  return TASK_STATUSES.find((item) => item.value === status)?.label || status;
-}
-
 function memberNames(ids: string[], members: TeamMember[]) {
   return ids
     .map((id) => members.find((member) => member.id === id)?.name)
@@ -187,6 +184,12 @@ export function TasksAssistant({
   onConvertFromBank,
   onUpdate,
 }: Props) {
+  const { t } = useAdminLanguage();
+  const a = t.assistant;
+  const taskStatuses = useMemo(() => getTaskStatuses(t), [t]);
+  const statusLabel = (status: TaskStatus) =>
+    taskStatuses.find((item) => item.value === status)?.label || status;
+
   const [intent, setIntent] = useState<Intent | null>(null);
   const [step, setStep] = useState<Step>("intent");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -271,13 +274,8 @@ export function TasksAssistant({
     setTextInput("");
     setDateStart(todayIso());
     setDateEnd(weekLaterIso());
-    setMessages([
-      msg(
-        "assistant",
-        "Hola. Te guío paso a paso para el seguimiento de actividades. ¿Qué quieres hacer?",
-      ),
-    ]);
-  }, [open, defaultAssigneeId]);
+    setMessages([msg("assistant", a.greeting)]);
+  }, [open, defaultAssigneeId, a.greeting]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -290,64 +288,54 @@ export function TasksAssistant({
   function chooseIntent(next: Intent) {
     setIntent(next);
     if (next === "create") {
-      push("user", "Crear actividad");
+      push("user", a.createActivity);
       setStep("visibility");
-      push("assistant", "¿La actividad será pública o privada?");
+      push("assistant", a.visibilityQuestion);
       return;
     }
     if (next === "bank") {
-      push("user", "Revisar banco de tareas");
+      push("user", a.reviewBank);
       setStep("pickBank");
       push(
         "assistant",
-        pendingBankItems.length
-          ? "Estas son las ideas pendientes del banco. Elige una para convertirla en actividad."
-          : "No hay ideas pendientes en el banco. Agrega ideas desde la vista Banco de tareas.",
+        pendingBankItems.length ? a.bankPick : a.noBankItems,
       );
       return;
     }
-    push("user", "Actualizar avance");
+    push("user", a.updateProgress);
     setStep("pick");
     push(
       "assistant",
-      openActivities.length
-        ? "Elige la actividad que quieres actualizar."
-        : "No hay actividades abiertas para actualizar. Puedes crear una nueva.",
+      openActivities.length ? a.pickActivity : a.noOpenActivities,
     );
   }
 
   function chooseVisibility(visibility: ItemVisibility) {
     setCreateDraft((prev) => ({ ...prev, visibility }));
-    push("user", visibility === "private" ? "Privada" : "Pública");
+    push("user", visibility === "private" ? a.private : a.public);
     if (visibility === "private") {
       setPrivateSetup(EMPTY_PRIVATE_SETUP);
       setStep("privateSetup");
-      push(
-        "assistant",
-        "Configura tu clave de 4 dígitos y las tres preguntas de seguridad.",
-      );
+      push("assistant", a.privateSetup);
       return;
     }
     if (intent === "bank") {
       setStep("dates");
-      push(
-        "assistant",
-        "Indica la fecha de inicio y la fecha de fin de la actividad.",
-      );
+      push("assistant", a.datesQuestion);
       return;
     }
     setStep("title");
-    push("assistant", "¿Cuál es el título de la actividad?");
+    push("assistant", a.titleQuestion);
     setTextInput("");
   }
 
   function submitPrivateSetup() {
-    const validation = validatePrivateSetup(privateSetup);
+    const validation = validatePrivateSetup(privateSetup, t.private);
     if (validation) {
       push("assistant", validation);
       return;
     }
-    push("user", "Clave y preguntas configuradas");
+    push("user", a.privateSetupDone);
     if (intent === "bank") {
       const start = dateStart || todayIso();
       const end = dateEnd || weekLaterIso(start);
@@ -357,14 +345,11 @@ export function TasksAssistant({
         finishedDate: end,
       }));
       setStep("dates");
-      push(
-        "assistant",
-        "Indica la fecha de inicio y la fecha de fin de la actividad.",
-      );
+      push("assistant", a.datesQuestion);
       return;
     }
     setStep("title");
-    push("assistant", "¿Cuál es el título de la actividad?");
+    push("assistant", a.titleQuestion);
     setTextInput("");
   }
 
@@ -391,17 +376,14 @@ export function TasksAssistant({
     });
     setDateStart(start);
     setDateEnd(end);
-    push("user", item.title.trim() || "Idea privada del banco");
+    push("user", item.title.trim() || a.privateBankIdea);
     if (inheritsPrivate) {
       setStep("dates");
-      push(
-        "assistant",
-        "Convertiremos esta idea privada en actividad. Indica la fecha de inicio y fin.",
-      );
+      push("assistant", a.privateBankConvert);
       return;
     }
     setStep("visibility");
-    push("assistant", "¿La actividad será pública o privada?");
+    push("assistant", a.visibilityQuestion);
   }
 
   function submitTitle() {
@@ -411,19 +393,13 @@ export function TasksAssistant({
     push("user", title);
     setTextInput("");
     setStep("dates");
-    push(
-      "assistant",
-      "Indica la fecha de inicio y la fecha de fin de la actividad.",
-    );
+    push("assistant", a.datesQuestion);
   }
 
   function submitDates() {
     if (!dateStart || !dateEnd) return;
     if (dateEnd < dateStart) {
-      push(
-        "assistant",
-        "La fecha de fin no puede ser anterior al inicio. Ajústalas e intenta de nuevo.",
-      );
+      push("assistant", a.datesInvalid);
       return;
     }
     setCreateDraft((prev) => ({
@@ -433,7 +409,7 @@ export function TasksAssistant({
     }));
     push("user", `${formatDate(dateStart)} → ${formatDate(dateEnd)}`);
     setStep("assignees");
-    push("assistant", "¿A quién se asigna? Selecciona al menos una persona.");
+    push("assistant", a.assigneesQuestion);
   }
 
   function toggleAssignee(memberId: string) {
@@ -450,21 +426,15 @@ export function TasksAssistant({
 
   function submitAssignees() {
     if (!createDraft.assigneeIds.length) return;
-    const names = memberNames(createDraft.assigneeIds, members) || "Sin nombres";
+    const names = memberNames(createDraft.assigneeIds, members) || "—";
     push("user", names);
     if (intent === "bank") {
       setStep("confirm");
-      push(
-        "assistant",
-        "Revisa el resumen y confirma para convertir la idea del banco en actividad.",
-      );
+      push("assistant", a.confirmConvert);
       return;
     }
     setStep("firstTask");
-    push(
-      "assistant",
-      "¿Quieres agregar una primera tarea? Puedes escribirla o saltar este paso.",
-    );
+    push("assistant", a.firstTaskQuestion);
     setTextInput("");
   }
 
@@ -472,18 +442,15 @@ export function TasksAssistant({
     const value = skip ? "" : textInput.trim();
     if (!skip && !value) return;
     setCreateDraft((prev) => ({ ...prev, firstTask: value }));
-    push("user", skip ? "Sin tarea inicial" : value);
+    push("user", skip ? a.noInitialTask : value);
     setTextInput("");
     if (!value) {
       setStep("confirm");
-      push("assistant", "Listo. Revisa el resumen y confirma para crear la actividad.");
+      push("assistant", a.confirmCreate);
       return;
     }
     setStep("firstSubtask");
-    push(
-      "assistant",
-      "¿Quieres agregar una subtarea (opcional)? También puedes indicar un enlace.",
-    );
+    push("assistant", a.firstSubtaskQuestion);
   }
 
   function submitFirstSubtask(skip = false) {
@@ -493,10 +460,10 @@ export function TasksAssistant({
       firstSubtask: value,
       firstSubtaskUrl: skip ? "" : prev.firstSubtaskUrl,
     }));
-    push("user", skip ? "Sin subtarea" : value || "Sin subtarea");
+    push("user", skip ? t.tasks.noSubtasks : value || t.tasks.noSubtasks);
     setTextInput("");
     setStep("confirm");
-    push("assistant", "Listo. Revisa el resumen y confirma para crear la actividad.");
+    push("assistant", a.confirmCreate);
   }
 
   function pickActivity(activity: Activity) {
@@ -508,10 +475,7 @@ export function TasksAssistant({
     });
     push("user", activity.title);
     setStep("status");
-    push(
-      "assistant",
-      `Ahora está “${statusLabel(activity.status)}”. ¿A qué estado pasas la actividad?`,
-    );
+    push("assistant", a.statusQuestion);
   }
 
   function updateTaskStatus(taskId: string, status: TaskStatus) {
@@ -560,29 +524,24 @@ export function TasksAssistant({
     setStep("tasks");
     push(
       "assistant",
-      updateDraft.tasks.length
-        ? "Revisa las tareas y subtareas. Cambia el estado de cada una si hace falta y continúa."
-        : "Esta actividad no tiene tareas. Puedes continuar con la nota de seguimiento.",
+      updateDraft.tasks.length ? a.tasksReview : a.noTasksInActivity,
     );
   }
 
   function submitTasks() {
-    push("user", "Tareas revisadas");
+    push("user", a.tasksReviewed);
     setStep("note");
-    push(
-      "assistant",
-      "¿Quieres dejar una nota de seguimiento? Puedes escribirla o saltar.",
-    );
+    push("assistant", a.noteQuestion);
     setTextInput("");
   }
 
   function submitNote(skip = false) {
     const value = skip ? "" : textInput.trim();
     setUpdateDraft((prev) => ({ ...prev, note: value }));
-    push("user", skip ? "Sin nota" : value || "Sin nota");
+    push("user", skip ? a.noNote : value || a.noNote);
     setTextInput("");
     setStep("confirm");
-    push("assistant", "Revisa el resumen y confirma para guardar el avance.");
+    push("assistant", a.confirmUpdate);
   }
 
   function buildActivityFromCreateDraft(): Activity | null {
@@ -649,7 +608,7 @@ export function TasksAssistant({
 
       let setup: PrivateSetupValues | undefined;
       if (needsPrivateSetupOnSave()) {
-        const validation = validatePrivateSetup(privateSetup);
+        const validation = validatePrivateSetup(privateSetup, t.private);
         if (validation) {
           push("assistant", validation);
           return;
@@ -685,10 +644,10 @@ export function TasksAssistant({
         <div className="flex items-start justify-between gap-3 border-b border-[color:var(--line)] px-4 py-3">
           <div>
             <h2 className="font-[family-name:var(--font-display)] text-lg font-bold text-[color:var(--ink)]">
-              Asistente guiado
+              {a.title}
             </h2>
             <p className="mt-0.5 text-xs text-[color:var(--muted)]">
-              Paso {stepNumber} de {totalSteps} · Sin IA, solo preguntas
+              {formatAdmin(a.stepOf, { step: stepNumber, total: totalSteps })}
             </p>
           </div>
           <button
@@ -696,7 +655,7 @@ export function TasksAssistant({
             onClick={onClose}
             className="border border-[color:var(--line)] px-2 py-1 text-xs font-semibold"
           >
-            Cerrar
+            {a.close}
           </button>
         </div>
 
@@ -729,13 +688,13 @@ export function TasksAssistant({
             <div className="border border-[color:var(--line)] bg-white p-3 text-sm">
               {intent === "bank" ? (
                 <p className="text-xs font-semibold uppercase text-[color:var(--accent)]">
-                  Desde banco de tareas
+                  {a.fromBank}
                 </p>
               ) : null}
               <p className="font-semibold text-[color:var(--ink)]">{createDraft.title}</p>
               <p className="mt-1 text-xs text-[color:var(--muted)]">
-                Visibilidad:{" "}
-                {createDraft.visibility === "private" ? "Privada" : "Pública"}
+                {a.visibilityLabel}:{" "}
+                {createDraft.visibility === "private" ? a.private : a.public}
               </p>
               {intent === "bank" && selectedBankItem?.notes ? (
                 <p className="mt-1 text-xs text-[color:var(--muted)]">
@@ -746,22 +705,22 @@ export function TasksAssistant({
                 {formatDate(createDraft.date)} → {formatDate(createDraft.finishedDate)}
               </p>
               <p className="mt-1 text-xs text-[color:var(--muted)]">
-                Asignados: {memberNames(createDraft.assigneeIds, members) || "—"}
+                {a.assignedTo}: {memberNames(createDraft.assigneeIds, members) || "—"}
               </p>
               {intent === "create" ? (
                 createDraft.firstTask ? (
                   <p className="mt-2 text-xs text-[color:var(--muted)]">
-                    Tarea: {createDraft.firstTask}
+                    {createDraft.firstTask}
                     {createDraft.firstSubtask
-                      ? ` · Subtarea: ${createDraft.firstSubtask}`
+                      ? ` · ${createDraft.firstSubtask}`
                       : ""}
                   </p>
                 ) : (
-                  <p className="mt-2 text-xs text-[color:var(--muted)]">Sin tarea inicial</p>
+                  <p className="mt-2 text-xs text-[color:var(--muted)]">{a.noInitialTask}</p>
                 )
               ) : (
                 <p className="mt-2 text-xs text-[color:var(--muted)]">
-                  Se marcará como convertida en el banco.
+                  {a.willMarkConverted}
                 </p>
               )}
             </div>
@@ -770,18 +729,18 @@ export function TasksAssistant({
           {step === "tasks" && intent === "update" ? (
             <div className="border border-[color:var(--line)] bg-white p-3 text-sm">
               <p className="font-semibold text-[color:var(--ink)]">
-                Actividad → {updateDraft.status ? statusLabel(updateDraft.status) : "—"}
+                {a.activityTo} {updateDraft.status ? statusLabel(updateDraft.status) : "—"}
               </p>
               {updateDraft.tasks.length === 0 ? (
                 <p className="mt-2 text-xs text-[color:var(--muted)]">
-                  Sin tareas en esta actividad.
+                  {a.noTasks}
                 </p>
               ) : (
                 <ul className="mt-2 space-y-2 text-xs text-[color:var(--muted)]">
                   {updateDraft.tasks.map((task) => (
                     <li key={task.id}>
                       <span className="font-semibold text-[color:var(--ink)]">
-                        {task.title || "Tarea sin título"}
+                        {task.title || a.taskUntitled}
                       </span>
                       <span
                         className={`ml-2 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${
@@ -794,7 +753,7 @@ export function TasksAssistant({
                         <ul className="mt-1 space-y-1 border-l-2 border-[color:var(--line)] pl-3">
                           {task.subtasks.map((subtask) => (
                             <li key={subtask.id}>
-                              {subtask.title || "Subtarea"}
+                              {subtask.title || a.subtaskUntitled}
                               <span
                                 className={`ml-2 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${
                                   STATUS_STYLES[subtask.status] ||
@@ -820,7 +779,7 @@ export function TasksAssistant({
                 {selectedActivity.title}
               </p>
               <p className="mt-1 text-xs text-[color:var(--muted)]">
-                Actividad: {statusLabel(selectedActivity.status)} →{" "}
+                {t.common.status}: {statusLabel(selectedActivity.status)} →{" "}
                 <strong>
                   {updateDraft.status ? statusLabel(updateDraft.status) : "—"}
                 </strong>
@@ -835,7 +794,7 @@ export function TasksAssistant({
                     return (
                       <li key={task.id}>
                         <span className="font-semibold text-[color:var(--ink)]">
-                          {task.title || "Tarea"}
+                          {task.title || a.taskUntitled}
                         </span>
                         {taskChanged && original ? (
                           <span>
@@ -856,7 +815,7 @@ export function TasksAssistant({
                                 originalSub?.status !== subtask.status;
                               return (
                                 <li key={subtask.id}>
-                                  {subtask.title || "Subtarea"}
+                                  {subtask.title || a.subtaskUntitled}
                                   {subChanged && originalSub ? (
                                     <span>
                                       {" "}
@@ -878,10 +837,10 @@ export function TasksAssistant({
               ) : null}
               {updateDraft.note ? (
                 <p className="mt-2 text-xs text-[color:var(--muted)]">
-                  Nota: {updateDraft.note}
+                  {t.common.notes}: {updateDraft.note}
                 </p>
               ) : (
-                <p className="mt-2 text-xs text-[color:var(--muted)]">Sin nota</p>
+                <p className="mt-2 text-xs text-[color:var(--muted)]">{a.noNote}</p>
               )}
             </div>
           ) : null}
@@ -897,21 +856,21 @@ export function TasksAssistant({
                 onClick={() => chooseIntent("create")}
                 className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
               >
-                Crear actividad
+                {a.createActivityBtn}
               </button>
               <button
                 type="button"
                 onClick={() => chooseIntent("update")}
                 className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
               >
-                Actualizar avance
+                {a.updateActivityBtn}
               </button>
               <button
                 type="button"
                 onClick={() => chooseIntent("bank")}
                 className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
               >
-                Revisar banco de tareas
+                {a.reviewBankBtn}
               </button>
             </div>
           ) : null}
@@ -923,7 +882,7 @@ export function TasksAssistant({
                 onClick={() => chooseIntent("create")}
                 className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
               >
-                Crear actividad nueva
+                {a.createNew}
               </button>
             ) : (
               <ul className="max-h-52 space-y-2 overflow-y-auto">
@@ -945,7 +904,9 @@ export function TasksAssistant({
                           </span>
                         ) : null}
                         <span className="mt-0.5 block text-xs text-[color:var(--muted)]">
-                          {owner ? `Para: ${owner.name}` : "Sin dueño"}
+                          {owner
+                            ? `${t.tasks.bankFor}: ${owner.name}`
+                            : t.tasks.bankNoOwner}
                         </span>
                       </button>
                     </li>
@@ -962,14 +923,14 @@ export function TasksAssistant({
                 onClick={() => chooseVisibility("public")}
                 className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
               >
-                Pública
+                {a.public}
               </button>
               <button
                 type="button"
                 onClick={() => chooseVisibility("private")}
                 className="border border-[color:var(--accent)] bg-[#fff1f4] px-3 py-2 text-xs font-semibold text-[color:var(--accent)]"
               >
-                Privada
+                {a.private}
               </button>
             </div>
           ) : null}
@@ -982,7 +943,7 @@ export function TasksAssistant({
                 onClick={submitPrivateSetup}
                 className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
               >
-                Siguiente
+                {a.next}
               </button>
             </div>
           ) : null}
@@ -998,7 +959,7 @@ export function TasksAssistant({
                     submitTitle();
                   }
                 }}
-                placeholder="Título de la actividad"
+                placeholder={a.titlePlaceholder}
                 className="flex-1 border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
               />
               <button
@@ -1007,7 +968,7 @@ export function TasksAssistant({
                 disabled={!textInput.trim()}
                 className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
               >
-                Siguiente
+                {a.next}
               </button>
             </div>
           ) : null}
@@ -1016,7 +977,7 @@ export function TasksAssistant({
             <div className="space-y-2">
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-xs text-[color:var(--muted)]">
-                  Inicio
+                  {a.startLabel}
                   <input
                     type="date"
                     value={dateStart}
@@ -1025,7 +986,7 @@ export function TasksAssistant({
                   />
                 </label>
                 <label className="text-xs text-[color:var(--muted)]">
-                  Fin
+                  {a.endLabel}
                   <input
                     type="date"
                     value={dateEnd}
@@ -1039,7 +1000,7 @@ export function TasksAssistant({
                 onClick={submitDates}
                 className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
               >
-                Siguiente
+                {a.next}
               </button>
             </div>
           ) : null}
@@ -1048,7 +1009,7 @@ export function TasksAssistant({
             <div className="space-y-2">
               {members.length === 0 ? (
                 <p className="text-sm text-[color:var(--muted)]">
-                  No hay integrantes. Crea uno en la pestaña Equipo.
+                  {a.noMembers}
                 </p>
               ) : (
                 <ul className="max-h-40 space-y-1 overflow-y-auto">
@@ -1083,7 +1044,7 @@ export function TasksAssistant({
                 disabled={!createDraft.assigneeIds.length}
                 className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
               >
-                Siguiente
+                {a.next}
               </button>
             </div>
           ) : null}
@@ -1099,7 +1060,7 @@ export function TasksAssistant({
                     submitFirstTask(false);
                   }
                 }}
-                placeholder="Primera tarea (opcional)"
+                placeholder={a.firstTaskPlaceholder}
                 className="min-w-[12rem] flex-1 border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
               />
               <button
@@ -1107,7 +1068,7 @@ export function TasksAssistant({
                 onClick={() => submitFirstTask(true)}
                 className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
               >
-                Saltar
+                {a.skip}
               </button>
               <button
                 type="button"
@@ -1115,7 +1076,7 @@ export function TasksAssistant({
                 disabled={!textInput.trim()}
                 className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
               >
-                Siguiente
+                {a.next}
               </button>
             </div>
           ) : null}
@@ -1131,7 +1092,7 @@ export function TasksAssistant({
                     submitFirstSubtask(false);
                   }
                 }}
-                placeholder="Subtarea (opcional)"
+                placeholder={a.subtaskPlaceholder}
                 className="w-full border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
               />
               <input
@@ -1142,7 +1103,7 @@ export function TasksAssistant({
                     firstSubtaskUrl: event.target.value,
                   }))
                 }
-                placeholder="URL (opcional)"
+                placeholder={t.common.urlOptional}
                 className="w-full border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
               />
               <div className="flex flex-wrap gap-2">
@@ -1151,14 +1112,14 @@ export function TasksAssistant({
                   onClick={() => submitFirstSubtask(true)}
                   className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
                 >
-                  Saltar
+                  {a.skip}
                 </button>
                 <button
                   type="button"
                   onClick={() => submitFirstSubtask(false)}
                   className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
                 >
-                  Siguiente
+                  {a.next}
                 </button>
               </div>
             </div>
@@ -1171,7 +1132,7 @@ export function TasksAssistant({
                 onClick={() => chooseIntent("create")}
                 className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
               >
-                Crear actividad
+                {a.createActivityBtn}
               </button>
             ) : (
               <ul className="max-h-48 space-y-2 overflow-y-auto">
@@ -1200,7 +1161,7 @@ export function TasksAssistant({
 
           {step === "status" ? (
             <div className="flex flex-wrap gap-2">
-              {TASK_STATUSES.map((item) => (
+              {taskStatuses.map((item) => (
                 <button
                   key={item.value}
                   type="button"
@@ -1217,7 +1178,7 @@ export function TasksAssistant({
             <div className="space-y-3">
               {updateDraft.tasks.length === 0 ? (
                 <p className="text-sm text-[color:var(--muted)]">
-                  No hay tareas en esta actividad.
+                  {a.noTasksInActivity}
                 </p>
               ) : (
                 <ul className="max-h-52 space-y-3 overflow-y-auto">
@@ -1228,7 +1189,7 @@ export function TasksAssistant({
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-sm font-semibold text-[color:var(--ink)]">
-                          {task.title || "Tarea sin título"}
+                          {task.title || a.taskUntitled}
                         </p>
                         <select
                           value={task.status}
@@ -1242,7 +1203,7 @@ export function TasksAssistant({
                             STATUS_STYLES[task.status] || STATUS_STYLES.waiting
                           }`}
                         >
-                          {TASK_STATUSES.map((item) => (
+                          {taskStatuses.map((item) => (
                             <option key={item.value} value={item.value}>
                               {item.label}
                             </option>
@@ -1257,7 +1218,7 @@ export function TasksAssistant({
                               className="flex flex-wrap items-center justify-between gap-2 pl-2"
                             >
                               <p className="text-xs text-[color:var(--ink)]">
-                                {subtask.title || "Subtarea"}
+                                {subtask.title || a.subtaskUntitled}
                               </p>
                               <select
                                 value={subtask.status}
@@ -1273,7 +1234,7 @@ export function TasksAssistant({
                                   STATUS_STYLES.waiting
                                 }`}
                               >
-                                {TASK_STATUSES.map((item) => (
+                                {taskStatuses.map((item) => (
                                   <option key={item.value} value={item.value}>
                                     {item.label}
                                   </option>
@@ -1284,7 +1245,7 @@ export function TasksAssistant({
                         </ul>
                       ) : (
                         <p className="mt-2 text-[11px] text-[color:var(--muted)]">
-                          Sin subtareas
+                          {t.tasks.noSubtasks}
                         </p>
                       )}
                     </li>
@@ -1296,7 +1257,7 @@ export function TasksAssistant({
                 onClick={submitTasks}
                 className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
               >
-                Siguiente
+                {a.next}
               </button>
             </div>
           ) : null}
@@ -1312,7 +1273,7 @@ export function TasksAssistant({
                     submitNote(false);
                   }
                 }}
-                placeholder="Nota (opcional)"
+                placeholder={a.notePlaceholder}
                 className="min-w-[12rem] flex-1 border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
               />
               <button
@@ -1320,14 +1281,14 @@ export function TasksAssistant({
                 onClick={() => submitNote(true)}
                 className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
               >
-                Saltar
+                {a.skip}
               </button>
               <button
                 type="button"
                 onClick={() => submitNote(false)}
                 className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
               >
-                Siguiente
+                {a.next}
               </button>
             </div>
           ) : null}
@@ -1339,7 +1300,7 @@ export function TasksAssistant({
                 onClick={onClose}
                 className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
               >
-                Cancelar
+                {a.cancel}
               </button>
               <button
                 type="button"
@@ -1348,12 +1309,12 @@ export function TasksAssistant({
                 className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
               >
                 {saving
-                  ? "Guardando..."
+                  ? a.saving
                   : intent === "create"
-                    ? "Confirmar y crear"
+                    ? a.confirmCreateBtn
                     : intent === "bank"
-                      ? "Confirmar y convertir"
-                      : "Confirmar y guardar"}
+                      ? a.confirmConvertBtn
+                      : a.confirmSaveBtn}
               </button>
             </div>
           ) : null}

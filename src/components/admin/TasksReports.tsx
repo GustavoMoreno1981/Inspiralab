@@ -187,6 +187,48 @@ type ReportLine = {
   deliverableUrl: string;
 };
 
+type ExtensionReportRow = {
+  activityTitle: string;
+  memberNames: string;
+  extensionCount: number;
+  entries: Array<{
+    previousDate: string;
+    newDate: string;
+    reason: string;
+    createdAt: string;
+  }>;
+};
+
+function buildDateExtensionsHtml(rows: ExtensionReportRow[]) {
+  if (!rows.length) {
+    return `<p style="color:#666;font-size:12px;">No hay prórrogas de fecha de fin en el alcance seleccionado.</p>`;
+  }
+
+  const total = rows.reduce((sum, row) => sum + row.extensionCount, 0);
+
+  const body = rows
+    .map((row) => {
+      const entries = row.entries
+        .map(
+          (entry) => `<li style="margin-bottom:6px;">
+            <strong>${escapeHtml(formatShort(entry.previousDate))} → ${escapeHtml(formatShort(entry.newDate))}</strong>
+            <div>${escapeHtml(entry.reason)}</div>
+            <div style="color:#666;font-size:10px;">${escapeHtml(new Date(entry.createdAt).toLocaleString("es-CO"))}</div>
+          </li>`,
+        )
+        .join("");
+
+      return `<div style="margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #eee;">
+        <p style="margin:0 0 4px;font-weight:700;">${escapeHtml(row.activityTitle)}</p>
+        <p style="margin:0 0 6px;color:#666;font-size:11px;">${escapeHtml(row.memberNames)} · ${row.extensionCount} prórroga${row.extensionCount === 1 ? "" : "s"}</p>
+        <ul style="margin:0;padding-left:18px;font-size:11px;">${entries}</ul>
+      </div>`;
+    })
+    .join("");
+
+  return `<p style="font-size:12px;color:#555;margin:0 0 10px;">Total de prórrogas registradas: <strong>${total}</strong></p>${body}`;
+}
+
 export function TasksReports({ members, activities }: Props) {
   const [scope, setScope] = useState<Scope>("all");
   const [reportDay, setReportDay] = useState(todayIso);
@@ -228,6 +270,39 @@ export function TasksReports({ members, activities }: Props) {
     return out;
   }, [reportMembers, activities, reportDay]);
 
+  const extensionRows = useMemo(() => {
+    const out: ExtensionReportRow[] = [];
+
+    for (const activity of scopedActivities) {
+      const extensions = activity.dateExtensions || [];
+      if (!extensions.length) continue;
+
+      const memberNames = (activity.assigneeIds || [])
+        .map((id) => members.find((member) => member.id === id)?.name)
+        .filter(Boolean)
+        .join(", ");
+
+      out.push({
+        activityTitle: activity.title,
+        memberNames: memberNames || "—",
+        extensionCount: extensions.length,
+        entries: extensions.map((entry) => ({
+          previousDate: entry.previousDate,
+          newDate: entry.newDate,
+          reason: entry.reason,
+          createdAt: entry.createdAt,
+        })),
+      });
+    }
+
+    return out.sort((a, b) => b.extensionCount - a.extensionCount);
+  }, [scopedActivities, members]);
+
+  const totalExtensions = useMemo(
+    () => extensionRows.reduce((sum, row) => sum + row.extensionCount, 0),
+    [extensionRows],
+  );
+
   function downloadPdf() {
     const greeting = `Hola ${recipient.trim() || "Saul"}, en este día ${formatDate(reportDay)}.`;
 
@@ -248,6 +323,7 @@ export function TasksReports({ members, activities }: Props) {
       : `<tr><td colspan="7" style="text-align:center;color:#666;">Hoy no hay integrantes trabajando en actividades para esta fecha.</td></tr>`;
 
     const ganttHtml = buildGanttHtml(reportMembers, scopedActivities);
+    const extensionsHtml = buildDateExtensionsHtml(extensionRows);
 
     const html = `<!DOCTYPE html>
 <html lang="es">
@@ -288,6 +364,9 @@ export function TasksReports({ members, activities }: Props) {
     </thead>
     <tbody>${tableRows}</tbody>
   </table>
+
+  <h2>Prórrogas de fecha de fin</h2>
+  ${extensionsHtml}
 
   <h2>Gantt — cómo van las actividades</h2>
   ${ganttHtml}
@@ -462,6 +541,53 @@ export function TasksReports({ members, activities }: Props) {
               )}
             </tbody>
           </table>
+        </div>
+
+        <div>
+          <h2 className="mb-3 font-[family-name:var(--font-display)] text-lg font-bold">
+            Prórrogas de fecha de fin
+          </h2>
+          {extensionRows.length === 0 ? (
+            <p className="text-sm text-[color:var(--muted)]">
+              No hay prórrogas registradas en el alcance seleccionado.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-[color:var(--muted)]">
+                Total de prórrogas registradas:{" "}
+                <span className="font-semibold text-[color:var(--ink)]">{totalExtensions}</span>
+              </p>
+              {extensionRows.map((row) => (
+                <div
+                  key={row.activityTitle}
+                  className="border border-[color:var(--line)] bg-[color:var(--mist)]/20 p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-semibold text-[color:var(--ink)]">{row.activityTitle}</p>
+                      <p className="text-xs text-[color:var(--muted)]">{row.memberNames}</p>
+                    </div>
+                    <span className="rounded-full bg-[#fff1f4] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--accent)]">
+                      {row.extensionCount} prórroga{row.extensionCount === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <ul className="mt-3 space-y-3 text-sm">
+                    {row.entries.map((entry, index) => (
+                      <li key={`${row.activityTitle}-${index}`} className="border-t border-[color:var(--line)] pt-3 first:border-t-0 first:pt-0">
+                        <p className="font-semibold">
+                          {formatShort(entry.previousDate)} → {formatShort(entry.newDate)}
+                        </p>
+                        <p className="mt-1 text-[color:var(--ink)]">{entry.reason}</p>
+                        <p className="mt-1 text-[10px] text-[color:var(--muted)]">
+                          {new Date(entry.createdAt).toLocaleString("es-CO")}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div>

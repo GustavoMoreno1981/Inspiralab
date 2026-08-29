@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AdminFooter } from "@/components/admin/AdminFooter";
+import { AdminLanguageSwitcher } from "@/components/admin/AdminLanguageSwitcher";
 import { AdminOpsPanel } from "@/components/admin/AdminOpsPanel";
 import { AdminPasswordsModal } from "@/components/admin/AdminPasswords";
+import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 import type { AdminModule, SessionRole } from "@/lib/auth/session";
 
 function SettingsIcon() {
@@ -126,6 +128,7 @@ type MeResponse = {
 
 export function AdminDashboard() {
   const router = useRouter();
+  const { t } = useAdminLanguage();
   const [me, setMe] = useState<MeResponse | null>(null);
   const [passwordsOpen, setPasswordsOpen] = useState(false);
 
@@ -162,7 +165,7 @@ export function AdminDashboard() {
     modules.includes("cronograma") ||
     modules.includes("talleres") ||
     modules.includes("sitio");
-  const roleLabel = me?.role === "admin" ? "Administrador" : "Equipo";
+  const roleLabel = me?.role === "admin" ? t.common.administrator : t.common.team;
   const isAdmin = me?.role === "admin";
 
   return (
@@ -174,24 +177,25 @@ export function AdminDashboard() {
               Inspiralab
             </p>
             <p className="text-sm text-[color:var(--muted)]">
-              Panel de administración
+              {t.common.adminPanel}
               {me?.name ? ` · ${me.name}` : ""} · {roleLabel}
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <AdminLanguageSwitcher />
             <Link
               href="/"
               className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold text-[color:var(--ink)]"
             >
-              Ver sitio
+              {t.common.viewSite}
             </Link>
             {isAdmin && (
               <button
                 type="button"
                 onClick={() => setPasswordsOpen(true)}
                 className="inline-flex items-center justify-center border border-[color:var(--line)] px-2.5 py-2 text-[color:var(--ink)] hover:border-[color:var(--accent)] hover:text-[color:var(--accent)]"
-                aria-label="Configurar contraseñas"
-                title="Configurar contraseñas"
+                aria-label={t.common.configurePasswords}
+                title={t.common.configurePasswords}
               >
                 <SettingsIcon />
               </button>
@@ -201,7 +205,7 @@ export function AdminDashboard() {
               onClick={() => void logout()}
               className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
             >
-              Salir
+              {t.common.logout}
             </button>
           </div>
         </div>
@@ -209,12 +213,10 @@ export function AdminDashboard() {
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-5 py-12 pb-16 md:px-8 md:py-16">
         <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold text-[color:var(--ink)] md:text-4xl">
-          ¿Qué quieres hacer?
+          {t.dashboard.whatToDo}
         </h1>
         <p className="mt-3 max-w-xl text-base text-[color:var(--muted)]">
-          {canAccounting
-            ? "Tienes acceso completo a los módulos del panel."
-            : "Tu acceso incluye sitio, talleres, cronograma, seguimiento y tareas."}
+          {canAccounting ? t.dashboard.fullAccess : t.dashboard.limitedAccess}
         </p>
 
         <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -228,10 +230,10 @@ export function AdminDashboard() {
               </span>
               <div>
                 <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--ink)]">
-                  Editar sitio web
+                  {t.dashboard.editSite}
                 </h2>
                 <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)]">
-                  Textos, galería, video del hero y más.
+                  {t.dashboard.editSiteDesc}
                 </p>
               </div>
             </Link>
@@ -247,10 +249,10 @@ export function AdminDashboard() {
               </span>
               <div>
                 <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--ink)]">
-                  Talleres
+                  {t.dashboard.workshops}
                 </h2>
                 <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)]">
-                  Crear y organizar talleres por las tres flores; se publican en la home.
+                  {t.dashboard.workshopsDesc}
                 </p>
               </div>
             </Link>
@@ -266,10 +268,10 @@ export function AdminDashboard() {
               </span>
               <div>
                 <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--ink)]">
-                  Cronograma
+                  {t.dashboard.schedule}
                 </h2>
                 <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)]">
-                  Programar talleres en el calendario: fecha, hora, lugar y coach.
+                  {t.dashboard.scheduleDesc}
                 </p>
               </div>
             </Link>
@@ -285,10 +287,10 @@ export function AdminDashboard() {
               </span>
               <div>
                 <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--ink)]">
-                  Seguimiento de talleres
+                  {t.dashboard.followUp}
                 </h2>
                 <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)]">
-                  Encuesta de evaluación que se activa al vencer la fecha del taller.
+                  {t.dashboard.followUpDesc}
                 </p>
               </div>
             </Link>
@@ -304,10 +306,10 @@ export function AdminDashboard() {
               </span>
               <div>
                 <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--ink)]">
-                  Seguimiento de tareas
+                  {t.dashboard.tasks}
                 </h2>
                 <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)]">
-                  Equipo, estados, subtareas y barra de progreso.
+                  {t.dashboard.tasksDesc}
                 </p>
               </div>
             </Link>
@@ -323,10 +325,10 @@ export function AdminDashboard() {
               </span>
               <div>
                 <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--ink)]">
-                  Contabilidad
+                  {t.dashboard.accounting}
                 </h2>
                 <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)]">
-                  Ingresos, egresos y control financiero.
+                  {t.dashboard.accountingDesc}
                 </p>
               </div>
             </Link>

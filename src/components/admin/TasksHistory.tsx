@@ -8,6 +8,7 @@ import {
   type Activity,
   type TeamMember,
 } from "@/lib/tasks/types";
+import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 
 const MONTHS = [
   { value: 0, label: "Todos los meses" },
@@ -117,6 +118,7 @@ export function TasksHistory({
   selectedMemberId: initialMemberId = "all",
   children,
 }: Props) {
+  const { t } = useAdminLanguage();
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState<number | "all">("all");
   const [month, setMonth] = useState(0);
@@ -287,7 +289,7 @@ export function TasksHistory({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--ink)]">
-              Historial de actividades terminadas
+              {t.history.pageTitle}
             </h2>
             <p className="mt-1 text-sm text-[color:var(--muted)]">
               Actividades al 100% de avance. Puedes ver, editar o eliminar cada
@@ -301,7 +303,7 @@ export function TasksHistory({
             disabled={filtered.length === 0}
             className="bg-[color:var(--accent)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
           >
-            Exportar PDF
+            {t.history.exportPdf}
           </button>
         </div>
 
@@ -315,7 +317,7 @@ export function TasksHistory({
                 : "border-[color:var(--line)] bg-white"
             }`}
           >
-            Todo el equipo
+            {t.tasks.filterAllTeam}
           </button>
           {members.map((member) => (
             <button

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Activity, TaskBankItem } from "@/lib/tasks/types";
 import type { PrivateItemType } from "@/lib/tasks/private-auth";
+import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 import {
   EMPTY_PRIVATE_SETUP,
   PrivateItemSetupFields,
@@ -31,6 +32,8 @@ export function PrivateItemUnlockModal({
   onClose,
   onUnlocked,
 }: Props) {
+  const { t } = useAdminLanguage();
+  const p = t.private;
   const [mode, setMode] = useState<"unlock" | "recover">("unlock");
   const [pin, setPin] = useState("");
   const [recover, setRecover] = useState(EMPTY_PRIVATE_SETUP);
@@ -53,7 +56,7 @@ export function PrivateItemUnlockModal({
         | (PrivateUnlockPayload & { error?: string; ok?: boolean })
         | null;
       if (!res.ok || !data?.ok) {
-        setError(data?.error || "Clave incorrecta");
+        setError(data?.error || p.wrongPin);
         return;
       }
       onUnlocked({
@@ -71,7 +74,7 @@ export function PrivateItemUnlockModal({
 
   async function handleRecover(event: React.FormEvent) {
     event.preventDefault();
-    const validation = validatePrivateSetup(recover);
+    const validation = validatePrivateSetup(recover, p);
     if (validation) {
       setError(validation);
       return;
@@ -95,7 +98,7 @@ export function PrivateItemUnlockModal({
         | (PrivateUnlockPayload & { error?: string; ok?: boolean })
         | null;
       if (!res.ok || !data?.ok) {
-        setError(data?.error || "No se pudo recuperar la clave");
+        setError(data?.error || p.recoverFailed);
         return;
       }
       onUnlocked({
@@ -117,18 +120,16 @@ export function PrivateItemUnlockModal({
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="font-[family-name:var(--font-display)] text-lg font-bold">
-              Contenido privado
+              {p.contentPrivate}
             </h2>
-            <p className="mt-1 text-sm text-[color:var(--muted)]">
-              Ingresa tu clave para ver el título y la descripción.
-            </p>
+            <p className="mt-1 text-sm text-[color:var(--muted)]">{p.unlockDesc}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="text-sm font-semibold text-[color:var(--muted)]"
           >
-            Cerrar
+            {t.common.close}
           </button>
         </div>
 
@@ -136,7 +137,7 @@ export function PrivateItemUnlockModal({
           <form onSubmit={(e) => void handleUnlock(e)} className="mt-4 space-y-3">
             <label className="block space-y-1">
               <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
-                Clave de 4 dígitos
+                {p.pinLabel}
               </span>
               <input
                 autoFocus
@@ -148,13 +149,15 @@ export function PrivateItemUnlockModal({
                 className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm tracking-[0.3em]"
               />
             </label>
-            {error ? <p className="text-xs font-semibold text-[color:var(--accent)]">{error}</p> : null}
+            {error ? (
+              <p className="text-xs font-semibold text-[color:var(--accent)]">{error}</p>
+            ) : null}
             <button
               type="submit"
               disabled={loading || pin.length !== 4}
               className="w-full bg-[color:var(--accent)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
             >
-              {loading ? "Verificando..." : "Desbloquear"}
+              {loading ? p.verifying : p.unlock}
             </button>
             <button
               type="button"
@@ -164,19 +167,21 @@ export function PrivateItemUnlockModal({
               }}
               className="w-full text-xs font-semibold text-[color:var(--accent)]"
             >
-              Olvidé mi clave — recuperar con preguntas
+              {p.recover}
             </button>
           </form>
         ) : (
           <form onSubmit={(e) => void handleRecover(e)} className="mt-4 space-y-3">
             <PrivateItemSetupFields values={recover} onChange={setRecover} />
-            {error ? <p className="text-xs font-semibold text-[color:var(--accent)]">{error}</p> : null}
+            {error ? (
+              <p className="text-xs font-semibold text-[color:var(--accent)]">{error}</p>
+            ) : null}
             <button
               type="submit"
               disabled={loading}
               className="w-full bg-[color:var(--accent)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
             >
-              {loading ? "Guardando..." : "Crear nueva clave"}
+              {loading ? t.common.saving : p.recoverSave}
             </button>
             <button
               type="button"
@@ -186,7 +191,7 @@ export function PrivateItemUnlockModal({
               }}
               className="w-full text-xs font-semibold text-[color:var(--muted)]"
             >
-              Volver a ingresar clave
+              {p.recoverBack}
             </button>
           </form>
         )}

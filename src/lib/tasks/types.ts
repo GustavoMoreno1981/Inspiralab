@@ -95,6 +95,15 @@ export type TaskNote = {
 /** Respuesta a una solicitud de revisión (como opciones de encuesta en WhatsApp). */
 export type ReviewResponseValue = "yes" | "no" | "pending" | "call";
 
+/** Registro de prórroga al mover la fecha de fin hacia adelante. */
+export type ActivityDateExtension = {
+  id: string;
+  previousDate: string;
+  newDate: string;
+  reason: string;
+  createdAt: string;
+};
+
 /** Mensaje de revisión enviado al equipo (historial + WhatsApp). */
 export type ReviewMessage = {
   id: string;
@@ -123,6 +132,8 @@ export type Activity = {
   tasks: Task[];
   notes: TaskNote[];
   reviewMessages: ReviewMessage[];
+  /** Historial de prórrogas de la fecha de fin. */
+  dateExtensions?: ActivityDateExtension[];
   createdAt: string;
   updatedAt: string;
   /** Pública (equipo) o privada (solo quien la creó). */

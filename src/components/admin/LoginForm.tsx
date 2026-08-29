@@ -3,8 +3,9 @@
 import { useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { AdminLanguageSwitcher } from "@/components/admin/AdminLanguageSwitcher";
+import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 
-/** visible=true → ojo abierto (texto visible); visible=false → ojo tachado (asteriscos). */
 function EyeIcon({ visible }: { visible: boolean }) {
   if (visible) {
     return (
@@ -35,6 +36,7 @@ function EyeIcon({ visible }: { visible: boolean }) {
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { t } = useAdminLanguage();
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(true);
   const [error, setError] = useState("");
@@ -54,7 +56,7 @@ export function LoginForm() {
     setLoading(false);
 
     if (!res.ok) {
-      setError("Contraseña incorrecta");
+      setError(t.login.wrongPassword);
       return;
     }
 
@@ -65,20 +67,21 @@ export function LoginForm() {
 
   return (
     <div className="mx-auto flex min-h-[100svh] max-w-md flex-col justify-center px-5 py-16">
+      <div className="mb-6 flex justify-end">
+        <AdminLanguageSwitcher />
+      </div>
       <p className="mb-8 text-center font-[family-name:var(--font-display)] text-2xl font-bold text-[color:var(--accent)]">
         Inspiralab
       </p>
       <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold text-[color:var(--ink)]">
-        Inicio de sesión
+        {t.login.title}
       </h1>
-      <p className="mt-2 text-sm text-[color:var(--muted)]">
-        Ingresa solo con la contraseña de tu rol (administrador o equipo).
-      </p>
+      <p className="mt-2 text-sm text-[color:var(--muted)]">{t.login.description}</p>
 
       <form onSubmit={onSubmit} className="mt-8 space-y-4">
         <div>
           <label htmlFor="password" className="mb-2 block text-sm text-[color:var(--muted)]">
-            Contraseña
+            {t.login.password}
           </label>
           <div className="relative">
             <input
@@ -98,9 +101,9 @@ export function LoginForm() {
                   ? "text-[color:var(--accent)]"
                   : "text-[color:var(--muted)] hover:text-[color:var(--ink)]"
               }`}
-              aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+              aria-label={showPassword ? t.login.hidePassword : t.login.showPassword}
               aria-pressed={showPassword}
-              title={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+              title={showPassword ? t.login.hidePassword : t.login.showPassword}
             >
               <EyeIcon visible={showPassword} />
             </button>
@@ -112,7 +115,7 @@ export function LoginForm() {
           disabled={loading}
           className="w-full bg-[color:var(--accent)] px-6 py-3.5 text-sm font-semibold text-white disabled:opacity-60"
         >
-          {loading ? "Entrando..." : "Entrar"}
+          {loading ? t.login.entering : t.login.enter}
         </button>
       </form>
 
@@ -121,7 +124,7 @@ export function LoginForm() {
           href="/"
           className="inline-flex border border-[color:var(--line)] bg-white px-4 py-2.5 text-xs font-semibold text-[color:var(--ink)] hover:border-[color:var(--accent)] hover:text-[color:var(--accent)]"
         >
-          Ver sitio web
+          {t.login.viewWebsite}
         </Link>
       </p>
     </div>

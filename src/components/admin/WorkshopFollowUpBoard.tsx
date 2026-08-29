@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AdminFooter } from "@/components/admin/AdminFooter";
+import { AdminLanguageSwitcher } from "@/components/admin/AdminLanguageSwitcher";
 import { FollowUpAssistant } from "@/components/admin/FollowUpAssistant";
+import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 import { ScoreFieldInput } from "@/components/admin/ScoreFieldInput";
 import { BudgetFieldInput } from "@/components/admin/BudgetFieldInput";
 import { ListFieldInput } from "@/components/admin/ListFieldInput";
@@ -212,6 +214,7 @@ function exportEvaluationDocument({
 export function WorkshopFollowUpBoard() {
   const router = useRouter();
   const toast = useToast();
+  const { t } = useAdminLanguage();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [board, setBoard] = useState<FollowUpBoard>(emptyBoard());
@@ -412,9 +415,7 @@ export function WorkshopFollowUpBoard() {
 
   if (loading) {
     return (
-      <div className="p-10 text-sm text-[color:var(--muted)]">
-        Cargando seguimiento…
-      </div>
+      <div className="p-10 text-sm text-[color:var(--muted)]">{t.followup.loading}</div>
     );
   }
 
@@ -424,31 +425,30 @@ export function WorkshopFollowUpBoard() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-4 md:px-8">
           <div>
             <p className="font-[family-name:var(--font-display)] text-lg font-bold text-[color:var(--accent)]">
-              Seguimiento de talleres
+              {t.followup.pageTitle}
             </p>
-            <p className="text-xs text-[color:var(--muted)]">
-              Evaluación posterior al taller · cualquier integrante del equipo
-            </p>
+            <p className="text-xs text-[color:var(--muted)]">{t.followup.pageSubtitle}</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <AdminLanguageSwitcher />
             <Link
               href="/admin"
               className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
             >
-              Panel
+              {t.common.panel}
             </Link>
             <Link
               href="/admin/cronograma"
               className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
             >
-              Cronograma
+              {t.dashboard.schedule}
             </Link>
             <button
               type="button"
               onClick={() => setAssistantOpen(true)}
               className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
             >
-              Asistente guiado
+              {t.common.guidedAssistant}
             </button>
           </div>
         </div>

@@ -1,5 +1,8 @@
 "use client";
 
+import type { AdminDictionary } from "@/lib/i18n/admin/types";
+import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
+
 export type PrivateSetupValues = {
   pin: string;
   pinConfirm: string;
@@ -21,25 +24,35 @@ type Props = {
   onChange: (values: PrivateSetupValues) => void;
 };
 
+export function validatePrivateSetup(
+  values: PrivateSetupValues,
+  p: AdminDictionary["private"],
+): string | null {
+  if (!/^\d{4}$/.test(values.pin)) return p.pin4digits;
+  if (values.pin !== values.pinConfirm) return p.pinsMismatch;
+  if (!values.motherName.trim()) return p.motherRequired;
+  if (!values.petName.trim()) return p.petRequired;
+  if (!/^\d{4}$/.test(values.birthYear)) return p.birthYearRequired;
+  return null;
+}
+
 export function PrivateItemSetupFields({ values, onChange }: Props) {
+  const { t } = useAdminLanguage();
+  const p = t.private;
+
   function patch(partial: Partial<PrivateSetupValues>) {
     onChange({ ...values, ...partial });
   }
 
   return (
     <div className="space-y-3 border border-dashed border-[color:var(--line)] bg-[color:var(--mist)] p-3">
-      <p className="text-xs font-semibold text-[color:var(--ink)]">
-        Protección privada
-      </p>
-      <p className="text-xs text-[color:var(--muted)]">
-        Solo tú verás este contenido. Crea una clave de 4 dígitos y tres
-        respuestas para recuperarla si la olvidas.
-      </p>
+      <p className="text-xs font-semibold text-[color:var(--ink)]">{p.protection}</p>
+      <p className="text-xs text-[color:var(--muted)]">{p.protectionDesc}</p>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block space-y-1">
           <span className="text-[10px] font-semibold uppercase text-[color:var(--muted)]">
-            Clave (4 dígitos)
+            {p.pin}
           </span>
           <input
             type="password"
@@ -53,7 +66,7 @@ export function PrivateItemSetupFields({ values, onChange }: Props) {
         </label>
         <label className="block space-y-1">
           <span className="text-[10px] font-semibold uppercase text-[color:var(--muted)]">
-            Confirmar clave
+            {p.confirmPin}
           </span>
           <input
             type="password"
@@ -71,7 +84,7 @@ export function PrivateItemSetupFields({ values, onChange }: Props) {
 
       <label className="block space-y-1">
         <span className="text-[10px] font-semibold uppercase text-[color:var(--muted)]">
-          ¿Cuál es el nombre de tu madre?
+          {p.motherName}
         </span>
         <input
           value={values.motherName}
@@ -82,7 +95,7 @@ export function PrivateItemSetupFields({ values, onChange }: Props) {
 
       <label className="block space-y-1">
         <span className="text-[10px] font-semibold uppercase text-[color:var(--muted)]">
-          ¿Cómo se llama tu mascota?
+          {p.petName}
         </span>
         <input
           value={values.petName}
@@ -93,26 +106,17 @@ export function PrivateItemSetupFields({ values, onChange }: Props) {
 
       <label className="block space-y-1">
         <span className="text-[10px] font-semibold uppercase text-[color:var(--muted)]">
-          ¿En qué año naciste?
+          {p.birthYear}
         </span>
         <input
           inputMode="numeric"
           maxLength={4}
           value={values.birthYear}
           onChange={(e) => patch({ birthYear: e.target.value.replace(/\D/g, "").slice(0, 4) })}
-          placeholder="1990"
+          placeholder={p.birthYearPlaceholder}
           className="w-full border border-[color:var(--line)] px-3 py-2 text-sm"
         />
       </label>
     </div>
   );
-}
-
-export function validatePrivateSetup(values: PrivateSetupValues): string | null {
-  if (!/^\d{4}$/.test(values.pin)) return "La clave debe tener 4 dígitos";
-  if (values.pin !== values.pinConfirm) return "Las claves no coinciden";
-  if (!values.motherName.trim()) return "Indica el nombre de tu madre";
-  if (!values.petName.trim()) return "Indica el nombre de tu mascota";
-  if (!/^\d{4}$/.test(values.birthYear)) return "Indica el año de nacimiento (4 dígitos)";
-  return null;
 }

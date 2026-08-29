@@ -9,6 +9,8 @@ import { UnsavedLeaveDialog } from "@/components/admin/UnsavedLeaveDialog";
 import { useUnsavedChanges } from "@/components/admin/useUnsavedChanges";
 import { useToast } from "@/components/admin/AdminToast";
 import type { Dictionary, Locale, SiteContent } from "@/lib/i18n/dictionaries";
+import { AdminLanguageSwitcher } from "@/components/admin/AdminLanguageSwitcher";
+import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 
 function Field({
   label,
@@ -68,6 +70,7 @@ function updateLocale(
 
 export function AdminEditor() {
   const router = useRouter();
+  const { t: ui } = useAdminLanguage();
   const [locale, setLocale] = useState<Locale>("es");
   const [content, setContent] = useState<SiteContent | null>(null);
   const [status, setStatus] = useState("");
@@ -170,11 +173,12 @@ export function AdminEditor() {
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-5 py-4 md:px-8">
           <div>
             <p className="font-[family-name:var(--font-display)] text-lg font-bold text-[color:var(--accent)]">
-              Editar sitio web
+              {ui.siteEditor.pageTitle}
             </p>
-            <p className="text-xs text-[color:var(--muted)]">Textos, media y contenido del sitio</p>
+            <p className="text-xs text-[color:var(--muted)]">{ui.siteEditor.pageSubtitle}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <AdminLanguageSwitcher />
             <div className="flex border border-[color:var(--line)] p-1 text-xs font-semibold">
               <button
                 type="button"
@@ -196,14 +200,14 @@ export function AdminEditor() {
               onClick={() => requestNavigate("/admin")}
               className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
             >
-              Panel
+              {ui.common.panel}
             </button>
             <button
               type="button"
               onClick={() => requestNavigate("/")}
               className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
             >
-              Ver sitio
+              {ui.common.viewSite}
             </button>
             <button
               type="button"
@@ -213,14 +217,14 @@ export function AdminEditor() {
                 isDirty ? "ring-2 ring-[#f59e0b] ring-offset-2" : ""
               }`}
             >
-              {saving ? "Guardando..." : isDirty ? "Guardar cambios" : "Guardar"}
+              {saving ? ui.common.saving : isDirty ? ui.common.saveChanges : ui.common.save}
             </button>
             <button
               type="button"
               onClick={requestLogout}
               className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
             >
-              Salir
+              {ui.common.logout}
             </button>
           </div>
         </div>

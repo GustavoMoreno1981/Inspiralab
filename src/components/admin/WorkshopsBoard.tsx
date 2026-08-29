@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AdminFooter } from "@/components/admin/AdminFooter";
+import { AdminLanguageSwitcher } from "@/components/admin/AdminLanguageSwitcher";
+import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 import { UnsavedChangesReminder } from "@/components/admin/UnsavedChangesReminder";
 import { UnsavedLeaveDialog } from "@/components/admin/UnsavedLeaveDialog";
 import { useUnsavedChanges } from "@/components/admin/useUnsavedChanges";
@@ -212,6 +214,7 @@ function exportWorkshopDocument({
 export function WorkshopsBoard() {
   const router = useRouter();
   const toast = useToast();
+  const { t } = useAdminLanguage();
   const [locale, setLocale] = useState<Locale>("es");
   const [content, setContent] = useState<SiteContent | null>(null);
   const [saving, setSaving] = useState(false);
@@ -244,10 +247,10 @@ export function WorkshopsBoard() {
     setSaving(false);
     if (res.ok) {
       markSaved();
-      toast.success("Talleres guardados. Ya se ven en la página principal.");
+      toast.success(t.workshops.saved);
       return true;
     }
-    toast.error("Error al guardar los talleres");
+    toast.error(t.common.errorSave);
     return false;
   }
 
@@ -333,7 +336,7 @@ export function WorkshopsBoard() {
             })
           : prev,
       );
-      toast.success("Imagen actualizada");
+      toast.success(t.workshops.imageUpdated);
     } finally {
       setUploadingKey(null);
     }
@@ -398,12 +401,12 @@ export function WorkshopsBoard() {
     setActiveFlower(flowerIndex);
     setExpandedIds((prev) => new Set(prev).add(id));
     setAssistantOpen(false);
-    toast.success("Taller creado. Pulsa Guardar para publicarlo.");
+    toast.success(t.workshops.created);
     return true;
   }
 
   function removeWorkshop(catIndex: number, workshopId: string) {
-    if (!window.confirm("¿Eliminar este taller en ambos idiomas?")) return;
+    if (!window.confirm(t.workshops.deleteConfirm)) return;
     setContent((prev) =>
       prev
         ? updateBothLocales(prev, (dict) => {
@@ -564,12 +567,17 @@ export function WorkshopsBoard() {
 
   if (!content) {
     return (
-      <div className="p-10 text-sm text-[color:var(--muted)]">Cargando talleres...</div>
+      <div className="p-10 text-sm text-[color:var(--muted)]">{t.workshops.loading}</div>
     );
   }
 
-  const t = content[locale];
-  const category = t.workshops.categories[activeFlower];
+  const site = content[locale];
+  const category = site.workshops.categories[activeFlower];
+  const levelOptions = [
+    { value: 1 as const, label: `${t.workshops.level1} · ${t.workshops.basic}` },
+    { value: 2 as const, label: `${t.workshops.level2} · ${t.workshops.intermediate}` },
+    { value: 3 as const, label: `${t.workshops.level3} · ${t.workshops.advanced}` },
+  ];
 
   return (
     <div className="flex min-h-[100svh] flex-col bg-[color:var(--mist)]">
@@ -577,10 +585,10 @@ export function WorkshopsBoard() {
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-5 py-4 md:px-8">
           <div>
             <p className="font-[family-name:var(--font-display)] text-lg font-bold text-[color:var(--accent)]">
-              Talleres
+              {t.workshops.pageTitle}
             </p>
             <p className="text-xs text-[color:var(--muted)]">
-              Organiza las 3 flores · se publican en la página principal
+              {t.workshops.pageSubtitle}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -600,19 +608,20 @@ export function WorkshopsBoard() {
                 EN
               </button>
             </div>
+            <AdminLanguageSwitcher />
             <button
               type="button"
               onClick={() => requestNavigate("/")}
               className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
             >
-              Ver sitio
+              {t.common.viewSite}
             </button>
             <button
               type="button"
               onClick={() => requestNavigate("/admin")}
               className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
             >
-              Panel
+              {t.common.panel}
             </button>
             <button
               type="button"
@@ -622,14 +631,14 @@ export function WorkshopsBoard() {
                 isDirty ? "ring-2 ring-[#f59e0b] ring-offset-2" : ""
               }`}
             >
-              {saving ? "Guardando…" : isDirty ? "Guardar cambios" : "Guardar"}
+              {saving ? t.common.saving : isDirty ? t.common.saveChanges : t.common.save}
             </button>
             <button
               type="button"
               onClick={requestLogout}
               className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
             >
-              Salir
+              {t.common.logout}
             </button>
           </div>
         </div>
@@ -651,15 +660,15 @@ export function WorkshopsBoard() {
       <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-5 py-8 pb-16 md:px-8">
         <section className="border border-[color:var(--line)] bg-white p-5 md:p-6">
           <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-[color:var(--ink)]">
-            Sección pública
+            {t.workshops.publicSection}
           </h1>
           <p className="mt-1 text-sm text-[color:var(--muted)]">
             Textos del encabezado de la sección Talleres en la home.
           </p>
           <div className="mt-5 grid gap-4">
             <Field
-              label="Eyebrow"
-              value={t.workshops.eyebrow}
+              label={t.workshops.eyebrow}
+              value={site.workshops.eyebrow}
               onChange={(value) =>
                 setContent((prev) =>
                   prev
@@ -671,8 +680,8 @@ export function WorkshopsBoard() {
               }
             />
             <Field
-              label="Título"
-              value={t.workshops.title}
+              label={t.workshops.title}
+              value={site.workshops.title}
               multiline
               onChange={(value) =>
                 setContent((prev) =>
@@ -685,8 +694,8 @@ export function WorkshopsBoard() {
               }
             />
             <Field
-              label="Descripción"
-              value={t.workshops.body}
+              label={t.workshops.description}
+              value={site.workshops.body}
               multiline
               onChange={(value) =>
                 setContent((prev) =>
@@ -703,7 +712,7 @@ export function WorkshopsBoard() {
 
         <div className="flex gap-2 overflow-x-auto pb-1">
           {FLOWER_LABELS[locale].map((label, index) => {
-            const count = t.workshops.categories[index]?.workshops.length || 0;
+            const count = site.workshops.categories[index]?.workshops.length || 0;
             const active = activeFlower === index;
             return (
               <button
@@ -744,21 +753,21 @@ export function WorkshopsBoard() {
                   onClick={() => setAssistantOpen(true)}
                   className="bg-[color:var(--accent)] px-4 py-2 text-xs font-semibold text-white"
                 >
-                  Asistente guiado
+                  {t.common.guidedAssistant}
                 </button>
                 <button
                   type="button"
                   onClick={() => addWorkshop(activeFlower)}
                   className="bg-[color:var(--accent)] px-4 py-2 text-xs font-semibold text-white"
                 >
-                  + Agregar taller
+                  {t.workshops.addWorkshop}
                 </button>
               </div>
             </div>
 
             <div className="mt-5 grid gap-4 md:grid-cols-2">
               <Field
-                label="Título de la flor"
+                label={t.workshops.flowerTitle}
                 value={category.title}
                 onChange={(value) =>
                   setContent((prev) =>
@@ -771,7 +780,7 @@ export function WorkshopsBoard() {
                 }
               />
               <Field
-                label="Subtítulo"
+                label={t.workshops.flowerSubtitle}
                 value={category.subtitle}
                 onChange={(value) =>
                   setContent((prev) =>
@@ -788,7 +797,7 @@ export function WorkshopsBoard() {
             <div className="mt-6 grid gap-3">
               {category.workshops.length === 0 ? (
                 <div className="border border-dashed border-[color:var(--line)] p-8 text-center text-sm text-[color:var(--muted)]">
-                  Aún no hay talleres en esta flor.
+                  {t.workshops.noWorkshops}
                 </div>
               ) : (
                 category.workshops.map((workshop, wIndex) => {
@@ -842,14 +851,14 @@ export function WorkshopsBoard() {
                             }
                             className="border border-[color:var(--ink)] px-3 py-1.5 text-xs font-semibold text-[color:var(--ink)]"
                           >
-                            Exportar
+                            {t.workshops.export}
                           </button>
                           <button
                             type="button"
                             onClick={() => removeWorkshop(activeFlower, workshop.id)}
                             className="border border-[color:var(--accent)] px-3 py-1.5 text-xs font-semibold text-[color:var(--accent)]"
                           >
-                            Eliminar
+                            {t.common.delete}
                           </button>
                         </div>
                       </div>
@@ -858,7 +867,7 @@ export function WorkshopsBoard() {
                         <div className="space-y-5 border-t border-[color:var(--line)] bg-white px-4 py-5 md:px-5">
                           <div className="grid gap-4">
                             <Field
-                              label="Título (público)"
+                              label={t.workshops.workshopTitle}
                               value={workshop.title}
                               onChange={(value) =>
                                 setContent((prev) =>
@@ -876,7 +885,7 @@ export function WorkshopsBoard() {
                               }
                             />
                             <Field
-                              label="Descripción (pública)"
+                              label={t.workshops.workshopDesc}
                               value={workshop.text}
                               multiline
                               onChange={(value) =>
@@ -898,9 +907,9 @@ export function WorkshopsBoard() {
 
                           <div className="grid gap-4 md:grid-cols-3">
                             <Field
-                              label="Duración"
+                              label={t.workshops.duration}
                               value={workshop.duration || ""}
-                              placeholder="Ej. 90 min / 2 horas"
+                              placeholder={t.workshops.durationPlaceholder}
                               onChange={(value) =>
                                 patchShared(activeFlower, workshop.id, { duration: value })
                               }
@@ -918,7 +927,7 @@ export function WorkshopsBoard() {
                                 }
                                 className="w-full border border-[color:var(--line)] bg-white px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
                               >
-                                {LEVEL_OPTIONS.map((option) => (
+                                {levelOptions.map((option) => (
                                   <option key={option.value} value={option.value}>
                                     {option.label}
                                   </option>
@@ -926,9 +935,9 @@ export function WorkshopsBoard() {
                               </select>
                             </label>
                             <Field
-                              label="Coach"
+                              label={t.workshops.coach}
                               value={workshop.coach || ""}
-                              placeholder="Nombre de quien lo dicta"
+                              placeholder={t.workshops.coachPlaceholder}
                               onChange={(value) =>
                                 patchShared(activeFlower, workshop.id, { coach: value })
                               }
@@ -968,7 +977,7 @@ export function WorkshopsBoard() {
                                       patchShared(activeFlower, workshop.id, { image: "" })
                                     }
                                   >
-                                    Quitar imagen
+                                    {t.workshops.removeImage}
                                   </button>
                                 </div>
                               ) : null}
@@ -986,7 +995,7 @@ export function WorkshopsBoard() {
 
                           <div className="border border-[color:var(--line)] p-4">
                             <h3 className="text-sm font-bold text-[color:var(--ink)]">
-                              Materiales
+                              {t.workshops.materials}
                             </h3>
                             <p className="text-xs text-[color:var(--muted)]">
                               Lo que se lleva o se usa en el taller
@@ -994,7 +1003,7 @@ export function WorkshopsBoard() {
                             <ul className="mt-3 space-y-2">
                               {materials.length === 0 ? (
                                 <li className="text-sm text-[color:var(--muted)]">
-                                  Sin materiales todavía.
+                                  {t.workshops.noMaterials}
                                 </li>
                               ) : (
                                 materials.map((material) => (
@@ -1021,7 +1030,7 @@ export function WorkshopsBoard() {
                                       }
                                       className="text-xs font-semibold text-[color:var(--accent)]"
                                     >
-                                      Quitar
+                                      {t.common.remove}
                                     </button>
                                   </li>
                                 ))
@@ -1042,21 +1051,21 @@ export function WorkshopsBoard() {
                                     [workshop.id]: e.target.value,
                                   }))
                                 }
-                                placeholder="Ej. Marcadores, cartulinas…"
+                                placeholder={t.workshops.materialsPlaceholder}
                                 className="min-w-0 flex-1 border border-[color:var(--line)] bg-white px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
                               />
                               <button
                                 type="submit"
                                 className="bg-[color:var(--ink)] px-3 py-2 text-xs font-semibold text-white"
                               >
-                                Agregar
+                                {t.common.add}
                               </button>
                             </form>
                           </div>
 
                           <div className="border border-[color:var(--line)] p-4">
                             <h3 className="text-sm font-bold text-[color:var(--ink)]">
-                              Paso a paso del taller
+                              {t.workshops.steps}
                             </h3>
                             <p className="text-xs text-[color:var(--muted)]">
                               Secuencia de la sesión · simbología solo en la exportación (no en
@@ -1065,7 +1074,7 @@ export function WorkshopsBoard() {
                             <ul className="mt-3 space-y-2">
                               {steps.length === 0 ? (
                                 <li className="text-sm text-[color:var(--muted)]">
-                                  Sin pasos todavía.
+                                  {t.workshops.noSteps}
                                 </li>
                               ) : (
                                 steps.map((step, index) => (
@@ -1151,14 +1160,14 @@ export function WorkshopsBoard() {
                                     [workshop.id]: e.target.value,
                                   }))
                                 }
-                                placeholder="Nuevo paso…"
+                                placeholder={t.workshops.newStep}
                                 className="min-w-0 flex-1 border border-[color:var(--line)] bg-white px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
                               />
                               <button
                                 type="submit"
                                 className="bg-[color:var(--ink)] px-3 py-2 text-xs font-semibold text-white"
                               >
-                                Agregar
+                                {t.common.add}
                               </button>
                             </form>
                           </div>
@@ -1175,7 +1184,7 @@ export function WorkshopsBoard() {
                               }
                               className="bg-[color:var(--accent)] px-4 py-2.5 text-sm font-semibold text-white"
                             >
-                              Exportar taller completo
+                              {t.workshops.exportFull}
                             </button>
                           </div>
                         </div>
