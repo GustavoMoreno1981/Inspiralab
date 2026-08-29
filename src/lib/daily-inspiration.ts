@@ -132,6 +132,39 @@ export const FAMOUS_QUOTES: FamousQuote[] = [
   },
 ];
 
+export const FAMOUS_QUOTES_EN: FamousQuote[] = [
+  { text: "We are what we repeatedly do. Excellence, then, is not an act, but a habit.", author: "Aristotle" },
+  { text: "The secret of getting ahead is getting started.", author: "Mark Twain" },
+  { text: "Don't count the days; make the days count.", author: "Muhammad Ali" },
+  { text: "Discipline is the bridge between goals and accomplishment.", author: "Jim Rohn" },
+  { text: "Make each day your masterpiece.", author: "John Wooden" },
+  { text: "Success is the sum of small efforts repeated day in and day out.", author: "Robert Collier" },
+  { text: "The only way to do great work is to love what you do.", author: "Steve Jobs" },
+  { text: "Fall seven times, stand up eight.", author: "Japanese proverb" },
+  { text: "What is not started today is never finished tomorrow.", author: "Johann Wolfgang von Goethe" },
+  { text: "Quality is not an act, it is a habit.", author: "Aristotle" },
+  { text: "The future belongs to those who believe in the beauty of their dreams.", author: "Eleanor Roosevelt" },
+  { text: "There are no shortcuts to any place worth going.", author: "Beverly Sills" },
+  { text: "Perseverance is failing nineteen times and succeeding the twentieth.", author: "Julie Andrews" },
+  { text: "Do it with passion or not at all.", author: "Rosa Nouchette Carey" },
+  { text: "The best way to predict the future is to create it.", author: "Peter Drucker" },
+  { text: "Start where you are. Use what you have. Do what you can.", author: "Arthur Ashe" },
+  { text: "Greatness is not found in strength, but in using strength well.", author: "Henry Ward Beecher" },
+  { text: "It is never too late to be what you might have been.", author: "George Eliot" },
+  { text: "Genius is one percent inspiration and ninety-nine percent perspiration.", author: "Thomas Edison" },
+  { text: "If you can dream it, you can do it.", author: "Walt Disney" },
+  { text: "Life is 10% what happens to us and 90% how we react to it.", author: "Charles R. Swindoll" },
+  { text: "Be the change you wish to see in the world.", author: "Mahatma Gandhi" },
+  { text: "Education is the most powerful weapon you can use to change the world.", author: "Nelson Mandela" },
+  { text: "No wind is favorable for the sailor who does not know where to go.", author: "Seneca" },
+  { text: "Hard work beats talent when talent doesn't work hard.", author: "Tim Notke" },
+  { text: "Opportunity is missed by most people because it is dressed in overalls and looks like work.", author: "Ann Landers" },
+  { text: "Act as if what you do makes a difference. It does.", author: "William James" },
+  { text: "Consistency turns the ordinary into the extraordinary.", author: "Tony Robbins" },
+  { text: "Do today what others won't, so tomorrow you can do what others can't.", author: "Jerry Rice" },
+  { text: "Motivation gets you going; habit keeps you growing.", author: "Jim Ryun" },
+];
+
 /** Versículos de Salmos para cerrar el resumen diario. */
 export const PSALM_VERSES: PsalmVerse[] = [
   {
@@ -256,20 +289,63 @@ export const PSALM_VERSES: PsalmVerse[] = [
   },
 ];
 
+export const PSALM_VERSES_EN: PsalmVerse[] = [
+  { reference: "Psalm 23:1", text: "The Lord is my shepherd; I shall not want." },
+  { reference: "Psalm 27:1", text: "The Lord is my light and my salvation; whom shall I fear?" },
+  { reference: "Psalm 37:5", text: "Commit your way to the Lord; trust in him, and he will act." },
+  { reference: "Psalm 46:1", text: "God is our refuge and strength, a very present help in trouble." },
+  { reference: "Psalm 51:10", text: "Create in me a clean heart, O God, and renew a right spirit within me." },
+  { reference: "Psalm 55:22", text: "Cast your burden on the Lord, and he will sustain you." },
+  { reference: "Psalm 90:17", text: "Let the favor of the Lord our God be upon us, and establish the work of our hands." },
+  { reference: "Psalm 91:1-2", text: "He who dwells in the shelter of the Most High will abide in the shadow of the Almighty." },
+  { reference: "Psalm 100:2", text: "Serve the Lord with gladness; come into his presence with singing." },
+  { reference: "Psalm 118:24", text: "This is the day that the Lord has made; let us rejoice and be glad in it." },
+  { reference: "Psalm 119:105", text: "Your word is a lamp to my feet and a light to my path." },
+  { reference: "Psalm 121:1-2", text: "I lift up my eyes to the hills. From where does my help come? My help comes from the Lord." },
+  { reference: "Psalm 127:1", text: "Unless the Lord builds the house, those who build it labor in vain." },
+  { reference: "Psalm 130:5", text: "I wait for the Lord, my soul waits, and in his word I hope." },
+  { reference: "Psalm 139:14", text: "I praise you, for I am fearfully and wonderfully made." },
+  { reference: "Psalm 145:18", text: "The Lord is near to all who call on him, to all who call on him in truth." },
+  { reference: "Psalm 16:8", text: "I have set the Lord always before me; because he is at my right hand, I shall not be shaken." },
+  { reference: "Psalm 18:2", text: "The Lord is my rock and my fortress and my deliverer." },
+  { reference: "Psalm 28:7", text: "The Lord is my strength and my shield; in him my heart trusts." },
+  { reference: "Psalm 34:8", text: "Oh, taste and see that the Lord is good!" },
+  { reference: "Psalm 40:1", text: "I waited patiently for the Lord; he inclined to me and heard my cry." },
+  { reference: "Psalm 62:1", text: "For God alone my soul waits in silence; from him comes my salvation." },
+  { reference: "Psalm 73:26", text: "My flesh and my heart may fail, but God is the strength of my heart and my portion forever." },
+  { reference: "Psalm 84:11", text: "For the Lord God is a sun and shield; the Lord bestows favor and honor." },
+  { reference: "Psalm 86:5", text: "For you, O Lord, are good and forgiving, abounding in steadfast love to all who call upon you." },
+  { reference: "Psalm 103:1-2", text: "Bless the Lord, O my soul, and forget not all his benefits." },
+  { reference: "Psalm 112:7", text: "He is not afraid of bad news; his heart is firm, trusting in the Lord." },
+  { reference: "Psalm 143:8", text: "Let me hear in the morning of your steadfast love, for in you I trust." },
+  { reference: "Psalm 150:6", text: "Let everything that has breath praise the Lord. Praise the Lord!" },
+  { reference: "Psalm 23:4", text: "Even though I walk through the valley of the shadow of death, I will fear no evil, for you are with me." },
+];
+
 /** Misma frase/salmo durante el día; cambia al día siguiente. */
-export function pickDailyQuote(date = new Date()): FamousQuote {
+export type InspirationLocale = "en" | "es";
+
+export function pickDailyQuote(
+  date = new Date(),
+  locale: InspirationLocale = "es",
+): FamousQuote {
+  const quotes = locale === "en" ? FAMOUS_QUOTES_EN : FAMOUS_QUOTES;
   const key =
     date.getFullYear() * 10000 + (date.getMonth() + 1) * 100 + date.getDate();
-  return FAMOUS_QUOTES[Math.abs(key) % FAMOUS_QUOTES.length];
+  return quotes[Math.abs(key) % quotes.length];
 }
 
-export function pickDailyPsalm(date = new Date()): PsalmVerse {
+export function pickDailyPsalm(
+  date = new Date(),
+  locale: InspirationLocale = "es",
+): PsalmVerse {
+  const verses = locale === "en" ? PSALM_VERSES_EN : PSALM_VERSES;
   const key =
     date.getFullYear() * 10000 +
     (date.getMonth() + 1) * 100 +
     date.getDate() +
     17;
-  return PSALM_VERSES[Math.abs(key) % PSALM_VERSES.length];
+  return verses[Math.abs(key) % verses.length];
 }
 
 export function formatQuoteLine(quote: FamousQuote) {

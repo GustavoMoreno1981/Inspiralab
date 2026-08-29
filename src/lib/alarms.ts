@@ -4,6 +4,9 @@ import {
   getYearSummary,
   type AccountingBoard,
 } from "@/lib/accounting/types";
+import type { AdminDictionary } from "@/lib/i18n/admin/types";
+import { formatAdmin } from "@/lib/i18n/admin/helpers";
+import { buildTaskAlarmMessage } from "@/lib/i18n/admin/alarms";
 import type { Activity, TasksBoard, TeamMember } from "@/lib/tasks/types";
 
 export type TaskAlarmLevel = "green" | "yellow" | "red" | "blue" | "gray";
@@ -104,38 +107,23 @@ function assigneeNames(activity: Activity, members: TeamMember[]) {
   return list;
 }
 
-function formatAssignees(assignees: TeamMember[]) {
-  if (assignees.length === 0) return "Sin asignar";
-  return assignees.map((m) => m.name).join(", ");
-}
-
-export function getTaskAlarms(board: TasksBoard, from = todayLocal()): TaskAlarm[] {
+export function getTaskAlarms(
+  board: TasksBoard,
+  t: AdminDictionary,
+  from = todayLocal(),
+): TaskAlarm[] {
   return board.activities
     .map((activity) => {
       const { level, reason } = getTaskAlarmReason(activity, from);
       const days = daysUntilDue(activity.finishedDate, from);
       const assignees = assigneeNames(activity, board.members);
-      const who = formatAssignees(assignees);
-      let message = "";
-
-      if (reason === "overdue") {
-        const overdue = days === null ? 0 : Math.abs(days);
-        const verb = assignees.length === 1 ? "no ha terminado" : "no han terminado";
-        message = `${who} ${verb} “${activity.title}” (vencida hace ${overdue} día${overdue === 1 ? "" : "s"}, fin ${activity.finishedDate}).`;
-      } else if (reason === "pending_review") {
-        const verb = assignees.length === 1 ? "tiene" : "tienen";
-        message = `${who} ${verb} “${activity.title}” pendiente por revisión.`;
-      } else if (reason === "due_soon") {
-        const verb = assignees.length === 1 ? "tiene" : "tienen";
-        const daysLeft = days ?? 0;
-        message = `${who} ${verb} “${activity.title}” por vencer en ${daysLeft} día${daysLeft === 1 ? "" : "s"} (fin ${activity.finishedDate}).`;
-      } else if (reason === "paused") {
-        message = `“${activity.title}” está en pausa (${who}).`;
-      } else if (reason === "done") {
-        message = `“${activity.title}” terminada (${who}).`;
-      } else {
-        message = `“${activity.title}” en plazo (${who}).`;
-      }
+      const message = buildTaskAlarmMessage(t, {
+        title: activity.title,
+        reason,
+        assignees,
+        days,
+        finishedDate: activity.finishedDate,
+      });
 
       return {
         activityId: activity.id,
@@ -174,14 +162,19 @@ export function getTaskAlarms(board: TasksBoard, from = todayLocal()): TaskAlarm
 }
 
 /** Alarmas que requieren atención (vencidas / por vencer / revisión). */
-export function getTaskNotifications(board: TasksBoard, from = todayLocal()) {
-  return getTaskAlarms(board, from).filter(
+export function getTaskNotifications(
+  board: TasksBoard,
+  t: AdminDictionary,
+  from = todayLocal(),
+) {
+  return getTaskAlarms(board, t, from).filter(
     (item) => item.level === "red" || item.level === "yellow",
   );
 }
 
 export function getBudgetAlarm(
   board: AccountingBoard,
+  t: AdminDictionary,
   year = new Date().getFullYear(),
 ): BudgetAlarm | null {
   const summary = getYearSummary(board, year);
@@ -190,15 +183,30 @@ export function getBudgetAlarm(
   const { usedPercent, totalCop, spentCop, availableCop, rate } = summary;
 
   let level: BudgetAlarmLevel = "ok";
-  let message = `Presupuesto ${year}: uso ${usedPercent}%. Disponible ${formatUsdFromCop(availableCop, rate)} (${formatCop(availableCop)}).`;
+  let message = formatAdmin(t.alarms.messages.budgetOk, {
+    year,
+    percent: usedPercent,
+    availableUsd: formatUsdFromCop(availableCop, rate),
+    availableCop: formatCop(availableCop),
+  });
 
   if (spentCop > totalCop) {
     level = "critical";
     const over = spentCop - totalCop;
-    message = `Presupuesto ${year} excedido: se pasó por ${formatUsdFromCop(over, rate)} (${formatCop(over)}). Ejecutado ${usedPercent}% del tope anual.`;
+    message = formatAdmin(t.alarms.messages.budgetCritical, {
+      year,
+      overUsd: formatUsdFromCop(over, rate),
+      overCop: formatCop(over),
+      percent: usedPercent,
+    });
   } else if (usedPercent >= BUDGET_WARNING_PERCENT) {
     level = "warning";
-    message = `Presupuesto ${year} cerca del tope: ya se usó el ${usedPercent}%. Queda ${formatUsdFromCop(availableCop, rate)} (${formatCop(availableCop)}).`;
+    message = formatAdmin(t.alarms.messages.budgetWarning, {
+      year,
+      percent: usedPercent,
+      availableUsd: formatUsdFromCop(availableCop, rate),
+      availableCop: formatCop(availableCop),
+    });
   }
 
   return {
@@ -213,14 +221,14 @@ export function getBudgetAlarm(
   };
 }
 
-export function getBudgetAlarms(board: AccountingBoard): BudgetAlarm[] {
+export function getBudgetAlarms(board: AccountingBoard, t: AdminDictionary): BudgetAlarm[] {
   const years = new Set<number>([
     new Date().getFullYear(),
     ...board.budgets.map((b) => b.year),
   ]);
   return [...years]
     .sort((a, b) => b - a)
-    .map((year) => getBudgetAlarm(board, year))
+    .map((year) => getBudgetAlarm(board, t, year))
     .filter((item): item is BudgetAlarm => Boolean(item))
     .filter((item) => item.level === "warning" || item.level === "critical");
 }

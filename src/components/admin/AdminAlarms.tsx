@@ -11,36 +11,48 @@ import {
   type BudgetAlarm,
   type TaskAlarm,
   type TaskAlarmLevel,
+  type TaskAlarmReason,
 } from "@/lib/alarms";
 import type { AccountingBoard } from "@/lib/accounting/types";
-import { TASK_STATUSES, type TasksBoard } from "@/lib/tasks/types";
 import { formatCop, formatUsdFromCop } from "@/lib/accounting/types";
+import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
+import {
+  formatAdmin,
+  getTaskAlarmLevelLabels,
+  getTaskAlarmReasonLabel,
+  getTaskStatuses,
+} from "@/lib/i18n/admin";
+import type { AdminDictionary, AdminLocale } from "@/lib/i18n/admin/types";
+import type { TaskStatus } from "@/lib/tasks/types";
+import type { TasksBoard } from "@/lib/tasks/types";
 
 function SemaphoreDot({
   level,
   color,
+  label,
   size = "md",
 }: {
   level?: TaskAlarmLevel;
   color?: string;
+  label?: string;
   size?: "sm" | "md";
 }) {
   const bg = color || (level ? TASK_ALARM_COLORS[level].bg : "#94a3b8");
-  const label = level ? TASK_ALARM_COLORS[level].label : undefined;
+  const resolvedLabel = label || (level ? TASK_ALARM_COLORS[level].label : undefined);
   return (
     <span
       className={`inline-block shrink-0 rounded-full ${
         size === "sm" ? "h-3 w-3" : "h-4 w-4"
       }`}
       style={{ backgroundColor: bg }}
-      title={label}
-      aria-label={label || "Estado"}
+      title={resolvedLabel}
+      aria-label={resolvedLabel || "Status"}
     />
   );
 }
 
-function statusLabel(status: TaskAlarm["status"]) {
-  return TASK_STATUSES.find((item) => item.value === status)?.label || status;
+function statusLabel(t: AdminDictionary, status: TaskStatus) {
+  return getTaskStatuses(t).find((item) => item.value === status)?.label || status;
 }
 
 function escapeHtml(value: string) {
@@ -51,28 +63,17 @@ function escapeHtml(value: string) {
     .replaceAll('"', "&quot;");
 }
 
-function reasonLabel(reason: TaskAlarm["reason"]) {
-  switch (reason) {
-    case "pending_review":
-      return "Pendiente por revisión";
-    case "due_soon":
-      return "Por vencer";
-    case "overdue":
-      return "Vencida";
-    case "paused":
-      return "En pausa";
-    case "done":
-      return "Terminada";
-    default:
-      return "En plazo";
-  }
-}
-
-function printAlarmActivities(title: string, alarms: TaskAlarm[]) {
-  const printedAt = new Date().toLocaleString("es-CO", {
+function printAlarmActivities(
+  t: AdminDictionary,
+  locale: AdminLocale,
+  title: string,
+  alarms: TaskAlarm[],
+) {
+  const printedAt = new Date().toLocaleString(locale === "en" ? "en-US" : "es-CO", {
     dateStyle: "long",
     timeStyle: "short",
   });
+  const p = t.alarms.print;
 
   const rows = alarms.length
     ? alarms
@@ -80,23 +81,23 @@ function printAlarmActivities(title: string, alarms: TaskAlarm[]) {
           (alarm) => `
       <tr>
         <td>${escapeHtml(alarm.title)}</td>
-        <td>${escapeHtml(statusLabel(alarm.status))}</td>
-        <td>${escapeHtml(reasonLabel(alarm.reason))}</td>
+        <td>${escapeHtml(statusLabel(t, alarm.status))}</td>
+        <td>${escapeHtml(getTaskAlarmReasonLabel(t, alarm.reason))}</td>
         <td>${escapeHtml(alarm.finishedDate || "—")}</td>
         <td>${escapeHtml(
-          alarm.assignees.map((m) => m.name).join(", ") || "Sin asignar",
+          alarm.assignees.map((m) => m.name).join(", ") || t.alarms.unassigned,
         )}</td>
         <td>${escapeHtml(alarm.message)}</td>
       </tr>`,
         )
         .join("")
-    : `<tr><td colspan="6" style="text-align:center;color:#666;">No hay actividades en este estado.</td></tr>`;
+    : `<tr><td colspan="6" style="text-align:center;color:#666;">${escapeHtml(p.noActivities)}</td></tr>`;
 
   const html = `<!DOCTYPE html>
-<html lang="es">
+<html lang="${locale}">
 <head>
   <meta charset="utf-8" />
-  <title>Alarmas — ${escapeHtml(title)}</title>
+  <title>${escapeHtml(p.title)} — ${escapeHtml(title)}</title>
   <style>
     body { font-family: Arial, Helvetica, sans-serif; color: #111; padding: 28px; }
     h1 { font-size: 20px; margin: 0 0 4px; }
@@ -113,21 +114,21 @@ function printAlarmActivities(title: string, alarms: TaskAlarm[]) {
 </head>
 <body>
   <h1>Inspiralab · ${escapeHtml(title)}</h1>
-  <p class="meta">${escapeHtml(printedAt)} · ${alarms.length} actividad${alarms.length === 1 ? "" : "es"}</p>
+  <p class="meta">${escapeHtml(formatAdmin(p.meta, { date: printedAt, count: alarms.length }))}</p>
   <table>
     <thead>
       <tr>
-        <th>Actividad</th>
-        <th>Estado</th>
-        <th>Alarma</th>
-        <th>Fecha fin</th>
-        <th>Asignados</th>
-        <th>Detalle</th>
+        <th>${escapeHtml(p.activity)}</th>
+        <th>${escapeHtml(p.status)}</th>
+        <th>${escapeHtml(p.alarm)}</th>
+        <th>${escapeHtml(p.endDate)}</th>
+        <th>${escapeHtml(p.assignees)}</th>
+        <th>${escapeHtml(p.detail)}</th>
       </tr>
     </thead>
     <tbody>${rows}</tbody>
   </table>
-  <p class="footer">Inspiralab · Listado de alarmas · ${escapeHtml(title)}</p>
+  <p class="footer">${escapeHtml(formatAdmin(p.footer, { title }))}</p>
 </body>
 </html>`;
 
@@ -136,7 +137,7 @@ function printAlarmActivities(title: string, alarms: TaskAlarm[]) {
   const win = window.open(url, "_blank");
   if (!win) {
     URL.revokeObjectURL(url);
-    alert("Permite ventanas emergentes para imprimir");
+    alert(t.alarms.allowPopups);
     return;
   }
   window.setTimeout(() => {
@@ -162,19 +163,21 @@ export function AdminAlarms({
   showBudget?: boolean;
 }) {
   type AlarmFilter = TaskAlarmLevel | "pending_review";
+  const { t, locale } = useAdminLanguage();
   const [filter, setFilter] = useState<AlarmFilter | null>(null);
+  const levelLabels = useMemo(() => getTaskAlarmLevelLabels(t), [t]);
 
   const taskAlarms = useMemo(
-    () => (tasksBoard ? getTaskAlarms(tasksBoard) : []),
-    [tasksBoard],
+    () => (tasksBoard ? getTaskAlarms(tasksBoard, t) : []),
+    [tasksBoard, t],
   );
   const taskNotifications = useMemo(
-    () => (tasksBoard ? getTaskNotifications(tasksBoard) : []),
-    [tasksBoard],
+    () => (tasksBoard ? getTaskNotifications(tasksBoard, t) : []),
+    [tasksBoard, t],
   );
   const budgetAlarms = useMemo(
-    () => (showBudget ? getBudgetAlarms(accounting) : []),
-    [accounting, showBudget],
+    () => (showBudget ? getBudgetAlarms(accounting, t) : []),
+    [accounting, showBudget, t],
   );
 
   const counts = useMemo(() => {
@@ -200,9 +203,9 @@ export function AdminAlarms({
 
   const filterTitle =
     filter === "pending_review"
-      ? "Pendiente por revisión"
+      ? t.alarms.reasons.pending_review
       : filter
-        ? TASK_ALARM_COLORS[filter].label
+        ? levelLabels[filter].label
         : "";
 
   const filterLevelDot: TaskAlarmLevel | null =
@@ -222,7 +225,7 @@ export function AdminAlarms({
   if (loading) {
     return (
       <section className="mt-10 border border-[color:var(--line)] bg-white p-5">
-        <p className="text-sm text-[color:var(--muted)]">Cargando alarmas...</p>
+        <p className="text-sm text-[color:var(--muted)]">{t.alarms.loading}</p>
       </section>
     );
   }
@@ -232,13 +235,13 @@ export function AdminAlarms({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="font-[family-name:var(--font-display)] text-2xl font-bold text-[color:var(--ink)]">
-            Alarmas
+            {t.alarms.title}
           </h2>
           <p className="mt-1 text-sm text-[color:var(--muted)]">
-            Tareas vencidas, por vencer, pendientes por revisión y tope del presupuesto.
+            {t.alarms.subtitle}
             {attentionCount > 0
-              ? ` ${attentionCount} pendiente${attentionCount === 1 ? "" : "s"} de atención.`
-              : " Todo en orden por ahora."}
+              ? ` ${formatAdmin(t.alarms.attentionPending, { count: attentionCount })}`
+              : ` ${t.alarms.allClear}`}
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-xs font-semibold">
@@ -256,20 +259,22 @@ export function AdminAlarms({
               type="button"
               onClick={() => setFilter(level)}
               className="inline-flex items-center gap-1.5 border border-[color:var(--line)] bg-white px-2.5 py-1.5 text-[color:var(--muted)] transition hover:border-[color:var(--ink)] hover:text-[color:var(--ink)]"
-              title={`Ver tareas: ${TASK_ALARM_COLORS[level].label}`}
+              title={formatAdmin(t.alarms.viewTasksTitle, {
+                label: levelLabels[level].label,
+              })}
             >
-              <SemaphoreDot level={level} size="sm" />
-              {TASK_ALARM_COLORS[level].label}: {count}
+              <SemaphoreDot level={level} label={levelLabels[level].label} size="sm" />
+              {levelLabels[level].label}: {count}
             </button>
           ))}
           <button
             type="button"
             onClick={() => setFilter("pending_review")}
             className="inline-flex items-center gap-1.5 border border-[color:var(--line)] bg-white px-2.5 py-1.5 text-[color:var(--muted)] transition hover:border-[color:var(--ink)] hover:text-[color:var(--ink)]"
-            title="Ver tareas pendientes por revisión"
+            title={t.alarms.pendingReviewTitle}
           >
-            <SemaphoreDot level="yellow" size="sm" />
-            Pendiente por revisión: {pendingReviewCount}
+            <SemaphoreDot level="yellow" label={t.alarms.reasons.pending_review} size="sm" />
+            {t.alarms.reasons.pending_review}: {pendingReviewCount}
           </button>
         </div>
       </div>
@@ -277,20 +282,20 @@ export function AdminAlarms({
       <div className={`grid gap-5 ${showBudget ? "lg:grid-cols-2" : ""}`}>
         <div className="border border-[color:var(--line)] bg-white">
           <div className="flex items-center justify-between gap-2 border-b border-[color:var(--line)] px-4 py-3">
-            <h3 className="font-semibold">Tareas</h3>
+            <h3 className="font-semibold">{t.alarms.tasks}</h3>
             <Link href="/admin/tareas" className="text-xs font-semibold text-[color:var(--accent)]">
-              Ir a tareas
+              {t.alarms.goToTasks}
             </Link>
           </div>
 
           {taskNotifications.length === 0 ? (
             <p className="px-4 py-6 text-sm text-[color:var(--muted)]">
-              Nadie tiene tareas vencidas, por vencer ni pendientes por revisión.
+              {t.alarms.noTaskNotifications}
             </p>
           ) : (
             <ul className="divide-y divide-[color:var(--line)]">
               {taskNotifications.map((alarm) => (
-                <TaskAlarmRow key={alarm.activityId} alarm={alarm} />
+                <TaskAlarmRow key={alarm.activityId} alarm={alarm} t={t} />
               ))}
             </ul>
           )}
@@ -302,7 +307,7 @@ export function AdminAlarms({
                 onClick={() => setFilter("pending_review")}
                 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--accent)] hover:underline"
               >
-                Pendiente por revisión: {pendingReviewCount} · ver listado
+                {formatAdmin(t.alarms.pendingReviewLink, { count: pendingReviewCount })}
               </button>
             </div>
           )}
@@ -314,18 +319,18 @@ export function AdminAlarms({
                 onClick={() => setFilter("blue")}
                 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)] hover:text-[color:var(--ink)]"
               >
-                En pausa · ver todas
+                {t.alarms.pausedViewAll}
               </button>
               <ul className="space-y-2">
                 {taskAlarms
                   .filter((a) => a.level === "blue")
                   .map((alarm) => (
                     <li key={alarm.activityId} className="flex items-start gap-2 text-sm">
-                      <SemaphoreDot level="blue" size="sm" />
+                      <SemaphoreDot level="blue" label={levelLabels.blue.label} size="sm" />
                       <span>
                         <span className="font-semibold">{alarm.title}</span>
                         {" — "}
-                        {alarm.assignees.map((m) => m.name).join(", ") || "Sin asignar"}
+                        {alarm.assignees.map((m) => m.name).join(", ") || t.alarms.unassigned}
                       </span>
                     </li>
                   ))}
@@ -337,24 +342,25 @@ export function AdminAlarms({
         {showBudget && (
           <div className="border border-[color:var(--line)] bg-white">
             <div className="flex items-center justify-between gap-2 border-b border-[color:var(--line)] px-4 py-3">
-              <h3 className="font-semibold">Presupuesto</h3>
+              <h3 className="font-semibold">{t.alarms.budget}</h3>
               <Link
                 href="/admin/contabilidad"
                 className="text-xs font-semibold text-[color:var(--accent)]"
               >
-                Ir a contabilidad
+                {t.alarms.goToAccounting}
               </Link>
             </div>
 
             {budgetAlarms.length === 0 ? (
               <p className="px-4 py-6 text-sm text-[color:var(--muted)]">
-                Ningún presupuesto anual está cerca del tope (≥{BUDGET_WARNING_PERCENT}%) ni
-                excedido.
+                {formatAdmin(t.alarms.budgetNoWarnings, {
+                  percent: BUDGET_WARNING_PERCENT,
+                })}
               </p>
             ) : (
               <ul className="divide-y divide-[color:var(--line)]">
                 {budgetAlarms.map((alarm) => (
-                  <BudgetAlarmRow key={alarm.year} alarm={alarm} />
+                  <BudgetAlarmRow key={alarm.year} alarm={alarm} t={t} />
                 ))}
               </ul>
             )}
@@ -376,7 +382,10 @@ export function AdminAlarms({
           >
             <div className="flex items-start justify-between gap-3 border-b border-[color:var(--line)] px-4 py-3">
               <div className="flex items-center gap-2">
-                <SemaphoreDot level={filterLevelDot} />
+                <SemaphoreDot
+                  level={filterLevelDot}
+                  label={filterTitle}
+                />
                 <div>
                   <h3
                     id="alarms-modal-title"
@@ -385,8 +394,7 @@ export function AdminAlarms({
                     {filterTitle}
                   </h3>
                   <p className="text-xs text-[color:var(--muted)]">
-                    {filteredAlarms.length} tarea
-                    {filteredAlarms.length === 1 ? "" : "s"} en este estado
+                    {formatAdmin(t.alarms.tasksInState, { count: filteredAlarms.length })}
                   </p>
                 </div>
               </div>
@@ -395,19 +403,19 @@ export function AdminAlarms({
                 onClick={() => setFilter(null)}
                 className="text-sm font-semibold text-[color:var(--muted)] hover:text-[color:var(--ink)]"
               >
-                Cerrar
+                {t.common.close}
               </button>
             </div>
 
             <div className="max-h-[65vh] overflow-y-auto">
               {filteredAlarms.length === 0 ? (
                 <p className="px-4 py-8 text-sm text-[color:var(--muted)]">
-                  No hay tareas en este estado.
+                  {t.alarms.noTasksInState}
                 </p>
               ) : (
                 <ul className="divide-y divide-[color:var(--line)]">
                   {filteredAlarms.map((alarm) => (
-                    <TaskAlarmRow key={alarm.activityId} alarm={alarm} showStatus />
+                    <TaskAlarmRow key={alarm.activityId} alarm={alarm} t={t} showStatus />
                   ))}
                 </ul>
               )}
@@ -419,15 +427,15 @@ export function AdminAlarms({
                 className="text-sm font-semibold text-[color:var(--accent)]"
                 onClick={() => setFilter(null)}
               >
-                Ir al tablero de tareas
+                {t.alarms.goToTaskBoard}
               </Link>
               <button
                 type="button"
-                onClick={() => printAlarmActivities(filterTitle, filteredAlarms)}
+                onClick={() => printAlarmActivities(t, locale, filterTitle, filteredAlarms)}
                 disabled={filteredAlarms.length === 0}
                 className="border border-[color:var(--line)] px-3 py-2 text-sm font-semibold text-[color:var(--ink)] disabled:opacity-40"
               >
-                Imprimir
+                {t.alarms.printButton}
               </button>
             </div>
           </div>
@@ -439,9 +447,11 @@ export function AdminAlarms({
 
 function TaskAlarmRow({
   alarm,
+  t,
   showStatus = false,
 }: {
   alarm: TaskAlarm;
+  t: AdminDictionary;
   showStatus?: boolean;
 }) {
   const tone =
@@ -453,11 +463,11 @@ function TaskAlarmRow({
 
   const badge =
     alarm.reason === "pending_review"
-      ? "Revisión"
+      ? t.alarms.reasons.review
       : alarm.reason === "due_soon"
-        ? "Por vencer"
+        ? t.alarms.reasons.due_soon
         : alarm.reason === "overdue"
-          ? "Vencida"
+          ? t.alarms.reasons.overdue
           : null;
 
   return (
@@ -477,9 +487,9 @@ function TaskAlarmRow({
           </div>
           <p className="mt-0.5 text-sm text-[color:var(--muted)]">{alarm.message}</p>
           <p className="mt-1 text-xs text-[color:var(--muted)]">
-            {showStatus ? `${statusLabel(alarm.status)} · ` : null}
-            Fin: {alarm.finishedDate || "—"} ·{" "}
-            {alarm.assignees.map((m) => m.name).join(", ") || "Sin asignar"}
+            {showStatus ? `${statusLabel(t, alarm.status)} · ` : null}
+            {t.alarms.endDate}: {alarm.finishedDate || "—"} ·{" "}
+            {alarm.assignees.map((m) => m.name).join(", ") || t.alarms.unassigned}
           </p>
         </div>
       </div>
@@ -487,7 +497,7 @@ function TaskAlarmRow({
   );
 }
 
-function BudgetAlarmRow({ alarm }: { alarm: BudgetAlarm }) {
+function BudgetAlarmRow({ alarm, t }: { alarm: BudgetAlarm; t: AdminDictionary }) {
   const isCritical = alarm.level === "critical";
   return (
     <li
@@ -496,11 +506,11 @@ function BudgetAlarmRow({ alarm }: { alarm: BudgetAlarm }) {
       }`}
     >
       <p className="font-semibold text-[color:var(--ink)]">
-        {isCritical ? "Presupuesto excedido" : "Cerca del tope"} · {alarm.year}
+        {isCritical ? t.alarms.budgetExceeded : t.alarms.budgetNearTop} · {alarm.year}
       </p>
       <p className="mt-1 text-sm text-[color:var(--muted)]">{alarm.message}</p>
       <p className="mt-2 text-xs text-[color:var(--muted)]">
-        Ejecutado {formatUsdFromCop(alarm.spentCop, alarm.rate)} /{" "}
+        {t.alarms.executed} {formatUsdFromCop(alarm.spentCop, alarm.rate)} /{" "}
         {formatUsdFromCop(alarm.totalCop, alarm.rate)} · {formatCop(alarm.spentCop)} /{" "}
         {formatCop(alarm.totalCop)}
       </p>

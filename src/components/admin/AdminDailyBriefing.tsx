@@ -10,8 +10,10 @@ import {
   pickDailyPsalm,
   pickDailyQuote,
 } from "@/lib/daily-inspiration";
+import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
+import { formatAdmin, getTaskStatuses } from "@/lib/i18n/admin";
+import type { AdminDictionary, AdminLocale } from "@/lib/i18n/admin/types";
 import {
-  TASK_STATUSES,
   type Activity,
   type TaskStatus,
   type TasksBoard,
@@ -27,8 +29,8 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#39;");
 }
 
-function formatDayLabel(iso = new Date()) {
-  return new Intl.DateTimeFormat("es-CO", {
+function formatDayLabel(locale: AdminLocale, iso = new Date()) {
+  return new Intl.DateTimeFormat(locale === "en" ? "en-US" : "es-CO", {
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -59,16 +61,16 @@ function initials(name: string) {
     .join("");
 }
 
-function formatDaysLeft(finishedDate: string) {
+function formatDaysLeft(t: AdminDictionary, finishedDate: string) {
   const days = daysUntilDue(finishedDate);
-  if (days === null) return "Sin fecha de fin";
+  if (days === null) return t.briefing.noEndDate;
   if (days < 0) {
     const n = Math.abs(days);
-    return n === 1 ? "Venció ayer" : `Venció hace ${n} días`;
+    return n === 1 ? t.briefing.dueYesterday : formatAdmin(t.briefing.overdueDays, { days: n });
   }
-  if (days === 0) return "Vence hoy";
-  if (days === 1) return "Falta 1 día";
-  return `Faltan ${days} días`;
+  if (days === 0) return t.briefing.dueToday;
+  if (days === 1) return t.briefing.oneDayLeft;
+  return formatAdmin(t.briefing.daysLeft, { days });
 }
 
 function latestNote(activity: Activity) {
@@ -103,8 +105,8 @@ type MemberDigest = {
   pendingReview: Activity[];
 };
 
-function statusLabel(status: TaskStatus) {
-  return TASK_STATUSES.find((item) => item.value === status)?.label || status;
+function statusLabel(t: AdminDictionary, status: TaskStatus) {
+  return getTaskStatuses(t).find((item) => item.value === status)?.label || status;
 }
 
 function latestReview(activity: Activity) {
@@ -122,12 +124,12 @@ function reviewLink(activity: Activity) {
   );
 }
 
-function reviewersLabel(activity: Activity) {
+function reviewersLabel(t: AdminDictionary, activity: Activity) {
   const review = latestReview(activity);
   if (review?.recipientNames?.length) {
     return review.recipientNames.join(", ");
   }
-  return "Sin revisor asignado aún";
+  return t.briefing.noReviewerYet;
 }
 
 function getMemberDigests(board: TasksBoard): MemberDigest[] {
@@ -162,8 +164,6 @@ function isClearDay(row: MemberDigest) {
   return row.pendingCount === 0 && !hasActivityDetail(row);
 }
 
-const CLEAR_DAY_MESSAGE = "Sin novedad. No tengo actividades por realizar.";
-
 function truncateNote(note: string) {
   return note.length > 160 ? `${note.slice(0, 157).trimEnd()}…` : note;
 }
@@ -173,6 +173,7 @@ function appendActivityLines(
   activity: Activity,
   memberId: string,
   members: TeamMember[],
+  t: AdminDictionary,
   options?: { reviewMode?: boolean },
 ) {
   const partners = coAssignees(activity, memberId, members);
@@ -181,97 +182,102 @@ function appendActivityLines(
 
   lines.push(`- *${activity.title}*`);
   if (reviewMode) {
-    lines.push(`  Revisa: ${reviewersLabel(activity)}`);
+    lines.push(`  ${t.briefing.reviews}: ${reviewersLabel(t, activity)}`);
   }
   if (partners.length) {
     lines.push(
-      `  ${reviewMode ? "Equipo" : "Con"}: ${partners.map((person) => person.name).join(", ")}`,
+      `  ${reviewMode ? t.briefing.team : t.briefing.with}: ${partners.map((person) => person.name).join(", ")}`,
     );
   }
   if (reviewMode) {
     const link = reviewLink(activity);
-    lines.push(link ? `  Link: ${link}` : "  Link: (sin URL de revisión)");
+    lines.push(link ? `  Link: ${link}` : `  Link: ${t.briefing.pdfNoReviewUrl}`);
   }
   lines.push(
-    `  Entrega: ${formatShort(activity.finishedDate)} · ${formatDaysLeft(activity.finishedDate)}`,
+    `  ${t.briefing.delivery}: ${formatShort(activity.finishedDate)} · ${formatDaysLeft(t, activity.finishedDate)}`,
   );
   if (note) {
-    lines.push(`  Nota: ${truncateNote(note)}`);
+    lines.push(`  ${t.briefing.note}: ${truncateNote(note)}`);
   }
 }
 
-function buildWhatsAppDigest(board: TasksBoard, todayLabel: string) {
+function buildWhatsAppDigest(
+  board: TasksBoard,
+  todayLabel: string,
+  t: AdminDictionary,
+  locale: AdminLocale,
+) {
   const rows = getMemberDigests(board);
-  const quote = pickDailyQuote();
-  const psalm = pickDailyPsalm();
+  const quote = pickDailyQuote(new Date(), locale);
+  const psalm = pickDailyPsalm(new Date(), locale);
   const lines: string[] = [
-    "*Inspiralab — Resumen diario*",
+    `*${t.briefing.whatsappTitle}*`,
     todayLabel,
     "",
     formatQuoteLine(quote),
     "",
-    "Buenos días a todos.",
-    "Equipo, a continuación les comparto el reporte diario de tareas. Les pido revisarlo con atención y, si tienen alguna inquietud o comentario, hacérmelo saber.",
+    t.briefing.whatsappGreeting,
+    t.briefing.whatsappIntro,
     "",
   ];
 
   if (!rows.length) {
-    lines.push("Hoy nadie tiene actividades pendientes, en proceso ni por revisar.");
+    lines.push(t.briefing.whatsappNoOne);
   } else {
     for (const row of rows) {
       lines.push(`*${row.member.name}*`);
       lines.push(
-        `Pendientes: *${row.pendingCount}*  |  En proceso: *${row.inProgress.length}*  |  Por revisar: *${row.pendingReview.length}*`,
+        `${t.briefing.pending}: *${row.pendingCount}*  |  ${t.briefing.inProgress}: *${row.inProgress.length}*  |  ${t.briefing.pendingReview}: *${row.pendingReview.length}*`,
       );
 
       if (row.pendingQueued.length) {
         lines.push("");
-        lines.push("*Pendientes*");
+        lines.push(`*${t.briefing.pending}*`);
         for (const activity of row.pendingQueued) {
           const partners = coAssignees(activity, row.member.id, board.members);
           const note = latestNote(activity);
-          lines.push(`- *${activity.title}* (${statusLabel(activity.status)})`);
+          lines.push(`- *${activity.title}* (${statusLabel(t, activity.status)})`);
           if (partners.length) {
-            lines.push(`  Con: ${partners.map((person) => person.name).join(", ")}`);
+            lines.push(`  ${t.briefing.with}: ${partners.map((person) => person.name).join(", ")}`);
           }
           lines.push(
-            `  Entrega: ${formatShort(activity.finishedDate)} · ${formatDaysLeft(activity.finishedDate)}`,
+            `  ${t.briefing.delivery}: ${formatShort(activity.finishedDate)} · ${formatDaysLeft(t, activity.finishedDate)}`,
           );
           if (note) {
-            lines.push(`  Nota: ${truncateNote(note)}`);
+            lines.push(`  ${t.briefing.note}: ${truncateNote(note)}`);
           }
         }
       }
 
       if (row.inProgress.length) {
         lines.push("");
-        lines.push("*En proceso*");
+        lines.push(`*${t.briefing.inProgress}*`);
         for (const activity of row.inProgress) {
-          appendActivityLines(lines, activity, row.member.id, board.members);
+          appendActivityLines(lines, activity, row.member.id, board.members, t);
         }
       }
 
       if (row.pendingReview.length) {
         lines.push("");
-        lines.push("*Pendiente por revisión*");
+        lines.push(`*${t.briefing.pendingReview}*`);
         for (const activity of row.pendingReview) {
-          appendActivityLines(lines, activity, row.member.id, board.members, {
+          appendActivityLines(lines, activity, row.member.id, board.members, t, {
             reviewMode: true,
           });
         }
       }
 
       if (isClearDay(row)) {
-        lines.push(CLEAR_DAY_MESSAGE);
+        lines.push(t.briefing.clearDay);
       } else if (!hasActivityDetail(row)) {
-        lines.push("Sin actividades pendientes por listar.");
+        lines.push(t.briefing.nothingToList);
       }
 
       lines.push("");
     }
   }
 
-  lines.push("— Panel: /admin/tareas");
+  lines.push(t.briefing.whatsappPanel);
   lines.push("");
   lines.push(...formatPsalmLines(psalm));
   return lines.join("\n").trim();
@@ -317,6 +323,7 @@ export function AdminDailyBriefing({
   loading?: boolean;
 }) {
   const toast = useToast();
+  const { t, locale } = useAdminLanguage();
   const rows = useMemo(() => (board ? getMemberDigests(board) : []), [board]);
   const totalInProgress = rows.reduce((acc, row) => acc + row.inProgress.length, 0);
   const totalPendingReview = rows.reduce(
@@ -324,19 +331,23 @@ export function AdminDailyBriefing({
     0,
   );
   const totalPending = rows.reduce((acc, row) => acc + row.pendingCount, 0);
-  const todayLabel = formatDayLabel();
-  const dailyQuote = useMemo(() => pickDailyQuote(), []);
-  const dailyPsalm = useMemo(() => pickDailyPsalm(), []);
+  const todayLabel = formatDayLabel(locale);
+  const dailyQuote = useMemo(() => pickDailyQuote(new Date(), locale), [locale]);
+  const dailyPsalm = useMemo(() => pickDailyPsalm(new Date(), locale), [locale]);
 
   function shareWhatsApp() {
     if (!board) return;
-    const text = buildWhatsAppDigest(board, todayLabel);
+    const text = buildWhatsAppDigest(board, todayLabel, t, locale);
     const href = `https://wa.me/?text=${encodeURIComponent(text)}`;
     window.open(href, "_blank", "noopener,noreferrer");
-    toast.success("Mensaje listo: elige el grupo Inspiralab en WhatsApp");
+    toast.success(t.briefing.whatsappReady);
   }
 
-  function renderActivityBlock(activity: Activity, memberId: string, reviewMode: boolean) {
+  function renderActivityBlock(
+    activity: Activity,
+    memberId: string,
+    reviewMode: boolean,
+  ) {
     const partners = board ? coAssignees(activity, memberId, board.members) : [];
     const note = latestNote(activity);
     const link = reviewLink(activity);
@@ -345,29 +356,29 @@ export function AdminDailyBriefing({
         <strong>${escapeHtml(activity.title)}</strong>
         ${
           reviewMode
-            ? `<span class="meta">Revisa: ${escapeHtml(reviewersLabel(activity))}</span>`
+            ? `<span class="meta">${t.briefing.reviews}: ${escapeHtml(reviewersLabel(t, activity))}</span>`
             : ""
         }
         ${
           partners.length
-            ? `<span class="meta">${reviewMode ? "Equipo" : "Con"}: ${escapeHtml(partners.map((p) => p.name).join(", "))}</span>`
+            ? `<span class="meta">${reviewMode ? t.briefing.team : t.briefing.with}: ${escapeHtml(partners.map((p) => p.name).join(", "))}</span>`
             : ""
         }
         ${
           reviewMode
             ? link
               ? `<span class="meta">Link: <a href="${escapeHtml(link)}">${escapeHtml(link)}</a></span>`
-              : `<span class="meta">Link: (sin URL de revisión)</span>`
+              : `<span class="meta">Link: ${escapeHtml(t.briefing.pdfNoReviewUrl)}</span>`
             : ""
         }
-        <span class="meta">Entrega ${escapeHtml(formatShort(activity.finishedDate))} · ${escapeHtml(formatDaysLeft(activity.finishedDate))}</span>
-        ${note ? `<span class="meta">Nota: ${escapeHtml(note)}</span>` : ""}
+        <span class="meta">${t.briefing.delivery} ${escapeHtml(formatShort(activity.finishedDate))} · ${escapeHtml(formatDaysLeft(t, activity.finishedDate))}</span>
+        ${note ? `<span class="meta">${t.briefing.note}: ${escapeHtml(note)}</span>` : ""}
       </li>`;
   }
 
   function exportPdf() {
-    const quote = pickDailyQuote();
-    const psalm = pickDailyPsalm();
+    const quote = pickDailyQuote(new Date(), locale);
+    const psalm = pickDailyPsalm(new Date(), locale);
     const peopleHtml = rows.length
       ? rows
           .map((row) => {
@@ -377,7 +388,7 @@ export function AdminDailyBriefing({
               : `<div class="photo placeholder">${escapeHtml(initials(row.member.name) || "?")}</div>`;
 
             const pendingHtml = row.pendingQueued.length
-              ? `<h3>Pendientes</h3><ul>${row.pendingQueued
+              ? `<h3>${escapeHtml(t.briefing.pending)}</h3><ul>${row.pendingQueued
                   .map((activity) => {
                     const partners = coAssignees(
                       activity,
@@ -388,32 +399,32 @@ export function AdminDailyBriefing({
                     return `
                       <li>
                         <strong>${escapeHtml(activity.title)}</strong>
-                        <span class="meta">${escapeHtml(statusLabel(activity.status))}</span>
+                        <span class="meta">${escapeHtml(statusLabel(t, activity.status))}</span>
                         ${
                           partners.length
-                            ? `<span class="meta">Con: ${escapeHtml(partners.map((p) => p.name).join(", "))}</span>`
+                            ? `<span class="meta">${t.briefing.with}: ${escapeHtml(partners.map((p) => p.name).join(", "))}</span>`
                             : ""
                         }
-                        <span class="meta">Entrega ${escapeHtml(formatShort(activity.finishedDate))} · ${escapeHtml(formatDaysLeft(activity.finishedDate))}</span>
-                        ${note ? `<span class="meta">Nota: ${escapeHtml(note)}</span>` : ""}
+                        <span class="meta">${t.briefing.delivery} ${escapeHtml(formatShort(activity.finishedDate))} · ${escapeHtml(formatDaysLeft(t, activity.finishedDate))}</span>
+                        ${note ? `<span class="meta">${t.briefing.note}: ${escapeHtml(note)}</span>` : ""}
                       </li>`;
                   })
                   .join("")}</ul>`
               : "";
             const inProgressHtml = row.inProgress.length
-              ? `<h3>En proceso</h3><ul>${row.inProgress
+              ? `<h3>${escapeHtml(t.briefing.inProgress)}</h3><ul>${row.inProgress
                   .map((activity) => renderActivityBlock(activity, row.member.id, false))
                   .join("")}</ul>`
               : "";
             const reviewHtml = row.pendingReview.length
-              ? `<h3>Pendiente por revisión</h3><ul>${row.pendingReview
+              ? `<h3>${escapeHtml(t.briefing.pendingReview)}</h3><ul>${row.pendingReview
                   .map((activity) => renderActivityBlock(activity, row.member.id, true))
                   .join("")}</ul>`
               : "";
             const emptyHtml = isClearDay(row)
-              ? `<p class="meta">${escapeHtml(CLEAR_DAY_MESSAGE)}</p>`
+              ? `<p class="meta">${escapeHtml(t.briefing.clearDay)}</p>`
               : !hasActivityDetail(row)
-                ? `<p class="meta">Sin actividades pendientes por listar.</p>`
+                ? `<p class="meta">${escapeHtml(t.briefing.nothingToList)}</p>`
                 : "";
 
             return `
@@ -422,7 +433,7 @@ export function AdminDailyBriefing({
                   ${photoBlock}
                   <div>
                     <h2>${escapeHtml(row.member.name)}</h2>
-                    <p class="role">${escapeHtml(row.member.role || "Integrante")} · Pendientes ${row.pendingCount} · En proceso ${row.inProgress.length} · Por revisar ${row.pendingReview.length}</p>
+                    <p class="role">${escapeHtml(row.member.role || t.briefing.memberRole)} · ${formatAdmin(t.briefing.pendingCount, { count: row.pendingCount, inProgress: row.inProgress.length, review: row.pendingReview.length })}</p>
                   </div>
                 </div>
                 ${pendingHtml}
@@ -432,13 +443,13 @@ export function AdminDailyBriefing({
               </article>`;
           })
           .join("")
-      : `<p class="empty">Nadie tiene pendientes, en proceso ni por revisar.</p>`;
+      : `<p class="empty">${escapeHtml(t.briefing.pdfNoOne)}</p>`;
 
     const html = `<!DOCTYPE html>
-<html lang="es">
+<html lang="${locale}">
 <head>
   <meta charset="utf-8" />
-  <title>Informe diario — ${escapeHtml(todayLabel)}</title>
+  <title>${escapeHtml(t.briefing.pdfTitle)} — ${escapeHtml(todayLabel)}</title>
   <style>
     body {
       font-family: Georgia, "Times New Roman", serif;
@@ -490,8 +501,8 @@ export function AdminDailyBriefing({
     <p class="brand">Inspiralab</p>
     <p class="motto">“${escapeHtml(quote.text)}”</p>
     <p class="author">— ${escapeHtml(quote.author)}</p>
-    <p class="salute">Buenos días a todos.</p>
-    <p class="intro">Equipo, a continuación les comparto el reporte diario de tareas. Les pido revisarlo con atención y, si tienen alguna inquietud o comentario, hacérmelo saber.</p>
+    <p class="salute">${escapeHtml(t.briefing.pdfGreeting)}</p>
+    <p class="intro">${escapeHtml(t.briefing.pdfIntro)}</p>
     <p class="date">${escapeHtml(todayLabel)}</p>
   </div>
   ${peopleHtml}
@@ -499,7 +510,7 @@ export function AdminDailyBriefing({
     <p class="psalm-ref">${escapeHtml(psalm.reference)}</p>
     <p class="psalm-text">${escapeHtml(psalm.text)}</p>
   </div>
-  <p class="footer">Inspiralab · ${rows.length} integrante${rows.length === 1 ? "" : "s"} · ${totalPending} pendiente${totalPending === 1 ? "" : "s"} · ${totalInProgress} en proceso · ${totalPendingReview} por revisar</p>
+  <p class="footer">${escapeHtml(formatAdmin(t.briefing.pdfFooter, { members: rows.length, pending: totalPending, inProgress: totalInProgress, review: totalPendingReview }))}</p>
 </body>
 </html>`;
 
@@ -508,7 +519,7 @@ export function AdminDailyBriefing({
     const win = window.open(url, "_blank");
     if (!win) {
       URL.revokeObjectURL(url);
-      alert("Permite ventanas emergentes para exportar el PDF");
+      alert(t.briefing.allowPopups);
       return;
     }
     window.setTimeout(() => {
@@ -525,7 +536,7 @@ export function AdminDailyBriefing({
   if (loading) {
     return (
       <section className="mt-10 border border-[color:var(--line)] bg-white p-5">
-        <p className="text-sm text-[color:var(--muted)]">Cargando actividad diaria...</p>
+        <p className="text-sm text-[color:var(--muted)]">{t.briefing.loading}</p>
       </section>
     );
   }
@@ -535,11 +546,10 @@ export function AdminDailyBriefing({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="font-[family-name:var(--font-display)] text-2xl font-bold text-[color:var(--ink)]">
-            Resumen diario
+            {t.briefing.title}
           </h2>
           <p className="mt-1 text-sm text-[color:var(--muted)]">
-            En proceso y pendiente por revisión · revisores, links, fechas y notas.{" "}
-            {todayLabel}.
+            {t.briefing.subtitle} {todayLabel}.
           </p>
           <p className="mt-2 text-sm italic text-[color:var(--ink)]">
             “{dailyQuote.text}” — {dailyQuote.author}
@@ -550,14 +560,14 @@ export function AdminDailyBriefing({
             href="/admin/tareas"
             className="border border-[color:var(--line)] bg-white px-3 py-2 text-xs font-semibold"
           >
-            Ver tareas
+            {t.briefing.viewTasks}
           </Link>
           <button
             type="button"
             onClick={exportPdf}
             className="border border-[color:var(--line)] bg-white px-3 py-2 text-xs font-semibold"
           >
-            Exportar PDF
+            {t.briefing.exportPdf}
           </button>
           <button
             type="button"
@@ -565,7 +575,7 @@ export function AdminDailyBriefing({
             disabled={!board}
             className="bg-[#25D366] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
           >
-            Compartir en WhatsApp
+            {t.briefing.shareWhatsApp}
           </button>
         </div>
       </div>
@@ -581,7 +591,7 @@ export function AdminDailyBriefing({
 
       {rows.length === 0 ? (
         <div className="border border-[color:var(--line)] bg-white px-4 py-8 text-center text-sm text-[color:var(--muted)]">
-          No hay integrantes en el equipo.
+          {t.briefing.noMembers}
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
@@ -599,8 +609,11 @@ export function AdminDailyBriefing({
                     {member.name}
                   </p>
                   <p className="truncate text-xs text-[color:var(--muted)]">
-                    Pendientes {pendingCount} · En proceso {inProgress.length} · Por
-                    revisar {pendingReview.length}
+                    {formatAdmin(t.briefing.pendingCount, {
+                      count: pendingCount,
+                      inProgress: inProgress.length,
+                      review: pendingReview.length,
+                    })}
                   </p>
                 </div>
               </div>
@@ -609,7 +622,7 @@ export function AdminDailyBriefing({
                 {pendingQueued.length > 0 ? (
                   <div className="space-y-2">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">
-                      Pendientes
+                      {t.briefing.pending}
                     </p>
                     <ul className="space-y-3">
                       {pendingQueued.map((activity) => {
@@ -623,20 +636,20 @@ export function AdminDailyBriefing({
                               {activity.title}
                             </p>
                             <p className="text-xs text-[color:var(--muted)]">
-                              {statusLabel(activity.status)}
+                              {statusLabel(t, activity.status)}
                             </p>
                             {partners.length > 0 ? (
                               <p className="text-xs text-[color:var(--muted)]">
-                                Con: {partners.map((p) => p.name).join(", ")}
+                                {t.briefing.with}: {partners.map((p) => p.name).join(", ")}
                               </p>
                             ) : null}
                             <p className="text-xs text-[color:var(--muted)]">
-                              Entrega {formatShort(activity.finishedDate)} ·{" "}
-                              {formatDaysLeft(activity.finishedDate)}
+                              {t.briefing.delivery} {formatShort(activity.finishedDate)} ·{" "}
+                              {formatDaysLeft(t, activity.finishedDate)}
                             </p>
                             {note ? (
                               <p className="mt-1 text-xs text-[color:var(--ink)]">
-                                Nota: {note}
+                                {t.briefing.note}: {note}
                               </p>
                             ) : null}
                           </li>
@@ -649,7 +662,7 @@ export function AdminDailyBriefing({
                 {inProgress.length > 0 ? (
                   <div className="space-y-2">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--accent)]">
-                      En proceso
+                      {t.briefing.inProgress}
                     </p>
                     <ul className="space-y-3">
                       {inProgress.map((activity) => {
@@ -664,16 +677,16 @@ export function AdminDailyBriefing({
                             </p>
                             {partners.length > 0 ? (
                               <p className="text-xs text-[color:var(--muted)]">
-                                Con: {partners.map((p) => p.name).join(", ")}
+                                {t.briefing.with}: {partners.map((p) => p.name).join(", ")}
                               </p>
                             ) : null}
                             <p className="text-xs text-[color:var(--muted)]">
-                              Entrega {formatShort(activity.finishedDate)} ·{" "}
-                              {formatDaysLeft(activity.finishedDate)}
+                              {t.briefing.delivery} {formatShort(activity.finishedDate)} ·{" "}
+                              {formatDaysLeft(t, activity.finishedDate)}
                             </p>
                             {note ? (
                               <p className="mt-1 text-xs text-[color:var(--ink)]">
-                                Nota: {note}
+                                {t.briefing.note}: {note}
                               </p>
                             ) : null}
                           </li>
@@ -686,7 +699,7 @@ export function AdminDailyBriefing({
                 {pendingReview.length > 0 ? (
                   <div className="space-y-2">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-[#a16207]">
-                      Pendiente por revisión
+                      {t.briefing.pendingReview}
                     </p>
                     <ul className="space-y-3">
                       {pendingReview.map((activity) => {
@@ -701,11 +714,11 @@ export function AdminDailyBriefing({
                               {activity.title}
                             </p>
                             <p className="text-xs text-[color:var(--muted)]">
-                              Revisa: {reviewersLabel(activity)}
+                              {t.briefing.reviews}: {reviewersLabel(t, activity)}
                             </p>
                             {partners.length > 0 ? (
                               <p className="text-xs text-[color:var(--muted)]">
-                                Equipo: {partners.map((p) => p.name).join(", ")}
+                                {t.briefing.team}: {partners.map((p) => p.name).join(", ")}
                               </p>
                             ) : null}
                             {link ? (
@@ -719,16 +732,16 @@ export function AdminDailyBriefing({
                               </a>
                             ) : (
                               <p className="text-xs text-[color:var(--muted)]">
-                                Sin URL de revisión
+                                {t.briefing.noReviewUrl}
                               </p>
                             )}
                             <p className="text-xs text-[color:var(--muted)]">
-                              Entrega {formatShort(activity.finishedDate)} ·{" "}
-                              {formatDaysLeft(activity.finishedDate)}
+                              {t.briefing.delivery} {formatShort(activity.finishedDate)} ·{" "}
+                              {formatDaysLeft(t, activity.finishedDate)}
                             </p>
                             {note ? (
                               <p className="mt-1 text-xs text-[color:var(--ink)]">
-                                Nota: {note}
+                                {t.briefing.note}: {note}
                               </p>
                             ) : null}
                           </li>
@@ -740,13 +753,13 @@ export function AdminDailyBriefing({
 
                 {clear ? (
                   <p className="text-sm text-[color:var(--muted)]">
-                    {CLEAR_DAY_MESSAGE}
+                    {t.briefing.clearDay}
                   </p>
                 ) : !pendingQueued.length &&
                   !inProgress.length &&
                   !pendingReview.length ? (
                   <p className="text-sm text-[color:var(--muted)]">
-                    Sin actividades pendientes por listar.
+                    {t.briefing.nothingToList}
                   </p>
                 ) : null}
               </div>

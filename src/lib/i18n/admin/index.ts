@@ -2,6 +2,12 @@ export { adminEs } from "./es";
 export { adminEn } from "./en";
 export type { AdminDictionary, AdminLocale } from "./types";
 export { formatAdmin, getTaskStatuses, getTaskStatusColors } from "./helpers";
+export {
+  buildTaskAlarmMessage,
+  formatAlarmAssignees,
+  getTaskAlarmLevelLabels,
+  getTaskAlarmReasonLabel,
+} from "./alarms";
 
 import { adminEs } from "./es";
 import { adminEn } from "./en";

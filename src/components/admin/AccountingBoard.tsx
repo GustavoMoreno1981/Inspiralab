@@ -745,7 +745,7 @@ export function AccountingBoard() {
               </div>
 
             {(() => {
-              const budgetAlarm = getBudgetAlarm(board, year);
+              const budgetAlarm = getBudgetAlarm(board, t, year);
               if (!budgetAlarm || budgetAlarm.level === "ok") return null;
               const critical = budgetAlarm.level === "critical";
               return (
