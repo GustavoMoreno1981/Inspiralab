@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireModule } from "@/lib/auth/server";
 import { copyPrivateAuth, type PrivateItemType } from "@/lib/tasks/private-auth";
-import { readTasksBoard } from "@/lib/tasks/store";
-import { canViewPrivateItem, isPrivateItem } from "@/lib/tasks/types";
+import { readTasksBoardFull } from "@/lib/tasks/store";
+import { isPrivateItem } from "@/lib/tasks/types";
 
 type Body = {
   fromType?: PrivateItemType;
@@ -34,8 +34,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Datos inválidos" }, { status: 400 });
   }
 
-  const board = await readTasksBoard(session.memberId || undefined);
-  const viewerId = session.memberId || "";
+  const board = await readTasksBoardFull();
 
   const fromItem =
     fromType === "activity"
@@ -48,10 +47,6 @@ export async function POST(request: Request) {
 
   if (!fromItem || !toItem || !isPrivateItem(fromItem) || !isPrivateItem(toItem)) {
     return NextResponse.json({ error: "Ítems no válidos" }, { status: 404 });
-  }
-
-  if (!canViewPrivateItem(fromItem, viewerId) || !canViewPrivateItem(toItem, viewerId)) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
   try {

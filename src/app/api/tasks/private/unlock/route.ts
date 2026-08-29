@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireModule } from "@/lib/auth/server";
 import { verifyPrivatePin, type PrivateItemType } from "@/lib/tasks/private-auth";
 import { readTasksBoardFull } from "@/lib/tasks/store";
-import { canViewPrivateItem, isPrivateItem } from "@/lib/tasks/types";
+import { isPrivateItem } from "@/lib/tasks/types";
 
 type Body = {
   itemType?: PrivateItemType;
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Datos inválidos" }, { status: 400 });
   }
 
-  const board = await readTasksBoardFull(session.memberId || undefined);
+  const board = await readTasksBoardFull();
   const item =
     itemType === "activity"
       ? board.activities.find((activity) => activity.id === itemId)
@@ -33,11 +33,6 @@ export async function POST(request: Request) {
 
   if (!item || !isPrivateItem(item)) {
     return NextResponse.json({ error: "Ítem no encontrado" }, { status: 404 });
-  }
-
-  const viewerId = session.memberId || "";
-  if (!canViewPrivateItem(item, viewerId)) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
   const ok = await verifyPrivatePin(itemType, itemId, pin);

@@ -3,12 +3,14 @@ import { requireModule } from "@/lib/auth/server";
 import { readTasksBoard, writeTasksBoard } from "@/lib/tasks/store";
 import { redactPrivateBoard, type TasksBoard } from "@/lib/tasks/types";
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await requireModule("tareas");
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const board = await readTasksBoard(session.memberId || undefined);
+  const viewerParam = new URL(request.url).searchParams.get("viewer")?.trim() || "";
+  const viewerMemberId = session.memberId || viewerParam || undefined;
+  const board = await readTasksBoard(viewerMemberId);
   return NextResponse.json(redactPrivateBoard(board));
 }
 

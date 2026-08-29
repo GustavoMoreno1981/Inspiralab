@@ -319,10 +319,8 @@ export function TasksBoard() {
   }
 
   const load = useCallback(async () => {
-    const [tasksRes, meRes] = await Promise.all([
-      fetch("/api/tasks", { cache: "no-store" }),
-      fetch("/api/auth/me", { cache: "no-store" }),
-    ]);
+    const meRes = await fetch("/api/auth/me", { cache: "no-store" });
+    let viewer = "";
     if (meRes.ok) {
       const me = (await meRes.json()) as {
         role?: string;
@@ -331,8 +329,16 @@ export function TasksBoard() {
       };
       setIsAdmin(me.role === "admin");
       setSessionName((me.name || "").trim());
-      setSessionMemberId((me.memberId || "").trim());
+      viewer = (me.memberId || "").trim();
+      setSessionMemberId(viewer);
     }
+    if (!viewer && selectedMemberId !== "all") {
+      viewer = selectedMemberId;
+    }
+    const tasksUrl = viewer
+      ? `/api/tasks?viewer=${encodeURIComponent(viewer)}`
+      : "/api/tasks";
+    const tasksRes = await fetch(tasksUrl, { cache: "no-store" });
     if (tasksRes.ok) {
       const data = (await tasksRes.json()) as TasksBoard;
       setBoard({
@@ -350,7 +356,7 @@ export function TasksBoard() {
       });
     }
     setLoading(false);
-  }, []);
+  }, [selectedMemberId]);
 
   useEffect(() => {
     void load();

@@ -17,6 +17,7 @@ import {
   type TeamMember,
   normalizeVisibility,
   canViewPrivateItem,
+  isPrivateItem,
 } from "./types";
 import { deletePrivateAuth } from "./private-auth";
 
@@ -865,9 +866,19 @@ function toSqlDate(value: unknown): string | null {
   return trimmed;
 }
 
+export async function readTasksBoardUnfiltered(): Promise<TasksBoard> {
+  return toPublicBoard(await readStoredBoard());
+}
+
 export async function readTasksBoard(viewerMemberId?: string): Promise<TasksBoard> {
-  const board = toPublicBoard(await readStoredBoard());
-  if (!viewerMemberId) return board;
+  const board = await readTasksBoardUnfiltered();
+  if (!viewerMemberId) {
+    return {
+      ...board,
+      activities: board.activities.filter((activity) => !isPrivateItem(activity)),
+      bank: board.bank.filter((item) => !isPrivateItem(item)),
+    };
+  }
   return filterBoardForViewer(board, viewerMemberId);
 }
 
@@ -881,9 +892,9 @@ export function filterBoardForViewer(board: TasksBoard, viewerMemberId: string):
   };
 }
 
-/** Tablero filtrado por dueño, sin ocultar contenido (solo uso interno / unlock). */
-export async function readTasksBoardFull(viewerMemberId?: string): Promise<TasksBoard> {
-  return readTasksBoard(viewerMemberId);
+/** Tablero completo sin redactar (solo uso interno en APIs de clave privada). */
+export async function readTasksBoardFull(): Promise<TasksBoard> {
+  return readTasksBoardUnfiltered();
 }
 
 export async function writeTasksBoard(
