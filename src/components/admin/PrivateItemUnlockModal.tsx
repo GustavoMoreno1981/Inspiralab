@@ -1,0 +1,174 @@
+"use client";
+
+import { useState } from "react";
+import type { PrivateItemType } from "@/lib/tasks/private-auth";
+import {
+  EMPTY_PRIVATE_SETUP,
+  PrivateItemSetupFields,
+  validatePrivateSetup,
+} from "@/components/admin/PrivateItemSetupFields";
+
+type Props = {
+  open: boolean;
+  itemType: PrivateItemType;
+  itemId: string;
+  label: string;
+  onClose: () => void;
+  onUnlocked: () => void;
+};
+
+export function PrivateItemUnlockModal({
+  open,
+  itemType,
+  itemId,
+  label,
+  onClose,
+  onUnlocked,
+}: Props) {
+  const [mode, setMode] = useState<"unlock" | "recover">("unlock");
+  const [pin, setPin] = useState("");
+  const [recover, setRecover] = useState(EMPTY_PRIVATE_SETUP);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  if (!open) return null;
+
+  async function handleUnlock(event: React.FormEvent) {
+    event.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/tasks/private/unlock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemType, itemId, pin }),
+      });
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) {
+        setError(data?.error || "Clave incorrecta");
+        return;
+      }
+      onUnlocked();
+      setPin("");
+      onClose();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRecover(event: React.FormEvent) {
+    event.preventDefault();
+    const validation = validatePrivateSetup(recover);
+    if (validation) {
+      setError(validation);
+      return;
+    }
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/tasks/private/recover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          itemType,
+          itemId,
+          motherName: recover.motherName,
+          petName: recover.petName,
+          birthYear: recover.birthYear,
+          newPin: recover.pin,
+        }),
+      });
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) {
+        setError(data?.error || "No se pudo recuperar la clave");
+        return;
+      }
+      onUnlocked();
+      setRecover(EMPTY_PRIVATE_SETUP);
+      onClose();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-4 sm:items-center">
+      <div className="w-full max-w-md border border-[color:var(--line)] bg-white p-5 shadow-xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="font-[family-name:var(--font-display)] text-lg font-bold">
+              Contenido privado
+            </h2>
+            <p className="mt-1 text-sm text-[color:var(--muted)]">{label}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm font-semibold text-[color:var(--muted)]"
+          >
+            Cerrar
+          </button>
+        </div>
+
+        {mode === "unlock" ? (
+          <form onSubmit={(e) => void handleUnlock(e)} className="mt-4 space-y-3">
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
+                Clave de 4 dígitos
+              </span>
+              <input
+                autoFocus
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm tracking-[0.3em]"
+              />
+            </label>
+            {error ? <p className="text-xs font-semibold text-[color:var(--accent)]">{error}</p> : null}
+            <button
+              type="submit"
+              disabled={loading || pin.length !== 4}
+              className="w-full bg-[color:var(--accent)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {loading ? "Verificando..." : "Desbloquear"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("recover");
+                setError("");
+              }}
+              className="w-full text-xs font-semibold text-[color:var(--accent)]"
+            >
+              Olvidé mi clave — recuperar con preguntas
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={(e) => void handleRecover(e)} className="mt-4 space-y-3">
+            <PrivateItemSetupFields values={recover} onChange={setRecover} />
+            {error ? <p className="text-xs font-semibold text-[color:var(--accent)]">{error}</p> : null}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-[color:var(--accent)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {loading ? "Guardando..." : "Crear nueva clave"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("unlock");
+                setError("");
+              }}
+              className="w-full text-xs font-semibold text-[color:var(--muted)]"
+            >
+              Volver a ingresar clave
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}

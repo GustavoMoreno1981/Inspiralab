@@ -5,6 +5,8 @@ export type TaskStatus =
   | "pending_review"
   | "done";
 
+export type ItemVisibility = "public" | "private";
+
 /** Permiso de acceso al panel (distinto del cargo `role`). */
 export type AccessRole = "admin" | "member";
 
@@ -123,6 +125,10 @@ export type Activity = {
   reviewMessages: ReviewMessage[];
   createdAt: string;
   updatedAt: string;
+  /** Pública (equipo) o privada (solo quien la creó). */
+  visibility: ItemVisibility;
+  /** Integrante que creó el ítem (dueño de lo privado). */
+  createdById: string;
 };
 
 export type TasksBoard = {
@@ -146,6 +152,9 @@ export type TaskBankItem = {
   convertedActivityId: string | null;
   createdAt: string;
   updatedAt: string;
+  visibility: ItemVisibility;
+  /** Quien anotó la idea (dueño si es privada). */
+  createdById: string;
 };
 
 export const TASK_STATUSES: { value: TaskStatus; label: string }[] = [
@@ -305,4 +314,24 @@ export function deriveActivityStatusFromTasks(tasks: Task[]): TaskStatus | null 
 
 export function emptyBoard(): TasksBoard {
   return { members: [], activities: [], bank: [] };
+}
+
+export function normalizeVisibility(value: unknown): ItemVisibility {
+  return value === "private" ? "private" : "public";
+}
+
+export function isPrivateItem(item: {
+  visibility?: ItemVisibility;
+}): boolean {
+  return item.visibility === "private";
+}
+
+export function canViewPrivateItem(
+  item: { visibility?: ItemVisibility; createdById?: string; ownerId?: string },
+  viewerMemberId: string,
+): boolean {
+  if (!isPrivateItem(item)) return true;
+  if (!viewerMemberId) return false;
+  const owner = item.createdById || item.ownerId || "";
+  return owner === viewerMemberId;
 }

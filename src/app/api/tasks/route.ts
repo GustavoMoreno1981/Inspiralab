@@ -8,7 +8,7 @@ export async function GET() {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const board = await readTasksBoard();
+  const board = await readTasksBoard(session.memberId || undefined);
   return NextResponse.json(board);
 }
 

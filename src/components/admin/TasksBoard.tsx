@@ -15,6 +15,7 @@ import {
   getActivityProgress,
   isActivityFullyComplete,
   normalizeItemStatus,
+  normalizeVisibility,
   type Activity,
   type Task,
   type Subtask,
@@ -25,6 +26,7 @@ import {
   type TaskStatus,
   type TasksBoard,
   type TeamMember,
+  type ItemVisibility,
 } from "@/lib/tasks/types";
 import {
   latestReviewResponse,
@@ -39,6 +41,16 @@ import { ReviewMessageModal } from "@/components/admin/ReviewMessageModal";
 import { ReviewResponsePanel } from "@/components/admin/ReviewResponsePanel";
 import { TasksAssistant } from "@/components/admin/TasksAssistant";
 import { DeliveryUrlsModal } from "@/components/admin/DeliveryUrlsModal";
+import {
+  EMPTY_PRIVATE_SETUP,
+  PrivateItemSetupFields,
+  validatePrivateSetup,
+  type PrivateSetupValues,
+} from "@/components/admin/PrivateItemSetupFields";
+import { PrivateItemUnlockModal } from "@/components/admin/PrivateItemUnlockModal";
+import { PrivateLockedCard } from "@/components/admin/PrivateLockedCard";
+import { usePrivateUnlock } from "@/hooks/usePrivateUnlock";
+import type { PrivateItemType } from "@/lib/tasks/private-auth";
 import { useToast } from "@/components/admin/AdminToast";
 
 const STATUS_STYLES: Record<TaskStatus, string> = {
@@ -154,6 +166,8 @@ function normalizeActivity(activity: Partial<Activity> & { id: string }): Activi
       : [],
     createdAt: activity.createdAt || "",
     updatedAt: activity.updatedAt || "",
+    visibility: normalizeVisibility(activity.visibility),
+    createdById: activity.createdById || "",
   };
 }
 
@@ -263,6 +277,16 @@ export function TasksBoard() {
   const [newSubtaskDraft, setNewSubtaskDraft] = useState<
     Record<string, { title: string; url: string }>
   >({});
+  const [newVisibility, setNewVisibility] = useState<ItemVisibility>("public");
+  const [newPrivateSetup, setNewPrivateSetup] = useState<PrivateSetupValues>(EMPTY_PRIVATE_SETUP);
+  const [bankVisibility, setBankVisibility] = useState<ItemVisibility>("public");
+  const [bankPrivateSetup, setBankPrivateSetup] = useState<PrivateSetupValues>(EMPTY_PRIVATE_SETUP);
+  const [unlockTarget, setUnlockTarget] = useState<{
+    itemType: PrivateItemType;
+    itemId: string;
+    label: string;
+  } | null>(null);
+  const { isUnlocked, markUnlocked } = usePrivateUnlock();
 
   const load = useCallback(async () => {
     const [tasksRes, meRes] = await Promise.all([
@@ -286,7 +310,13 @@ export function TasksBoard() {
         activities: (data.activities || []).map((activity) =>
           normalizeActivity({ ...activity, id: activity.id }),
         ),
-        bank: Array.isArray(data.bank) ? data.bank : [],
+        bank: Array.isArray(data.bank)
+          ? data.bank.map((item) => ({
+              ...item,
+              visibility: normalizeVisibility(item.visibility),
+              createdById: item.createdById || item.ownerId || "",
+            }))
+          : [],
       });
     }
     setLoading(false);
@@ -551,6 +581,7 @@ export function TasksBoard() {
     setNewFirstTask("");
     setNewFirstSubtask("");
     setNewFirstSubtaskUrl("");
+    resetNewPrivateForm();
     setShowCreateModal(true);
   }
 
@@ -576,6 +607,60 @@ export function TasksBoard() {
     updateActivity(activityId, { assigneeIds: next }, "Asignación actualizada");
   }
 
+  function resolveCreatorId(fallbackId: string) {
+    return sessionMemberId || fallbackId;
+  }
+
+  function resetNewPrivateForm() {
+    setNewVisibility("public");
+    setNewPrivateSetup(EMPTY_PRIVATE_SETUP);
+  }
+
+  function resetBankPrivateForm() {
+    setBankVisibility("public");
+    setBankPrivateSetup(EMPTY_PRIVATE_SETUP);
+  }
+
+  async function setupPrivateItem(
+    itemType: PrivateItemType,
+    itemId: string,
+    values: PrivateSetupValues,
+  ) {
+    const res = await fetch("/api/tasks/private/setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        itemType,
+        itemId,
+        pin: values.pin,
+        motherName: values.motherName,
+        petName: values.petName,
+        birthYear: values.birthYear,
+      }),
+    });
+    const data = (await res.json().catch(() => null)) as { error?: string } | null;
+    if (!res.ok) {
+      throw new Error(data?.error || "No se pudo guardar la clave privada");
+    }
+  }
+
+  async function copyPrivateItemAuth(
+    fromType: PrivateItemType,
+    fromId: string,
+    toType: PrivateItemType,
+    toId: string,
+  ) {
+    const res = await fetch("/api/tasks/private/copy", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fromType, fromId, toType, toId }),
+    });
+    const data = (await res.json().catch(() => null)) as { error?: string } | null;
+    if (!res.ok) {
+      throw new Error(data?.error || "No se pudo copiar la clave privada");
+    }
+  }
+
   async function createActivity(event: FormEvent) {
     event.preventDefault();
     if (!newTitle.trim()) {
@@ -593,6 +678,19 @@ export function TasksBoard() {
     if (newEndDate < newDate) {
       toast.error("La fecha de fin no puede ser anterior al inicio");
       return;
+    }
+
+    const sourceBankItem = convertingBankId
+      ? (board.bank || []).find((item) => item.id === convertingBankId)
+      : null;
+    const sourceBankPrivate = sourceBankItem?.visibility === "private";
+
+    if (newVisibility === "private" && !sourceBankPrivate) {
+      const validation = validatePrivateSetup(newPrivateSetup);
+      if (validation) {
+        toast.error(validation);
+        return;
+      }
     }
 
     const now = new Date().toISOString();
@@ -637,6 +735,8 @@ export function TasksBoard() {
       reviewMessages: [],
       createdAt: now,
       updatedAt: now,
+      visibility: newVisibility,
+      createdById: resolveCreatorId(newAssigneeIds[0] || ""),
     };
 
     const nextBank =
@@ -663,6 +763,21 @@ export function TasksBoard() {
         : `Actividad “${activity.title}” creada`,
     );
     if (ok) {
+      if (activity.visibility === "private") {
+        try {
+          if (convertingBankId && sourceBankPrivate) {
+            await copyPrivateItemAuth("bank", convertingBankId, "activity", activityId);
+          } else {
+            await setupPrivateItem("activity", activityId, newPrivateSetup);
+          }
+          markUnlocked("activity", activityId);
+        } catch (error) {
+          toast.error(
+            error instanceof Error ? error.message : "No se pudo configurar la clave privada",
+          );
+        }
+      }
+      resetNewPrivateForm();
       setShowCreateModal(false);
       setConvertingBankId(null);
       if (newAssigneeIds.length === 1) {
@@ -684,6 +799,13 @@ export function TasksBoard() {
       toast.error("Escribe qué hay que hacer / la actividad propuesta");
       return;
     }
+    if (bankVisibility === "private") {
+      const validation = validatePrivateSetup(bankPrivateSetup);
+      if (validation) {
+        toast.error(validation);
+        return;
+      }
+    }
     const now = new Date().toISOString();
     const item: TaskBankItem = {
       id: createId("bank"),
@@ -694,12 +816,25 @@ export function TasksBoard() {
       convertedActivityId: null,
       createdAt: now,
       updatedAt: now,
+      visibility: bankVisibility,
+      createdById: resolveCreatorId(ownerId),
     };
     const ok = await persist(
       { ...board, bank: [item, ...(board.bank || [])] },
       "Idea agregada al banco",
     );
     if (ok) {
+      if (item.visibility === "private") {
+        try {
+          await setupPrivateItem("bank", item.id, bankPrivateSetup);
+          markUnlocked("bank", item.id);
+        } catch (error) {
+          toast.error(
+            error instanceof Error ? error.message : "No se pudo configurar la clave privada",
+          );
+        }
+      }
+      resetBankPrivateForm();
       setBankTitle("");
       setBankNotes("");
     }
@@ -769,6 +904,8 @@ export function TasksBoard() {
     setNewFirstTask("");
     setNewFirstSubtask("");
     setNewFirstSubtaskUrl("");
+    setNewVisibility(item.visibility === "private" ? "private" : "public");
+    setNewPrivateSetup(EMPTY_PRIVATE_SETUP);
     setShowCreateModal(true);
   }
 
@@ -1459,6 +1596,25 @@ export function TasksBoard() {
 
   function renderActivityCards(activities: Activity[]) {
     return activities.map((activity) => {
+                        if (
+                          activity.visibility === "private" &&
+                          !isUnlocked("activity", activity.id)
+                        ) {
+                          return (
+                            <PrivateLockedCard
+                              key={activity.id}
+                              kind="actividad"
+                              onUnlock={() =>
+                                setUnlockTarget({
+                                  itemType: "activity",
+                                  itemId: activity.id,
+                                  label: "Actividad privada",
+                                })
+                              }
+                            />
+                          );
+                        }
+
                         const progress = getActivityProgress(activity);
                         const reviewState = latestReviewResponse(activity.reviewMessages);
                         const expanded = expandedActivityId === activity.id;
@@ -1509,6 +1665,11 @@ export function TasksBoard() {
                                     >
                                       {statusColor.label}
                                     </span>
+                                    {activity.visibility === "private" ? (
+                                      <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-[#1e293b] text-white">
+                                        Privada
+                                      </span>
+                                    ) : null}
                                     {assignees.length > 0 ? (
                                       <div
                                         className="flex items-center gap-2"
@@ -2822,6 +2983,41 @@ export function TasksBoard() {
                             className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)]"
                           />
                         </label>
+                        <div className="space-y-2">
+                          <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
+                            Visibilidad
+                          </span>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setBankVisibility("public")}
+                              className={`border px-3 py-2 text-xs font-semibold ${
+                                bankVisibility === "public"
+                                  ? "border-[color:var(--accent)] bg-[#fff1f4] text-[color:var(--accent)]"
+                                  : "border-[color:var(--line)]"
+                              }`}
+                            >
+                              Pública
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setBankVisibility("private")}
+                              className={`border px-3 py-2 text-xs font-semibold ${
+                                bankVisibility === "private"
+                                  ? "border-[color:var(--accent)] bg-[#fff1f4] text-[color:var(--accent)]"
+                                  : "border-[color:var(--line)]"
+                              }`}
+                            >
+                              Privada
+                            </button>
+                          </div>
+                          {bankVisibility === "private" ? (
+                            <PrivateItemSetupFields
+                              values={bankPrivateSetup}
+                              onChange={setBankPrivateSetup}
+                            />
+                          ) : null}
+                        </div>
                         <button
                           type="submit"
                           disabled={saving}
@@ -2843,6 +3039,25 @@ export function TasksBoard() {
                         </div>
                       ) : (
                         pendingBank.map((item) => {
+                          if (
+                            item.visibility === "private" &&
+                            !isUnlocked("bank", item.id)
+                          ) {
+                            return (
+                              <PrivateLockedCard
+                                key={item.id}
+                                kind="idea"
+                                onUnlock={() =>
+                                  setUnlockTarget({
+                                    itemType: "bank",
+                                    itemId: item.id,
+                                    label: "Idea privada en el banco",
+                                  })
+                                }
+                              />
+                            );
+                          }
+
                           const owner = board.members.find((m) => m.id === item.ownerId);
                           const isEditing = editingBankId === item.id;
                           const isViewing = viewingBankId === item.id;
@@ -2899,6 +3114,11 @@ export function TasksBoard() {
                                       <p className="font-[family-name:var(--font-display)] text-base font-bold text-[color:var(--ink)]">
                                         {item.title}
                                       </p>
+                                      {item.visibility === "private" ? (
+                                        <span className="mt-1 inline-block px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-[#1e293b] text-white">
+                                          Privada
+                                        </span>
+                                      ) : null}
                                       {!isViewing && item.notes ? (
                                         <p className="mt-1 text-sm text-[color:var(--muted)] line-clamp-2">
                                           {item.notes}
@@ -3128,6 +3348,50 @@ export function TasksBoard() {
               />
             </label>
 
+            <div className="space-y-2">
+              <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
+                Visibilidad
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setNewVisibility("public")}
+                  className={`border px-3 py-2 text-xs font-semibold ${
+                    newVisibility === "public"
+                      ? "border-[color:var(--accent)] bg-[#fff1f4] text-[color:var(--accent)]"
+                      : "border-[color:var(--line)]"
+                  }`}
+                >
+                  Pública
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewVisibility("private")}
+                  className={`border px-3 py-2 text-xs font-semibold ${
+                    newVisibility === "private"
+                      ? "border-[color:var(--accent)] bg-[#fff1f4] text-[color:var(--accent)]"
+                      : "border-[color:var(--line)]"
+                  }`}
+                >
+                  Privada
+                </button>
+              </div>
+              {newVisibility === "private" ? (
+                convertingBankId &&
+                (board.bank || []).find((item) => item.id === convertingBankId)?.visibility ===
+                  "private" ? (
+                  <p className="text-xs text-[color:var(--muted)]">
+                    Se conservará la misma clave privada de la idea del banco.
+                  </p>
+                ) : (
+                  <PrivateItemSetupFields
+                    values={newPrivateSetup}
+                    onChange={setNewPrivateSetup}
+                  />
+                )
+              ) : null}
+            </div>
+
             <div className="block space-y-1">
               <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
                 ¿Quién la hace?
@@ -3277,6 +3541,19 @@ export function TasksBoard() {
         onClose={closeReviewModal}
         onSent={(message) => {
           if (reviewModalActivityId) saveReviewMessage(reviewModalActivityId, message);
+        }}
+      />
+
+      <PrivateItemUnlockModal
+        open={Boolean(unlockTarget)}
+        itemType={unlockTarget?.itemType || "activity"}
+        itemId={unlockTarget?.itemId || ""}
+        label={unlockTarget?.label || ""}
+        onClose={() => setUnlockTarget(null)}
+        onUnlocked={() => {
+          if (unlockTarget) {
+            markUnlocked(unlockTarget.itemType, unlockTarget.itemId);
+          }
         }}
       />
     </div>

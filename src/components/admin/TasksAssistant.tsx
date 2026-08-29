@@ -535,6 +535,8 @@ export function TasksAssistant({
       reviewMessages: [],
       createdAt: now,
       updatedAt: now,
+      visibility: "public",
+      createdById: createDraft.assigneeIds[0] || "",
     };
   }
 

@@ -15,7 +15,10 @@ import {
   type TaskNote,
   type TasksBoard,
   type TeamMember,
+  normalizeVisibility,
+  canViewPrivateItem,
 } from "./types";
+import { deletePrivateAuth } from "./private-auth";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const TASKS_PATH = path.join(DATA_DIR, "tasks.json");
@@ -33,6 +36,8 @@ type ActivityRow = {
   review_messages?: unknown;
   created_at: string;
   updated_at: string;
+  visibility?: string | null;
+  created_by_id?: string | null;
 };
 
 type TaskRow = {
@@ -232,6 +237,13 @@ function normalizeBank(items: unknown): TaskBankItem[] {
           typeof item.convertedActivityId === "string" ? item.convertedActivityId : null,
         createdAt: item.createdAt || new Date().toISOString(),
         updatedAt: item.updatedAt || new Date().toISOString(),
+        visibility: normalizeVisibility(item.visibility),
+        createdById:
+          typeof item.createdById === "string"
+            ? item.createdById
+            : typeof item.ownerId === "string"
+              ? item.ownerId
+              : "",
       };
     })
     .filter((item): item is TaskBankItem => Boolean(item));
@@ -246,6 +258,8 @@ function normalizeActivities(activities: Activity[]): Activity[] {
     assigneeIds: activity.assigneeIds || [],
     notes: normalizeNotes(activity.notes),
     reviewMessages: normalizeReviewMessages(activity.reviewMessages),
+    visibility: normalizeVisibility(activity.visibility),
+    createdById: activity.createdById || "",
     tasks: (activity.tasks || []).map((task) =>
       normalizeTask({
         ...task,
@@ -327,6 +341,8 @@ function migrateLegacyBoard(data: Record<string, unknown>): StoredBoard {
       tasks,
       createdAt: String(legacy.createdAt || new Date().toISOString()),
       updatedAt: String(legacy.updatedAt || new Date().toISOString()),
+      visibility: normalizeVisibility(legacy.visibility),
+      createdById: typeof legacy.createdById === "string" ? legacy.createdById : "",
     };
   });
 
@@ -455,6 +471,8 @@ async function readTasksSupabaseRaw(): Promise<StoredBoard> {
     tasks: tasksByActivity.get(row.id) || [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    visibility: normalizeVisibility(row.visibility),
+    createdById: row.created_by_id || "",
   }));
 
   const bank = bankRes.error
@@ -469,6 +487,8 @@ async function readTasksSupabaseRaw(): Promise<StoredBoard> {
           convertedActivityId: row.converted_activity_id,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
+          visibility: row.visibility,
+          createdById: row.created_by_id,
         })),
       );
 
@@ -564,6 +584,8 @@ async function readLegacyTasksSupabaseRaw(): Promise<StoredBoard> {
       tasks,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      visibility: "public",
+      createdById: "",
     };
   });
 
@@ -650,6 +672,8 @@ async function writeTasksSupabaseRaw(board: StoredBoard) {
       review_messages: activity.reviewMessages || [],
       created_at: activity.createdAt || new Date().toISOString(),
       updated_at: activity.updatedAt || new Date().toISOString(),
+      visibility: normalizeVisibility(activity.visibility),
+      created_by_id: activity.createdById || "",
     }));
 
     let { error: activitiesError } = await supabase.from("activities").insert(activityRows);
@@ -669,6 +693,19 @@ async function writeTasksSupabaseRaw(board: StoredBoard) {
     ) {
       ({ error: activitiesError } = await supabase.from("activities").insert(
         activityRows.map(({ notes: _n, review_messages: _rm, ...rest }) => rest),
+      ));
+    }
+    if (
+      activitiesError &&
+      (activitiesError.code === "PGRST204" ||
+        String(activitiesError.message || "").includes("visibility") ||
+        String(activitiesError.message || "").includes("created_by_id"))
+    ) {
+      ({ error: activitiesError } = await supabase.from("activities").insert(
+        activityRows.map(
+          ({ visibility: _v, created_by_id: _c, notes: _n, review_messages: _rm, ...rest }) =>
+            rest,
+        ),
       ));
     }
     if (activitiesError) throw activitiesError;
@@ -739,9 +776,23 @@ async function writeTasksSupabaseRaw(board: StoredBoard) {
       converted_activity_id: item.convertedActivityId || null,
       created_at: item.createdAt || new Date().toISOString(),
       updated_at: item.updatedAt || new Date().toISOString(),
+      visibility: normalizeVisibility(item.visibility),
+      created_by_id: item.createdById || item.ownerId || "",
     }));
     const { error: bankError } = await supabase.from("task_bank").insert(bankRows);
-    if (bankError) throw bankError;
+    if (
+      bankError &&
+      (bankError.code === "PGRST204" ||
+        String(bankError.message || "").includes("visibility") ||
+        String(bankError.message || "").includes("created_by_id"))
+    ) {
+      const { error: retryError } = await supabase.from("task_bank").insert(
+        bankRows.map(({ visibility: _v, created_by_id: _c, ...rest }) => rest),
+      );
+      if (retryError) throw retryError;
+    } else if (bankError) {
+      throw bankError;
+    }
   }
 }
 
@@ -784,8 +835,20 @@ function toSqlDate(value: unknown): string | null {
   return trimmed;
 }
 
-export async function readTasksBoard(): Promise<TasksBoard> {
-  return toPublicBoard(await readStoredBoard());
+export async function readTasksBoard(viewerMemberId?: string): Promise<TasksBoard> {
+  const board = toPublicBoard(await readStoredBoard());
+  if (!viewerMemberId) return board;
+  return filterBoardForViewer(board, viewerMemberId);
+}
+
+export function filterBoardForViewer(board: TasksBoard, viewerMemberId: string): TasksBoard {
+  return {
+    ...board,
+    activities: board.activities.filter((activity) =>
+      canViewPrivateItem(activity, viewerMemberId),
+    ),
+    bank: board.bank.filter((item) => canViewPrivateItem(item, viewerMemberId)),
+  };
 }
 
 export async function writeTasksBoard(
@@ -795,6 +858,23 @@ export async function writeTasksBoard(
   await enqueueWrite(async () => {
     const existing = await readStoredBoard();
     const allowAuthEdit = Boolean(options?.allowAuthEdit);
+
+    const nextActivities = normalizeActivities(board.activities || []);
+    const nextBank = normalizeBank(board.bank || []);
+
+    const removedActivityIds = existing.activities
+      .filter((item) => !nextActivities.some((next) => next.id === item.id))
+      .map((item) => item.id);
+    const removedBankIds = (existing.bank || [])
+      .filter((item) => !nextBank.some((next) => next.id === item.id))
+      .map((item) => item.id);
+
+    for (const id of removedActivityIds) {
+      await deletePrivateAuth("activity", id);
+    }
+    for (const id of removedBankIds) {
+      await deletePrivateAuth("bank", id);
+    }
 
     const members: StoredMember[] = (board.members || []).map((member) => {
       const prev = existing.members.find((item) => item.id === member.id);
@@ -828,8 +908,8 @@ export async function writeTasksBoard(
 
     await writeStoredBoard({
       members,
-      activities: normalizeActivities(board.activities || []),
-      bank: normalizeBank(board.bank || []),
+      activities: nextActivities,
+      bank: nextBank,
     });
   });
 }
