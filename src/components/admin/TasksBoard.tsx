@@ -290,9 +290,9 @@ export function TasksBoard() {
   function isPrivateContentVisible(
     itemType: PrivateItemType,
     itemId: string,
-    hasText: boolean,
+    hasContent: boolean,
   ) {
-    return isUnlocked(itemType, itemId) && hasText;
+    return isUnlocked(itemType, itemId) && hasContent;
   }
 
   function applyPrivateReveal(payload: PrivateUnlockPayload) {
@@ -806,13 +806,6 @@ export function TasksBoard() {
           } else {
             await setupPrivateItem("activity", activityId, newPrivateSetup);
           }
-          markUnlocked("activity", activityId);
-          setBoard((prev) => ({
-            ...prev,
-            activities: prev.activities.map((entry) =>
-              entry.id === activityId ? activity : entry,
-            ),
-          }));
         } catch (error) {
           toast.error(
             error instanceof Error ? error.message : "No se pudo configurar la clave privada",
@@ -869,11 +862,6 @@ export function TasksBoard() {
       if (item.visibility === "private") {
         try {
           await setupPrivateItem("bank", item.id, bankPrivateSetup);
-          markUnlocked("bank", item.id);
-          setBoard((prev) => ({
-            ...prev,
-            bank: (prev.bank || []).map((entry) => (entry.id === item.id ? item : entry)),
-          }));
         } catch (error) {
           toast.error(
             error instanceof Error ? error.message : "No se pudo configurar la clave privada",
@@ -3093,7 +3081,7 @@ export function TasksBoard() {
                             !isPrivateContentVisible(
                               "bank",
                               item.id,
-                              Boolean(item.title.trim()),
+                              Boolean(item.title.trim() || item.notes.trim()),
                             )
                           ) {
                             return (
@@ -3252,7 +3240,7 @@ export function TasksBoard() {
                           !isPrivateContentVisible(
                             "bank",
                             item.id,
-                            Boolean(item.title.trim()),
+                            Boolean(item.title.trim() || item.notes.trim()),
                           ) ? (
                             <PrivateLockedCard
                               key={item.id}
