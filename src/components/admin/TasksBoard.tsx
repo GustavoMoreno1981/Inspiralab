@@ -1328,7 +1328,10 @@ export function TasksBoard() {
     }
   }
 
-  async function handleAssistantCreate(activity: Activity) {
+  async function handleAssistantCreate(
+    activity: Activity,
+    privateSetup?: PrivateSetupValues,
+  ) {
     const ok = await persist(
       {
         ...board,
@@ -1337,6 +1340,15 @@ export function TasksBoard() {
       `Actividad “${activity.title}” creada`,
     );
     if (ok) {
+      if (activity.visibility === "private" && privateSetup) {
+        try {
+          await setupPrivateItem("activity", activity.id, privateSetup);
+        } catch (error) {
+          toast.error(
+            error instanceof Error ? error.message : "No se pudo configurar la clave privada",
+          );
+        }
+      }
       setTab("tasks");
       setViewMode("list");
       if (activity.assigneeIds.length === 1) {
@@ -1350,7 +1362,9 @@ export function TasksBoard() {
   async function handleAssistantConvertFromBank(
     bankItemId: string,
     activity: Activity,
+    privateSetup?: PrivateSetupValues,
   ) {
+    const sourceBankItem = (board.bank || []).find((item) => item.id === bankItemId);
     const now = new Date().toISOString();
     const nextBank = (board.bank || []).map((item) =>
       item.id === bankItemId
@@ -1370,6 +1384,19 @@ export function TasksBoard() {
       `Actividad “${activity.title}” creada desde el banco`,
     );
     if (ok) {
+      if (activity.visibility === "private") {
+        try {
+          if (sourceBankItem?.visibility === "private") {
+            await copyPrivateItemAuth("bank", bankItemId, "activity", activity.id);
+          } else if (privateSetup) {
+            await setupPrivateItem("activity", activity.id, privateSetup);
+          }
+        } catch (error) {
+          toast.error(
+            error instanceof Error ? error.message : "No se pudo configurar la clave privada",
+          );
+        }
+      }
       setTab("tasks");
       setViewMode("list");
       if (activity.assigneeIds.length === 1) {

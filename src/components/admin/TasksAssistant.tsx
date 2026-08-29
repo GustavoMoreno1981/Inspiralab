@@ -7,17 +7,26 @@ import {
   deriveTaskStatusFromSubtasks,
   getActivityProgress,
   type Activity,
+  type ItemVisibility,
   type Subtask,
   type Task,
   type TaskBankItem,
   type TaskStatus,
   type TeamMember,
 } from "@/lib/tasks/types";
+import {
+  EMPTY_PRIVATE_SETUP,
+  PrivateItemSetupFields,
+  validatePrivateSetup,
+  type PrivateSetupValues,
+} from "@/components/admin/PrivateItemSetupFields";
 
 type Intent = "create" | "update" | "bank";
 
 type Step =
   | "intent"
+  | "visibility"
+  | "privateSetup"
   | "title"
   | "dates"
   | "assignees"
@@ -44,6 +53,7 @@ type CreateDraft = {
   firstTask: string;
   firstSubtask: string;
   firstSubtaskUrl: string;
+  visibility: ItemVisibility;
 };
 
 type UpdateDraft = {
@@ -69,8 +79,12 @@ type Props = {
   saving?: boolean;
   defaultAssigneeId?: string;
   onClose: () => void;
-  onCreate: (activity: Activity) => Promise<boolean>;
-  onConvertFromBank: (bankItemId: string, activity: Activity) => Promise<boolean>;
+  onCreate: (activity: Activity, privateSetup?: PrivateSetupValues) => Promise<boolean>;
+  onConvertFromBank: (
+    bankItemId: string,
+    activity: Activity,
+    privateSetup?: PrivateSetupValues,
+  ) => Promise<boolean>;
   onUpdate: (input: {
     activityId: string;
     status: TaskStatus;
@@ -112,7 +126,24 @@ function emptyCreateDraft(defaultAssigneeId?: string): CreateDraft {
     firstTask: "",
     firstSubtask: "",
     firstSubtaskUrl: "",
+    visibility: "public",
   };
+}
+
+function createFlowSteps(visibility: ItemVisibility): Step[] {
+  const steps: Step[] = ["visibility"];
+  if (visibility === "private") steps.push("privateSetup");
+  return [...steps, "title", "dates", "assignees", "firstTask", "firstSubtask", "confirm"];
+}
+
+function bankFlowSteps(bankItem: TaskBankItem | null, visibility: ItemVisibility): Step[] {
+  const steps: Step[] = ["pickBank"];
+  const inheritsPrivate = bankItem?.visibility === "private";
+  if (!inheritsPrivate) {
+    steps.push("visibility");
+    if (visibility === "private") steps.push("privateSetup");
+  }
+  return [...steps, "dates", "assignees", "confirm"];
 }
 
 function emptyUpdateDraft(): UpdateDraft {
@@ -137,9 +168,12 @@ function memberNames(ids: string[], members: TeamMember[]) {
     .join(", ");
 }
 
-const CREATE_STEPS = 7;
+const CREATE_STEPS_PUBLIC = 8;
+const CREATE_STEPS_PRIVATE = 9;
 const UPDATE_STEPS = 6;
-const BANK_STEPS = 5;
+const BANK_STEPS_INHERITED_PRIVATE = 5;
+const BANK_STEPS_PUBLIC = 6;
+const BANK_STEPS_PRIVATE = 7;
 
 export function TasksAssistant({
   open,
@@ -161,6 +195,7 @@ export function TasksAssistant({
   );
   const [updateDraft, setUpdateDraft] = useState<UpdateDraft>(emptyUpdateDraft);
   const [bankItemId, setBankItemId] = useState<string | null>(null);
+  const [privateSetup, setPrivateSetup] = useState<PrivateSetupValues>(EMPTY_PRIVATE_SETUP);
   const [textInput, setTextInput] = useState("");
   const [dateStart, setDateStart] = useState(todayIso());
   const [dateEnd, setDateEnd] = useState(weekLaterIso());
@@ -193,35 +228,37 @@ export function TasksAssistant({
 
   const totalSteps =
     intent === "create"
-      ? CREATE_STEPS
+      ? createDraft.visibility === "private"
+        ? CREATE_STEPS_PRIVATE
+        : CREATE_STEPS_PUBLIC
       : intent === "update"
         ? UPDATE_STEPS
         : intent === "bank"
-          ? BANK_STEPS
+          ? selectedBankItem?.visibility === "private"
+            ? BANK_STEPS_INHERITED_PRIVATE
+            : createDraft.visibility === "private"
+              ? BANK_STEPS_PRIVATE
+              : BANK_STEPS_PUBLIC
           : 1;
 
   const stepNumber = useMemo(() => {
     if (step === "intent") return 1;
     if (intent === "create") {
-      if (step === "title") return 2;
-      if (step === "dates") return 3;
-      if (step === "assignees") return 4;
-      if (step === "firstTask") return 5;
-      if (step === "firstSubtask") return 6;
-      return 7;
+      const order = createFlowSteps(createDraft.visibility);
+      const idx = order.indexOf(step);
+      return idx >= 0 ? idx + 2 : 2;
     }
     if (intent === "bank") {
-      if (step === "pickBank") return 2;
-      if (step === "dates") return 3;
-      if (step === "assignees") return 4;
-      return 5;
+      const order = bankFlowSteps(selectedBankItem, createDraft.visibility);
+      const idx = order.indexOf(step);
+      return idx >= 0 ? idx + 2 : 2;
     }
     if (step === "pick") return 2;
     if (step === "status") return 3;
     if (step === "tasks") return 4;
     if (step === "note") return 5;
     return 6;
-  }, [step, intent]);
+  }, [step, intent, createDraft.visibility, selectedBankItem]);
 
   useEffect(() => {
     if (!open) return;
@@ -230,6 +267,7 @@ export function TasksAssistant({
     setCreateDraft(emptyCreateDraft(defaultAssigneeId));
     setUpdateDraft(emptyUpdateDraft());
     setBankItemId(null);
+    setPrivateSetup(EMPTY_PRIVATE_SETUP);
     setTextInput("");
     setDateStart(todayIso());
     setDateEnd(weekLaterIso());
@@ -253,9 +291,8 @@ export function TasksAssistant({
     setIntent(next);
     if (next === "create") {
       push("user", "Crear actividad");
-      setStep("title");
-      push("assistant", "¿Cuál es el título de la actividad?");
-      setTextInput("");
+      setStep("visibility");
+      push("assistant", "¿La actividad será pública o privada?");
       return;
     }
     if (next === "bank") {
@@ -279,9 +316,62 @@ export function TasksAssistant({
     );
   }
 
+  function chooseVisibility(visibility: ItemVisibility) {
+    setCreateDraft((prev) => ({ ...prev, visibility }));
+    push("user", visibility === "private" ? "Privada" : "Pública");
+    if (visibility === "private") {
+      setPrivateSetup(EMPTY_PRIVATE_SETUP);
+      setStep("privateSetup");
+      push(
+        "assistant",
+        "Configura tu clave de 4 dígitos y las tres preguntas de seguridad.",
+      );
+      return;
+    }
+    if (intent === "bank") {
+      setStep("dates");
+      push(
+        "assistant",
+        "Indica la fecha de inicio y la fecha de fin de la actividad.",
+      );
+      return;
+    }
+    setStep("title");
+    push("assistant", "¿Cuál es el título de la actividad?");
+    setTextInput("");
+  }
+
+  function submitPrivateSetup() {
+    const validation = validatePrivateSetup(privateSetup);
+    if (validation) {
+      push("assistant", validation);
+      return;
+    }
+    push("user", "Clave y preguntas configuradas");
+    if (intent === "bank") {
+      const start = dateStart || todayIso();
+      const end = dateEnd || weekLaterIso(start);
+      setCreateDraft((prev) => ({
+        ...prev,
+        date: start,
+        finishedDate: end,
+      }));
+      setStep("dates");
+      push(
+        "assistant",
+        "Indica la fecha de inicio y la fecha de fin de la actividad.",
+      );
+      return;
+    }
+    setStep("title");
+    push("assistant", "¿Cuál es el título de la actividad?");
+    setTextInput("");
+  }
+
   function pickBankItem(item: TaskBankItem) {
     const start = todayIso();
     const end = weekLaterIso(start);
+    const inheritsPrivate = item.visibility === "private";
     setBankItemId(item.id);
     setCreateDraft({
       title: item.title,
@@ -297,15 +387,21 @@ export function TasksAssistant({
       firstTask: "",
       firstSubtask: "",
       firstSubtaskUrl: "",
+      visibility: inheritsPrivate ? "private" : "public",
     });
     setDateStart(start);
     setDateEnd(end);
-    push("user", item.title);
-    setStep("dates");
-    push(
-      "assistant",
-      `Idea del banco: “${item.title}”. Indica la fecha de inicio y fin para crear la actividad.`,
-    );
+    push("user", item.title.trim() || "Idea privada del banco");
+    if (inheritsPrivate) {
+      setStep("dates");
+      push(
+        "assistant",
+        "Convertiremos esta idea privada en actividad. Indica la fecha de inicio y fin.",
+      );
+      return;
+    }
+    setStep("visibility");
+    push("assistant", "¿La actividad será pública o privada?");
   }
 
   function submitTitle() {
@@ -535,9 +631,15 @@ export function TasksAssistant({
       reviewMessages: [],
       createdAt: now,
       updatedAt: now,
-      visibility: "public",
-      createdById: createDraft.assigneeIds[0] || "",
+      visibility: createDraft.visibility,
+      createdById: defaultAssigneeId || createDraft.assigneeIds[0] || "",
     };
+  }
+
+  function needsPrivateSetupOnSave() {
+    if (createDraft.visibility !== "private") return false;
+    if (intent === "bank" && selectedBankItem?.visibility === "private") return false;
+    return true;
   }
 
   async function confirmSave() {
@@ -545,10 +647,20 @@ export function TasksAssistant({
       const activity = buildActivityFromCreateDraft();
       if (!activity) return;
 
+      let setup: PrivateSetupValues | undefined;
+      if (needsPrivateSetupOnSave()) {
+        const validation = validatePrivateSetup(privateSetup);
+        if (validation) {
+          push("assistant", validation);
+          return;
+        }
+        setup = privateSetup;
+      }
+
       const ok =
         intent === "bank" && bankItemId
-          ? await onConvertFromBank(bankItemId, activity)
-          : await onCreate(activity);
+          ? await onConvertFromBank(bankItemId, activity, setup)
+          : await onCreate(activity, setup);
       if (ok) onClose();
       return;
     }
@@ -621,6 +733,10 @@ export function TasksAssistant({
                 </p>
               ) : null}
               <p className="font-semibold text-[color:var(--ink)]">{createDraft.title}</p>
+              <p className="mt-1 text-xs text-[color:var(--muted)]">
+                Visibilidad:{" "}
+                {createDraft.visibility === "private" ? "Privada" : "Pública"}
+              </p>
               {intent === "bank" && selectedBankItem?.notes ? (
                 <p className="mt-1 text-xs text-[color:var(--muted)]">
                   {selectedBankItem.notes}
@@ -837,6 +953,38 @@ export function TasksAssistant({
                 })}
               </ul>
             )
+          ) : null}
+
+          {step === "visibility" ? (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => chooseVisibility("public")}
+                className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
+              >
+                Pública
+              </button>
+              <button
+                type="button"
+                onClick={() => chooseVisibility("private")}
+                className="border border-[color:var(--accent)] bg-[#fff1f4] px-3 py-2 text-xs font-semibold text-[color:var(--accent)]"
+              >
+                Privada
+              </button>
+            </div>
+          ) : null}
+
+          {step === "privateSetup" ? (
+            <div className="space-y-3">
+              <PrivateItemSetupFields values={privateSetup} onChange={setPrivateSetup} />
+              <button
+                type="button"
+                onClick={submitPrivateSetup}
+                className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
+              >
+                Siguiente
+              </button>
+            </div>
           ) : null}
 
           {step === "title" ? (
