@@ -29,10 +29,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     const saved = window.localStorage.getItem("inspiralab-locale") as Locale | null;
     if (saved === "en" || saved === "es") {
       setLocaleState(saved);
-      return;
     }
-    const prefersSpanish = navigator.language.toLowerCase().startsWith("es");
-    setLocaleState(prefersSpanish ? "es" : "en");
   }, []);
 
   useEffect(() => {

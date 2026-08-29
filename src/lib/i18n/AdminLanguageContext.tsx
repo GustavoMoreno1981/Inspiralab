@@ -27,16 +27,13 @@ type AdminLanguageContextValue = {
 const AdminLanguageContext = createContext<AdminLanguageContextValue | null>(null);
 
 export function AdminLanguageProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<AdminLocale>("es");
+  const [locale, setLocaleState] = useState<AdminLocale>("en");
 
   useEffect(() => {
     const saved = window.localStorage.getItem(LOCALE_KEY) as AdminLocale | null;
     if (saved === "en" || saved === "es") {
       setLocaleState(saved);
-      return;
     }
-    const prefersSpanish = navigator.language.toLowerCase().startsWith("es");
-    setLocaleState(prefersSpanish ? "es" : "en");
   }, []);
 
   useEffect(() => {

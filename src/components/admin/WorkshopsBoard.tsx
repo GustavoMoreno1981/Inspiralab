@@ -215,7 +215,7 @@ export function WorkshopsBoard() {
   const router = useRouter();
   const toast = useToast();
   const { t } = useAdminLanguage();
-  const [locale, setLocale] = useState<Locale>("es");
+  const [locale, setLocale] = useState<Locale>("en");
   const [content, setContent] = useState<SiteContent | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);

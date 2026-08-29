@@ -71,7 +71,7 @@ function updateLocale(
 export function AdminEditor() {
   const router = useRouter();
   const { t: ui } = useAdminLanguage();
-  const [locale, setLocale] = useState<Locale>("es");
+  const [locale, setLocale] = useState<Locale>("en");
   const [content, setContent] = useState<SiteContent | null>(null);
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
