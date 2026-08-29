@@ -52,6 +52,11 @@ import { PrivateLockedCard } from "@/components/admin/PrivateLockedCard";
 import { usePrivateUnlock } from "@/hooks/usePrivateUnlock";
 import type { PrivateItemType } from "@/lib/tasks/private-auth";
 import { useToast } from "@/components/admin/AdminToast";
+import { DragHandle } from "@/components/admin/DragHandle";
+import { moveItemById } from "@/lib/reorder";
+
+const DRAG_TASK_TYPE = "application/x-inspiralab-task-id";
+const DRAG_SUBTASK_TYPE = "application/x-inspiralab-subtask-id";
 
 const STATUS_STYLES: Record<TaskStatus, string> = {
   waiting: "bg-[#f3f3f3] text-[color:var(--muted)]",
@@ -243,6 +248,10 @@ export function TasksBoard() {
   const [convertingBankId, setConvertingBankId] = useState<string | null>(null);
   const [expandedActivityId, setExpandedActivityId] = useState<string | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+  const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
+  const [draggingSubtaskId, setDraggingSubtaskId] = useState<string | null>(null);
+  const [dragOverSubtaskId, setDragOverSubtaskId] = useState<string | null>(null);
   const [editingAssigneesActivityId, setEditingAssigneesActivityId] = useState<string | null>(
     null,
   );
@@ -1308,6 +1317,32 @@ export function TasksBoard() {
     );
   }
 
+  function reorderTasks(activityId: string, fromTaskId: string, toTaskId: string) {
+    const activity = board.activities.find((item) => item.id === activityId);
+    if (!activity) return;
+    const tasks = moveItemById(activity.tasks, fromTaskId, toTaskId);
+    if (tasks.every((task, index) => task.id === activity.tasks[index]?.id)) return;
+    updateActivity(activityId, { tasks });
+  }
+
+  function reorderSubtasks(
+    activityId: string,
+    taskId: string,
+    fromSubtaskId: string,
+    toSubtaskId: string,
+  ) {
+    const activity = board.activities.find((item) => item.id === activityId);
+    if (!activity) return;
+    const task = activity.tasks.find((item) => item.id === taskId);
+    if (!task) return;
+    const subtasks = moveItemById(task.subtasks, fromSubtaskId, toSubtaskId);
+    if (subtasks.every((subtask, index) => subtask.id === task.subtasks[index]?.id)) return;
+    const nextTasks = activity.tasks.map((item) =>
+      item.id === taskId ? { ...item, subtasks } : item,
+    );
+    updateActivity(activityId, { tasks: nextTasks });
+  }
+
   function setActivityStatus(activityId: string, status: TaskStatus) {
     const activity = board.activities.find((item) => item.id === activityId);
     if (!activity) return;
@@ -2194,18 +2229,52 @@ export function TasksBoard() {
                                 <h4 className="text-sm font-bold">Tareas</h4>
                                 <p className="mt-1 text-xs text-[color:var(--muted)]">
                                   Cada tarea puede tener subtareas con su propio estado y
-                                  URL.
+                                  URL. Arrastra el ícono ⋮⋮ para reordenar.
                                 </p>
                                 <ul className="mt-3 space-y-3">
                                   {activity.tasks.map((task) => {
                                     const taskExpanded = expandedTaskId === task.id;
+                                    const isDraggingTask = draggingTaskId === task.id;
+                                    const isDragOverTask = dragOverTaskId === task.id;
                                     return (
                                       <li
                                         key={task.id}
-                                        className="border border-[color:var(--line)] bg-[color:var(--mist)]"
+                                        onDragOver={(event) => {
+                                          if (!event.dataTransfer.types.includes(DRAG_TASK_TYPE)) return;
+                                          event.preventDefault();
+                                          setDragOverTaskId(task.id);
+                                        }}
+                                        onDragLeave={() => {
+                                          if (dragOverTaskId === task.id) setDragOverTaskId(null);
+                                        }}
+                                        onDrop={(event) => {
+                                          event.preventDefault();
+                                          const fromId = event.dataTransfer.getData(DRAG_TASK_TYPE);
+                                          if (fromId && fromId !== task.id) {
+                                            reorderTasks(activity.id, fromId, task.id);
+                                          }
+                                          setDraggingTaskId(null);
+                                          setDragOverTaskId(null);
+                                        }}
+                                        className={`border border-[color:var(--line)] bg-[color:var(--mist)] transition-shadow ${
+                                          isDraggingTask ? "opacity-60" : ""
+                                        } ${isDragOverTask ? "ring-2 ring-[color:var(--accent)]" : ""}`}
                                       >
                                         <div className="space-y-2 p-3">
                                           <div className="flex flex-wrap items-center justify-between gap-3">
+                                            <div className="flex min-w-0 flex-1 items-center gap-1">
+                                              <DragHandle
+                                                label={`Reordenar tarea ${task.title || "sin título"}`}
+                                                onDragStart={(event) => {
+                                                  event.dataTransfer.setData(DRAG_TASK_TYPE, task.id);
+                                                  event.dataTransfer.effectAllowed = "move";
+                                                  setDraggingTaskId(task.id);
+                                                }}
+                                                onDragEnd={() => {
+                                                  setDraggingTaskId(null);
+                                                  setDragOverTaskId(null);
+                                                }}
+                                              />
                                             <input
                                               aria-label="Título de la tarea"
                                               defaultValue={str(task.title)}
@@ -2234,6 +2303,7 @@ export function TasksBoard() {
                                                   : ""
                                               }`}
                                             />
+                                            </div>
                                             <div className="flex shrink-0 flex-wrap items-center gap-2">
                                               <select
                                                 aria-label="Estado de la tarea"
@@ -2309,12 +2379,71 @@ export function TasksBoard() {
                                               Subtareas
                                             </h5>
                                             <ul className="mt-2 space-y-2">
-                                              {task.subtasks.map((subtask) => (
+                                              {task.subtasks.map((subtask) => {
+                                                const isDraggingSubtask =
+                                                  draggingSubtaskId === subtask.id;
+                                                const isDragOverSubtask =
+                                                  dragOverSubtaskId === subtask.id;
+                                                return (
                                                 <li
                                                   key={subtask.id}
-                                                  className="space-y-2 border border-[color:var(--line)] px-3 py-2"
+                                                  onDragOver={(event) => {
+                                                    if (
+                                                      !event.dataTransfer.types.includes(
+                                                        DRAG_SUBTASK_TYPE,
+                                                      )
+                                                    ) {
+                                                      return;
+                                                    }
+                                                    event.preventDefault();
+                                                    setDragOverSubtaskId(subtask.id);
+                                                  }}
+                                                  onDragLeave={() => {
+                                                    if (dragOverSubtaskId === subtask.id) {
+                                                      setDragOverSubtaskId(null);
+                                                    }
+                                                  }}
+                                                  onDrop={(event) => {
+                                                    event.preventDefault();
+                                                    const fromId = event.dataTransfer.getData(
+                                                      DRAG_SUBTASK_TYPE,
+                                                    );
+                                                    if (fromId && fromId !== subtask.id) {
+                                                      reorderSubtasks(
+                                                        activity.id,
+                                                        task.id,
+                                                        fromId,
+                                                        subtask.id,
+                                                      );
+                                                    }
+                                                    setDraggingSubtaskId(null);
+                                                    setDragOverSubtaskId(null);
+                                                  }}
+                                                  className={`space-y-2 border border-[color:var(--line)] px-3 py-2 transition-shadow ${
+                                                    isDraggingSubtask ? "opacity-60" : ""
+                                                  } ${
+                                                    isDragOverSubtask
+                                                      ? "ring-2 ring-[color:var(--accent)]"
+                                                      : ""
+                                                  }`}
                                                 >
                                                   <div className="flex flex-wrap items-center justify-between gap-3">
+                                                    <div className="flex min-w-0 flex-1 items-center gap-1">
+                                                      <DragHandle
+                                                        label={`Reordenar subtarea ${subtask.title || "sin título"}`}
+                                                        onDragStart={(event) => {
+                                                          event.dataTransfer.setData(
+                                                            DRAG_SUBTASK_TYPE,
+                                                            subtask.id,
+                                                          );
+                                                          event.dataTransfer.effectAllowed = "move";
+                                                          setDraggingSubtaskId(subtask.id);
+                                                        }}
+                                                        onDragEnd={() => {
+                                                          setDraggingSubtaskId(null);
+                                                          setDragOverSubtaskId(null);
+                                                        }}
+                                                      />
                                                     <input
                                                       aria-label="Título de la subtarea"
                                                       defaultValue={str(subtask.title)}
@@ -2344,6 +2473,7 @@ export function TasksBoard() {
                                                           : ""
                                                       }`}
                                                     />
+                                                    </div>
                                                     <div className="flex shrink-0 items-center gap-2">
                                                       <select
                                                         aria-label="Estado de la subtarea"
@@ -2413,7 +2543,8 @@ export function TasksBoard() {
                                                     </a>
                                                   ) : null}
                                                 </li>
-                                              ))}
+                                              );
+                                              })}
                                             </ul>
                                             <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
                                               <input
