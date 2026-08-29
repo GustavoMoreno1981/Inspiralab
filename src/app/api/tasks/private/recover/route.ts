@@ -5,7 +5,7 @@ import {
   resetPrivatePin,
   type PrivateItemType,
 } from "@/lib/tasks/private-auth";
-import { readTasksBoard } from "@/lib/tasks/store";
+import { readTasksBoardFull } from "@/lib/tasks/store";
 import { canViewPrivateItem, isPrivateItem } from "@/lib/tasks/types";
 
 type Body = {
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const board = await readTasksBoard(session.memberId || undefined);
+  const board = await readTasksBoardFull(session.memberId || undefined);
   const item =
     itemType === "activity"
       ? board.activities.find((activity) => activity.id === itemId)
@@ -66,5 +66,18 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json({ ok: true });
+  if (itemType === "activity") {
+    const activity = board.activities.find((entry) => entry.id === itemId);
+    if (!activity) {
+      return NextResponse.json({ error: "Ítem no encontrado" }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true, itemType, itemId, activity });
+  }
+
+  const bankItem = board.bank.find((entry) => entry.id === itemId);
+  if (!bankItem) {
+    return NextResponse.json({ error: "Ítem no encontrado" }, { status: 404 });
+  }
+
+  return NextResponse.json({ ok: true, itemType, itemId, bankItem });
 }

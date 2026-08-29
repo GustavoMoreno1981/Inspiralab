@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireModule } from "@/lib/auth/server";
 import { readTasksBoard, writeTasksBoard } from "@/lib/tasks/store";
-import type { TasksBoard } from "@/lib/tasks/types";
+import { redactPrivateBoard, type TasksBoard } from "@/lib/tasks/types";
 
 export async function GET() {
   const session = await requireModule("tareas");
@@ -9,7 +9,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const board = await readTasksBoard(session.memberId || undefined);
-  return NextResponse.json(board);
+  return NextResponse.json(redactPrivateBoard(board));
 }
 
 export async function PUT(request: Request) {

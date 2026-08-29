@@ -335,3 +335,43 @@ export function canViewPrivateItem(
   const owner = item.createdById || item.ownerId || "";
   return owner === viewerMemberId;
 }
+
+/** Oculta título y contenido sensible hasta desbloquear con la clave. */
+export function redactPrivateActivity(activity: Activity): Activity {
+  if (!isPrivateItem(activity)) return activity;
+  return {
+    ...activity,
+    title: "",
+    processUrl: "",
+    deliverableUrl: "",
+    notes: [],
+    reviewMessages: [],
+    tasks: (activity.tasks || []).map((task) => ({
+      ...task,
+      title: "",
+      url: "",
+      subtasks: (task.subtasks || []).map((subtask) => ({
+        ...subtask,
+        title: "",
+        url: "",
+      })),
+    })),
+  };
+}
+
+export function redactPrivateBankItem(item: TaskBankItem): TaskBankItem {
+  if (!isPrivateItem(item)) return item;
+  return {
+    ...item,
+    title: "",
+    notes: "",
+  };
+}
+
+export function redactPrivateBoard(board: TasksBoard): TasksBoard {
+  return {
+    ...board,
+    activities: board.activities.map(redactPrivateActivity),
+    bank: board.bank.map(redactPrivateBankItem),
+  };
+}

@@ -47,7 +47,7 @@ import {
   validatePrivateSetup,
   type PrivateSetupValues,
 } from "@/components/admin/PrivateItemSetupFields";
-import { PrivateItemUnlockModal } from "@/components/admin/PrivateItemUnlockModal";
+import { PrivateItemUnlockModal, type PrivateUnlockPayload } from "@/components/admin/PrivateItemUnlockModal";
 import { PrivateLockedCard } from "@/components/admin/PrivateLockedCard";
 import { usePrivateUnlock } from "@/hooks/usePrivateUnlock";
 import type { PrivateItemType } from "@/lib/tasks/private-auth";
@@ -284,9 +284,39 @@ export function TasksBoard() {
   const [unlockTarget, setUnlockTarget] = useState<{
     itemType: PrivateItemType;
     itemId: string;
-    label: string;
   } | null>(null);
   const { isUnlocked, markUnlocked } = usePrivateUnlock();
+
+  function isPrivateContentVisible(
+    itemType: PrivateItemType,
+    itemId: string,
+    hasText: boolean,
+  ) {
+    return isUnlocked(itemType, itemId) && hasText;
+  }
+
+  function applyPrivateReveal(payload: PrivateUnlockPayload) {
+    markUnlocked(payload.itemType, payload.itemId);
+    setBoard((prev) => {
+      if (payload.itemType === "activity" && payload.activity) {
+        return {
+          ...prev,
+          activities: prev.activities.map((activity) =>
+            activity.id === payload.itemId ? payload.activity! : activity,
+          ),
+        };
+      }
+      if (payload.itemType === "bank" && payload.bankItem) {
+        return {
+          ...prev,
+          bank: (prev.bank || []).map((item) =>
+            item.id === payload.itemId ? payload.bankItem! : item,
+          ),
+        };
+      }
+      return prev;
+    });
+  }
 
   const load = useCallback(async () => {
     const [tasksRes, meRes] = await Promise.all([
@@ -771,6 +801,12 @@ export function TasksBoard() {
             await setupPrivateItem("activity", activityId, newPrivateSetup);
           }
           markUnlocked("activity", activityId);
+          setBoard((prev) => ({
+            ...prev,
+            activities: prev.activities.map((entry) =>
+              entry.id === activityId ? activity : entry,
+            ),
+          }));
         } catch (error) {
           toast.error(
             error instanceof Error ? error.message : "No se pudo configurar la clave privada",
@@ -828,6 +864,10 @@ export function TasksBoard() {
         try {
           await setupPrivateItem("bank", item.id, bankPrivateSetup);
           markUnlocked("bank", item.id);
+          setBoard((prev) => ({
+            ...prev,
+            bank: (prev.bank || []).map((entry) => (entry.id === item.id ? item : entry)),
+          }));
         } catch (error) {
           toast.error(
             error instanceof Error ? error.message : "No se pudo configurar la clave privada",
@@ -1598,7 +1638,11 @@ export function TasksBoard() {
     return activities.map((activity) => {
                         if (
                           activity.visibility === "private" &&
-                          !isUnlocked("activity", activity.id)
+                          !isPrivateContentVisible(
+                            "activity",
+                            activity.id,
+                            Boolean(activity.title.trim()),
+                          )
                         ) {
                           return (
                             <PrivateLockedCard
@@ -1608,7 +1652,6 @@ export function TasksBoard() {
                                 setUnlockTarget({
                                   itemType: "activity",
                                   itemId: activity.id,
-                                  label: "Actividad privada",
                                 })
                               }
                             />
@@ -3041,7 +3084,11 @@ export function TasksBoard() {
                         pendingBank.map((item) => {
                           if (
                             item.visibility === "private" &&
-                            !isUnlocked("bank", item.id)
+                            !isPrivateContentVisible(
+                              "bank",
+                              item.id,
+                              Boolean(item.title.trim()),
+                            )
                           ) {
                             return (
                               <PrivateLockedCard
@@ -3051,7 +3098,6 @@ export function TasksBoard() {
                                   setUnlockTarget({
                                     itemType: "bank",
                                     itemId: item.id,
-                                    label: "Idea privada en el banco",
                                   })
                                 }
                               />
@@ -3195,19 +3241,37 @@ export function TasksBoard() {
                         <h3 className="text-sm font-bold text-[color:var(--ink)]">
                           Ya convertidas ({convertedBank.length})
                         </h3>
-                        {convertedBank.map((item) => (
+                        {convertedBank.map((item) =>
+                          item.visibility === "private" &&
+                          !isPrivateContentVisible(
+                            "bank",
+                            item.id,
+                            Boolean(item.title.trim()),
+                          ) ? (
+                            <PrivateLockedCard
+                              key={item.id}
+                              kind="idea"
+                              onUnlock={() =>
+                                setUnlockTarget({
+                                  itemType: "bank",
+                                  itemId: item.id,
+                                })
+                              }
+                            />
+                          ) : (
                           <article
                             key={item.id}
                             className="border border-[color:var(--line)] bg-[color:var(--mist)] px-4 py-3"
                           >
                             <p className="text-sm font-semibold text-[color:var(--ink)] line-through opacity-70">
-                              {item.title}
+                              {item.title || "Idea privada"}
                             </p>
                             <p className="text-xs text-[color:var(--muted)]">
                               Convertida en actividad
                             </p>
                           </article>
-                        ))}
+                          ),
+                        )}
                       </div>
                     ) : null}
                   </div>
@@ -3548,13 +3612,8 @@ export function TasksBoard() {
         open={Boolean(unlockTarget)}
         itemType={unlockTarget?.itemType || "activity"}
         itemId={unlockTarget?.itemId || ""}
-        label={unlockTarget?.label || ""}
         onClose={() => setUnlockTarget(null)}
-        onUnlocked={() => {
-          if (unlockTarget) {
-            markUnlocked(unlockTarget.itemType, unlockTarget.itemId);
-          }
-        }}
+        onUnlocked={applyPrivateReveal}
       />
     </div>
   );

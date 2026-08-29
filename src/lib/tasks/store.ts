@@ -828,6 +828,36 @@ function enqueueWrite(task: () => Promise<void>): Promise<void> {
   return run;
 }
 
+function preservePrivateActivityOnWrite(
+  incoming: Activity,
+  existing: Activity | undefined,
+): Activity {
+  if (incoming.visibility !== "private" || !existing) return incoming;
+  if (incoming.title.trim() || !existing.title.trim()) return incoming;
+  return {
+    ...incoming,
+    title: existing.title,
+    processUrl: existing.processUrl,
+    deliverableUrl: existing.deliverableUrl,
+    notes: existing.notes,
+    reviewMessages: existing.reviewMessages,
+    tasks: existing.tasks,
+  };
+}
+
+function preservePrivateBankOnWrite(
+  incoming: TaskBankItem,
+  existing: TaskBankItem | undefined,
+): TaskBankItem {
+  if (incoming.visibility !== "private" || !existing) return incoming;
+  if (incoming.title.trim() || !existing.title.trim()) return incoming;
+  return {
+    ...incoming,
+    title: existing.title,
+    notes: existing.notes,
+  };
+}
+
 function toSqlDate(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -851,6 +881,11 @@ export function filterBoardForViewer(board: TasksBoard, viewerMemberId: string):
   };
 }
 
+/** Tablero filtrado por dueño, sin ocultar contenido (solo uso interno / unlock). */
+export async function readTasksBoardFull(viewerMemberId?: string): Promise<TasksBoard> {
+  return readTasksBoard(viewerMemberId);
+}
+
 export async function writeTasksBoard(
   board: TasksBoard,
   options?: { allowAuthEdit?: boolean },
@@ -859,8 +894,18 @@ export async function writeTasksBoard(
     const existing = await readStoredBoard();
     const allowAuthEdit = Boolean(options?.allowAuthEdit);
 
-    const nextActivities = normalizeActivities(board.activities || []);
-    const nextBank = normalizeBank(board.bank || []);
+    const nextActivities = normalizeActivities(board.activities || []).map((activity) =>
+      preservePrivateActivityOnWrite(
+        activity,
+        existing.activities.find((item) => item.id === activity.id),
+      ),
+    );
+    const nextBank = normalizeBank(board.bank || []).map((item) =>
+      preservePrivateBankOnWrite(
+        item,
+        (existing.bank || []).find((entry) => entry.id === item.id),
+      ),
+    );
 
     const removedActivityIds = existing.activities
       .filter((item) => !nextActivities.some((next) => next.id === item.id))

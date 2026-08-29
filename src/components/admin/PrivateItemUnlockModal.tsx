@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { Activity, TaskBankItem } from "@/lib/tasks/types";
 import type { PrivateItemType } from "@/lib/tasks/private-auth";
 import {
   EMPTY_PRIVATE_SETUP,
@@ -8,20 +9,25 @@ import {
   validatePrivateSetup,
 } from "@/components/admin/PrivateItemSetupFields";
 
+export type PrivateUnlockPayload = {
+  itemType: PrivateItemType;
+  itemId: string;
+  activity?: Activity;
+  bankItem?: TaskBankItem;
+};
+
 type Props = {
   open: boolean;
   itemType: PrivateItemType;
   itemId: string;
-  label: string;
   onClose: () => void;
-  onUnlocked: () => void;
+  onUnlocked: (payload: PrivateUnlockPayload) => void;
 };
 
 export function PrivateItemUnlockModal({
   open,
   itemType,
   itemId,
-  label,
   onClose,
   onUnlocked,
 }: Props) {
@@ -43,12 +49,19 @@ export function PrivateItemUnlockModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemType, itemId, pin }),
       });
-      const data = (await res.json().catch(() => null)) as { error?: string } | null;
-      if (!res.ok) {
+      const data = (await res.json().catch(() => null)) as
+        | (PrivateUnlockPayload & { error?: string; ok?: boolean })
+        | null;
+      if (!res.ok || !data?.ok) {
         setError(data?.error || "Clave incorrecta");
         return;
       }
-      onUnlocked();
+      onUnlocked({
+        itemType,
+        itemId,
+        activity: data.activity,
+        bankItem: data.bankItem,
+      });
       setPin("");
       onClose();
     } finally {
@@ -78,12 +91,19 @@ export function PrivateItemUnlockModal({
           newPin: recover.pin,
         }),
       });
-      const data = (await res.json().catch(() => null)) as { error?: string } | null;
-      if (!res.ok) {
+      const data = (await res.json().catch(() => null)) as
+        | (PrivateUnlockPayload & { error?: string; ok?: boolean })
+        | null;
+      if (!res.ok || !data?.ok) {
         setError(data?.error || "No se pudo recuperar la clave");
         return;
       }
-      onUnlocked();
+      onUnlocked({
+        itemType,
+        itemId,
+        activity: data.activity,
+        bankItem: data.bankItem,
+      });
       setRecover(EMPTY_PRIVATE_SETUP);
       onClose();
     } finally {
@@ -99,7 +119,9 @@ export function PrivateItemUnlockModal({
             <h2 className="font-[family-name:var(--font-display)] text-lg font-bold">
               Contenido privado
             </h2>
-            <p className="mt-1 text-sm text-[color:var(--muted)]">{label}</p>
+            <p className="mt-1 text-sm text-[color:var(--muted)]">
+              Ingresa tu clave para ver el título y la descripción.
+            </p>
           </div>
           <button
             type="button"
