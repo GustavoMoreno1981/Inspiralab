@@ -85,6 +85,15 @@ export function budgetTotals(data: BudgetFieldData) {
   return { totalCop, totalUsd };
 }
 
+export function proposalBudgetTotalCop(
+  budgetMinimum: string,
+  budgetOptional = "",
+) {
+  const minimum = budgetTotals(parseBudgetField(budgetMinimum || ""));
+  const optional = budgetTotals(parseBudgetField(budgetOptional || ""));
+  return minimum.totalCop + optional.totalCop;
+}
+
 export function formatCop(value: number) {
   return new Intl.NumberFormat("es-CO", {
     style: "currency",

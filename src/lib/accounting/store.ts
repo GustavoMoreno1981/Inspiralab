@@ -51,6 +51,7 @@ type ActivityRow = {
   collaborations_files: AttachmentFile[] | null;
   contingencies_files: AttachmentFile[] | null;
   notes: string | null;
+  schedule_session_id?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -126,6 +127,7 @@ function normalizeBoard(data: Partial<AccountingBoard> | null): AccountingBoard 
             receivedCop: num(item.receivedCop),
             costs,
             notes: item.notes || "",
+            scheduleSessionId: item.scheduleSessionId || "",
             createdAt: item.createdAt || "",
             updatedAt: item.updatedAt || "",
           };
@@ -217,6 +219,7 @@ async function readSupabase(): Promise<AccountingBoard> {
       },
     },
     notes: row.notes || "",
+    scheduleSessionId: row.schedule_session_id || "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }));
@@ -281,27 +284,36 @@ async function writeSupabase(board: AccountingBoard) {
   }
 
   if (normalized.activities.length) {
-    const { error } = await supabase.from("accounting_activities").insert(
-      normalized.activities.map((item) => ({
-        id: item.id,
-        beneficiary_id: item.beneficiaryId,
-        title: item.title,
-        activity_date: item.date,
-        usd_rate: item.usdRate,
-        received_cop: item.receivedCop || 0,
-        materials_cop: item.costs.materials.amountCop,
-        logistics_cop: item.costs.logistics.amountCop,
-        collaborations_cop: item.costs.collaborations.amountCop,
-        contingencies_cop: item.costs.contingencies.amountCop,
-        materials_files: item.costs.materials.files,
-        logistics_files: item.costs.logistics.files,
-        collaborations_files: item.costs.collaborations.files,
-        contingencies_files: item.costs.contingencies.files,
-        notes: item.notes || "",
-        created_at: item.createdAt || new Date().toISOString(),
-        updated_at: item.updatedAt || new Date().toISOString(),
-      })),
-    );
+    const activityRows = normalized.activities.map((item) => ({
+      id: item.id,
+      beneficiary_id: item.beneficiaryId,
+      title: item.title,
+      activity_date: item.date,
+      usd_rate: item.usdRate,
+      received_cop: item.receivedCop || 0,
+      materials_cop: item.costs.materials.amountCop,
+      logistics_cop: item.costs.logistics.amountCop,
+      collaborations_cop: item.costs.collaborations.amountCop,
+      contingencies_cop: item.costs.contingencies.amountCop,
+      materials_files: item.costs.materials.files,
+      logistics_files: item.costs.logistics.files,
+      collaborations_files: item.costs.collaborations.files,
+      contingencies_files: item.costs.contingencies.files,
+      notes: item.notes || "",
+      schedule_session_id: item.scheduleSessionId || null,
+      created_at: item.createdAt || new Date().toISOString(),
+      updated_at: item.updatedAt || new Date().toISOString(),
+    }));
+    let { error } = await supabase.from("accounting_activities").insert(activityRows);
+    if (
+      error &&
+      (error.code === "PGRST204" ||
+        String(error.message || "").includes("schedule_session_id"))
+    ) {
+      ({ error } = await supabase.from("accounting_activities").insert(
+        activityRows.map(({ schedule_session_id: _scheduleSessionId, ...rest }) => rest),
+      ));
+    }
     if (error) throw error;
   }
 

@@ -6,6 +6,8 @@ import {
   type EvaluationFields,
 } from "@/lib/followup/types";
 import { formatFieldDisplay, isBudgetField } from "@/lib/followup/list-fields";
+import type { ApprovalBudgetContext } from "@/lib/accounting/approval-budget";
+import { ApprovalBudgetPanel } from "@/components/admin/ApprovalBudgetPanel";
 import type { ScheduleBeneficiary, WorkshopSession } from "@/lib/schedule/types";
 
 type Props = {
@@ -15,6 +17,9 @@ type Props = {
   evaluatedBy: string;
   beneficiaries: ScheduleBeneficiary[];
   saving?: boolean;
+  canApprove?: boolean;
+  approvalBudget?: ApprovalBudgetContext | null;
+  proposedCop?: number;
   onClose: () => void;
   onEdit: () => void;
   onPrint: () => void;
@@ -91,6 +96,9 @@ export function ProposalViewModal({
   evaluatedBy,
   beneficiaries,
   saving = false,
+  canApprove = false,
+  approvalBudget = null,
+  proposedCop = 0,
   onClose,
   onEdit,
   onPrint,
@@ -134,6 +142,12 @@ export function ProposalViewModal({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {canApprove ? (
+            <div className="mb-4">
+              <ApprovalBudgetPanel budget={approvalBudget} proposedCop={proposedCop} />
+            </div>
+          ) : null}
+
           <dl className="grid gap-3 text-sm sm:grid-cols-2">
             <div>
               <dt className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
@@ -237,14 +251,16 @@ export function ProposalViewModal({
 
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-[color:var(--line)] bg-white px-5 py-3">
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={saving}
-              onClick={onApprove}
-              className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-            >
-              Aprobar y programar
-            </button>
+            {canApprove ? (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={onApprove}
+                className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+              >
+                Aprobar y programar
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onPrint}

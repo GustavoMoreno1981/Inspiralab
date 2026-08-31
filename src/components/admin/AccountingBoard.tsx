@@ -387,6 +387,8 @@ export function AccountingBoard() {
       receivedCop: numInput(activityReceived),
       costs: activityCosts,
       notes: activityNotes.trim(),
+      scheduleSessionId:
+        board.activities.find((item) => item.id === editingActivityId)?.scheduleSessionId || "",
       createdAt:
         board.activities.find((item) => item.id === editingActivityId)?.createdAt || now,
       updatedAt: now,
@@ -1394,7 +1396,14 @@ export function AccountingBoard() {
                       const balance = activityBalanceCop(activity);
                       return (
                         <tr key={activity.id}>
-                          <td className="px-3 py-3 font-semibold">{activity.title}</td>
+                          <td className="px-3 py-3 font-semibold">
+                            <div>{activity.title}</div>
+                            {activity.scheduleSessionId ? (
+                              <span className="mt-1 inline-block bg-[color:var(--mist)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+                                {t.accounting.fromSchedule}
+                              </span>
+                            ) : null}
+                          </td>
                           <td className="px-3 py-3">{beneficiary?.name || "—"}</td>
                           <td className="whitespace-nowrap px-3 py-3">{activity.date}</td>
                           <td className="px-3 py-3">

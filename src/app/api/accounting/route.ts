@@ -1,12 +1,29 @@
 import { NextResponse } from "next/server";
 import { requireModule } from "@/lib/auth/server";
+import { syncApprovedSessionsToAccounting } from "@/lib/accounting/from-schedule";
 import { readAccountingBoard, writeAccountingBoard } from "@/lib/accounting/store";
+import { readFollowUpBoard } from "@/lib/followup/store";
+import { readScheduleBoard } from "@/lib/schedule/store";
 import type { AccountingBoard } from "@/lib/accounting/types";
 
 export async function GET() {
   const session = await requireModule("contabilidad");
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    const scheduleBoard = await readScheduleBoard();
+    await syncApprovedSessionsToAccounting(
+      scheduleBoard.sessions,
+      scheduleBoard.sessions,
+      {
+        readAccountingBoard,
+        writeAccountingBoard,
+        readFollowUpBoard,
+      },
+    );
+  } catch (error) {
+    console.warn("syncApprovedSessionsToAccounting on accounting GET failed:", error);
   }
   const board = await readAccountingBoard();
   return NextResponse.json(board);

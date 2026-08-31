@@ -364,6 +364,14 @@ export type AdminDictionary = {
     approveAndSchedule: string;
     saveProposal: string;
     approvalHint: string;
+    approvalOnlyAdmin: string;
+    approvalBudgetTitle: string;
+    approvalBudgetAvailable: string;
+    approvalBudgetAllocated: string;
+    approvalBudgetProposed: string;
+    approvalBudgetAfter: string;
+    approvalBudgetExceeded: string;
+    approvalBudgetMissing: string;
     assistantGreeting: string;
     assistantRequestTitle: string;
     assistantRequestNotice: string;
@@ -474,6 +482,7 @@ export type AdminDictionary = {
     colBalance: string;
     surplusLabel: string;
     shortfallLabel: string;
+    fromSchedule: string;
   };
   followup: {
     pageTitle: string;

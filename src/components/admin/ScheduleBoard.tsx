@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ApprovalBudgetPanel } from "@/components/admin/ApprovalBudgetPanel";
 import { AdminFooter } from "@/components/admin/AdminFooter";
 import { AdminLanguageSwitcher } from "@/components/admin/AdminLanguageSwitcher";
 import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
@@ -24,6 +25,8 @@ import {
 import type { SiteContent } from "@/lib/i18n/dictionaries";
 import { workshopCoachesLabel } from "@/lib/content/workshop-coaches";
 import { printProposalDocument } from "@/lib/schedule/export-proposal";
+import type { ApprovalBudgetContext } from "@/lib/accounting/approval-budget";
+import { proposalBudgetTotalCop } from "@/lib/followup/budget-fields";
 import {
   SESSION_KINDS,
   SESSION_STATUSES,
@@ -210,6 +213,8 @@ export function ScheduleBoard() {
   const [evaluations, setEvaluations] = useState<WorkshopEvaluation[]>([]);
   const [beforeFields, setBeforeFields] = useState<EvaluationFields>(emptyFields());
   const [beforeEvaluatedBy, setBeforeEvaluatedBy] = useState("");
+  const [canApproveProposals, setCanApproveProposals] = useState(false);
+  const [approvalBudget, setApprovalBudget] = useState<ApprovalBudgetContext | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -230,6 +235,8 @@ export function ScheduleBoard() {
         if (!scheduleRes.ok) throw new Error("No se pudo cargar el cronograma");
         const schedule = (await scheduleRes.json()) as ScheduleBoard & {
           beneficiaries?: ScheduleBeneficiary[];
+          canApproveProposals?: boolean;
+          approvalBudget?: ApprovalBudgetContext | null;
         };
         const content = contentRes.ok
           ? ((await contentRes.json()) as SiteContent)
@@ -267,6 +274,8 @@ export function ScheduleBoard() {
           setEvaluations(
             Array.isArray(followup?.evaluations) ? followup.evaluations : [],
           );
+          setCanApproveProposals(Boolean(schedule.canApproveProposals));
+          setApprovalBudget(schedule.approvalBudget || null);
         }
       } catch (error) {
         if (!cancelled) {
@@ -375,8 +384,18 @@ export function ScheduleBoard() {
         const data = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(data?.error || "No se pudo guardar");
       }
+      const payload = (await res.json().catch(() => null)) as
+        | { accountingSynced?: number; accountingWarning?: string }
+        | null;
       setBoard(next);
-      toast.success(successMessage || t.schedule.saved);
+      if (payload?.accountingWarning) {
+        toast.error(payload.accountingWarning);
+      }
+      const accountingNote =
+        payload?.accountingSynced && payload.accountingSynced > 0
+          ? ` · ${payload.accountingSynced} actividad(es) en contabilidad`
+          : "";
+      toast.success(`${successMessage || t.schedule.saved}${accountingNote}`);
       return true;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t.common.errorSave);
@@ -410,6 +429,10 @@ export function ScheduleBoard() {
   }
 
   async function approveProposal(sessionId: string) {
+    if (!canApproveProposals) {
+      toast.error(t.schedule.approvalOnlyAdmin);
+      return false;
+    }
     const nextSessions = board.sessions.map((item) =>
       item.id === sessionId
         ? {
@@ -421,7 +444,7 @@ export function ScheduleBoard() {
     );
     return persist(
       { sessions: nextSessions },
-      "Propuesta aprobada · ya está en el calendario",
+      "Propuesta aprobada · ya está en el calendario y en contabilidad",
     );
   }
 
@@ -1177,8 +1200,15 @@ export function ScheduleBoard() {
                     {t.schedule.pendingApproval}
                   </h2>
                   <p className="mt-1 text-xs text-amber-900">
-                    {t.schedule.approvalHint}
+                    {canApproveProposals
+                      ? t.schedule.approvalHint
+                      : t.schedule.approvalOnlyAdmin}
                   </p>
+                  {canApproveProposals ? (
+                    <div className="mt-3">
+                      <ApprovalBudgetPanel budget={approvalBudget} compact />
+                    </div>
+                  ) : null}
                   {pendingProposals.length === 0 ? (
                     <p className="mt-3 text-sm text-amber-900/80">
                       No hay propuestas pendientes.
@@ -1209,14 +1239,16 @@ export function ScheduleBoard() {
                             beneficiaries={beneficiaries}
                           />
                           <div className="mt-2 flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              disabled={saving}
-                              onClick={() => void approveProposal(session.id)}
-                              className="bg-[color:var(--accent)] px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50"
-                            >
-                              {t.schedule.approve}
-                            </button>
+                            {canApproveProposals ? (
+                              <button
+                                type="button"
+                                disabled={saving}
+                                onClick={() => void approveProposal(session.id)}
+                                className="bg-[color:var(--accent)] px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50"
+                              >
+                                {t.schedule.approve}
+                              </button>
+                            ) : null}
                             <button
                               type="button"
                               onClick={() => printPendingProposal(session)}
@@ -1325,6 +1357,16 @@ export function ScheduleBoard() {
         }
         beneficiaries={beneficiaries}
         saving={saving}
+        canApprove={canApproveProposals}
+        approvalBudget={approvalBudget}
+        proposedCop={
+          viewingProposal
+            ? proposalBudgetTotalCop(
+                proposalFieldsFor(viewingProposal.id).budgetMinimum,
+                proposalFieldsFor(viewingProposal.id).budgetOptional,
+              )
+            : 0
+        }
         onClose={() => setViewingProposal(null)}
         onEdit={() => {
           if (!viewingProposal) return;
@@ -1349,6 +1391,8 @@ export function ScheduleBoard() {
         sessions={board.sessions}
         saving={saving}
         defaultDate={todayIso}
+        canApprove={canApproveProposals}
+        approvalBudget={approvalBudget}
         onClose={() => setAssistantOpen(false)}
         onCreate={handleAssistantCreate}
         onApprove={handleAssistantApprove}
@@ -1579,11 +1623,28 @@ export function ScheduleBoard() {
               </div>
 
               {form.status === "pending_approval" ? (
-                <div className="border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  <span className="text-xs font-semibold uppercase tracking-wide">
-                    Estado
-                  </span>
-                  <p className="mt-0.5 font-semibold">Pendiente de aprobación</p>
+                <div className="space-y-3">
+                  <div className="border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    <span className="text-xs font-semibold uppercase tracking-wide">
+                      Estado
+                    </span>
+                    <p className="mt-0.5 font-semibold">Pendiente de aprobación</p>
+                  </div>
+                  <p className="text-xs text-amber-950">
+                    {canApproveProposals
+                      ? t.schedule.approvalHint
+                      : t.schedule.approvalOnlyAdmin}
+                  </p>
+                  {canApproveProposals ? (
+                    <ApprovalBudgetPanel
+                      budget={approvalBudget}
+                      proposedCop={proposalBudgetTotalCop(
+                        beforeFields.budgetMinimum,
+                        beforeFields.budgetOptional,
+                      )}
+                      compact
+                    />
+                  ) : null}
                 </div>
               ) : (
                 <label className="block space-y-1.5">
@@ -1699,7 +1760,7 @@ export function ScheduleBoard() {
             </div>
 
             <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
-              {editingId && form.status === "pending_approval" ? (
+              {editingId && form.status === "pending_approval" && canApproveProposals ? (
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"

@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
+import { getApprovalBudgetContext } from "@/lib/accounting/approval-budget";
 import { getSession, requireModule } from "@/lib/auth/server";
 import { canAccessModule } from "@/lib/auth/session";
+import { syncApprovedSessionsToAccounting } from "@/lib/accounting/from-schedule";
+import {
+  readAccountingBoard,
+  writeAccountingBoard,
+} from "@/lib/accounting/store";
+import { readFollowUpBoard } from "@/lib/followup/store";
 import { syncEvaluationsForSessions } from "@/lib/followup/store";
 import {
   readScheduleBeneficiaries,
@@ -29,9 +36,14 @@ export async function GET() {
     readScheduleBeneficiaries(),
   ]);
 
+  const approvalBudget =
+    session.role === "admin" ? await getApprovalBudgetContext() : null;
+
   return NextResponse.json({
     sessions: board.sessions,
     beneficiaries,
+    canApproveProposals: session.role === "admin",
+    approvalBudget,
   });
 }
 
@@ -73,14 +85,54 @@ export async function PUT(request: Request) {
   }
 
   try {
+    const previousBoard = await readScheduleBoard();
     const normalized = normalizeBoard(body);
+
+    if (session.role !== "admin") {
+      const blocked = normalized.sessions.some((nextSession) => {
+        const previous = previousBoard.sessions.find((item) => item.id === nextSession.id);
+        return (
+          previous?.status === "pending_approval" &&
+          nextSession.status === "scheduled"
+        );
+      });
+      if (blocked) {
+        return NextResponse.json(
+          {
+            error:
+              "Solo el perfil de administración puede aprobar propuestas del cronograma.",
+          },
+          { status: 403 },
+        );
+      }
+    }
+
     await writeScheduleBoard(normalized);
     try {
       await syncEvaluationsForSessions(normalized.sessions.map((item) => item.id));
     } catch (error) {
       console.warn("syncEvaluationsForSessions failed:", error);
     }
-    return NextResponse.json({ ok: true });
+    try {
+      const { synced } = await syncApprovedSessionsToAccounting(
+        previousBoard.sessions,
+        normalized.sessions,
+        {
+          readAccountingBoard,
+          writeAccountingBoard,
+          readFollowUpBoard,
+        },
+      );
+      return NextResponse.json({ ok: true, accountingSynced: synced });
+    } catch (error) {
+      console.error("syncApprovedSessionsToAccounting failed:", error);
+      return NextResponse.json({
+        ok: true,
+        accountingSynced: 0,
+        accountingWarning:
+          "La propuesta se guardó, pero no se pudo crear la actividad en contabilidad.",
+      });
+    }
   } catch (error) {
     const message = scheduleSaveErrorMessage(error);
     console.error("writeScheduleBoard failed:", error);

@@ -367,6 +367,16 @@ export const adminEs: AdminDictionary = {
     approveAndSchedule: "Aprobar y programar",
     saveProposal: "Guardar propuesta",
     approvalHint: "Don Saul o quien autorice debe aprobar antes de publicar en el calendario.",
+    approvalOnlyAdmin:
+      "Solo el perfil de administración puede aprobar. Tu propuesta quedará pendiente hasta que la autorice el director.",
+    approvalBudgetTitle: "Presupuesto {year} · disponible para talleres",
+    approvalBudgetAvailable: "Disponible en el año",
+    approvalBudgetAllocated: "Ya dispuesto a talleres",
+    approvalBudgetProposed: "Esta propuesta",
+    approvalBudgetAfter: "Quedaría disponible",
+    approvalBudgetExceeded: "Esta propuesta supera el presupuesto disponible.",
+    approvalBudgetMissing:
+      "No hay presupuesto anual configurado en Contabilidad para este año.",
     assistantGreeting:
       "¿Quieres enviar una nueva solicitud de taller o evento, o actualizar una sesión ya existente?",
     assistantRequestTitle: "Solicitud de programación",
@@ -479,6 +489,7 @@ export const adminEs: AdminDictionary = {
     colBalance: "Sobra / Falta",
     surplusLabel: "Sobra",
     shortfallLabel: "Falta",
+    fromSchedule: "Desde cronograma",
   },
   followup: {
     pageTitle: "Seguimiento de talleres",

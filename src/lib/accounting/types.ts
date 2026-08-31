@@ -46,6 +46,8 @@ export type Activity = {
   receivedCop: number;
   costs: Record<CostCategory, CostBucket>;
   notes: string;
+  /** Sesión del cronograma que originó esta actividad (si aplica). */
+  scheduleSessionId?: string;
   createdAt: string;
   updatedAt: string;
 };

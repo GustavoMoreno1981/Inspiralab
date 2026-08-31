@@ -17,6 +17,9 @@ import {
   type FieldDef,
 } from "@/lib/followup/types";
 import { printProposalDocument } from "@/lib/schedule/export-proposal";
+import type { ApprovalBudgetContext } from "@/lib/accounting/approval-budget";
+import { proposalBudgetTotalCop } from "@/lib/followup/budget-fields";
+import { ApprovalBudgetPanel } from "@/components/admin/ApprovalBudgetPanel";
 import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 import {
   SESSION_STATUSES,
@@ -81,6 +84,8 @@ type Props = {
   sessions: WorkshopSession[];
   saving?: boolean;
   defaultDate?: string;
+  canApprove?: boolean;
+  approvalBudget?: ApprovalBudgetContext | null;
   onClose: () => void;
   onCreate: (
     session: WorkshopSession,
@@ -169,6 +174,8 @@ export function ScheduleAssistant({
   sessions,
   saving = false,
   defaultDate,
+  canApprove = false,
+  approvalBudget = null,
   onClose,
   onCreate,
   onApprove,
@@ -682,18 +689,31 @@ export function ScheduleAssistant({
           ))}
 
           {step === "pendingApproval" && savedProposal ? (
-            <div className="border border-amber-200 bg-amber-50 p-3 text-sm">
-              <p className="font-semibold text-amber-900">
-                {sessionLabel(savedProposal)}
-              </p>
-              <p className="mt-1 text-xs text-amber-800">
-                {formatDate(savedProposal.date)} · Pendiente de aprobación ·
-                elaboró {beforeEvaluatedBy || "—"}
-              </p>
-              <p className="mt-2 text-xs text-amber-800">
-                Don Saul (o quien autorice) debe aprobar para que quede en el
-                calendario.
-              </p>
+            <div className="space-y-3">
+              <div className="border border-amber-200 bg-amber-50 p-3 text-sm">
+                <p className="font-semibold text-amber-900">
+                  {sessionLabel(savedProposal)}
+                </p>
+                <p className="mt-1 text-xs text-amber-800">
+                  {formatDate(savedProposal.date)} · Pendiente de aprobación ·
+                  elaboró {beforeEvaluatedBy || "—"}
+                </p>
+                <p className="mt-2 text-xs text-amber-800">
+                  {canApprove
+                    ? t.schedule.approvalHint
+                    : t.schedule.approvalOnlyAdmin}
+                </p>
+              </div>
+              {canApprove ? (
+                <ApprovalBudgetPanel
+                  budget={approvalBudget}
+                  proposedCop={proposalBudgetTotalCop(
+                    beforeFields.budgetMinimum,
+                    beforeFields.budgetOptional,
+                  )}
+                  compact
+                />
+              ) : null}
             </div>
           ) : null}
 
@@ -1270,14 +1290,16 @@ export function ScheduleAssistant({
 
           {step === "pendingApproval" ? (
             <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => void approveProposal()}
-                className="bg-[color:var(--accent)] px-3 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
-              >
-                {saving ? "Guardando…" : "Aprobar y programar en calendario"}
-              </button>
+              {canApprove ? (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void approveProposal()}
+                  className="bg-[color:var(--accent)] px-3 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
+                >
+                  {saving ? "Guardando…" : "Aprobar y programar en calendario"}
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={printProposal}

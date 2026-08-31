@@ -367,6 +367,15 @@ export const adminEn: AdminDictionary = {
     approveAndSchedule: "Approve and schedule",
     saveProposal: "Save proposal",
     approvalHint: "Don Saul or whoever authorizes must approve before publishing on the calendar.",
+    approvalOnlyAdmin:
+      "Only the administration profile can approve. Your proposal will stay pending until the director authorizes it.",
+    approvalBudgetTitle: "Budget {year} · available for workshops",
+    approvalBudgetAvailable: "Available this year",
+    approvalBudgetAllocated: "Already allocated to workshops",
+    approvalBudgetProposed: "This proposal",
+    approvalBudgetAfter: "Would remain available",
+    approvalBudgetExceeded: "This proposal exceeds the available budget.",
+    approvalBudgetMissing: "No annual budget is configured in Accounting for this year.",
     assistantGreeting:
       "Do you want to submit a new workshop or event request, or update an existing session?",
     assistantRequestTitle: "Scheduling request",
@@ -479,6 +488,7 @@ export const adminEn: AdminDictionary = {
     colBalance: "Surplus / Shortfall",
     surplusLabel: "Surplus",
     shortfallLabel: "Shortfall",
+    fromSchedule: "From schedule",
   },
   followup: {
     pageTitle: "Workshop follow-up",
