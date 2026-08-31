@@ -11,8 +11,12 @@ type Step =
   | "level"
   | "coach"
   | "materials"
+  | "study"
   | "steps"
   | "confirm";
+
+type StepsSubStep = "title" | "simbologia" | "choice";
+type StudySubStep = "title" | "url" | "choice";
 
 type ChatMessage = {
   id: string;
@@ -30,6 +34,7 @@ export type WorkshopAssistantDraft = {
   level: WorkshopLevel;
   coach: string;
   materials: string[];
+  studyContent: Array<{ title: string; url: string }>;
   steps: Array<{ title: string; simbologia: string }>;
 };
 
@@ -61,6 +66,7 @@ function emptyDraft(flowerIndex = 0): WorkshopAssistantDraft {
     level: 1,
     coach: "",
     materials: [],
+    studyContent: [],
     steps: [],
   };
 }
@@ -71,7 +77,7 @@ const LEVEL_OPTIONS: { value: WorkshopLevel; label: string }[] = [
   { value: 3, label: "Nivel 3 · Avanzado" },
 ];
 
-const TOTAL_STEPS = 9;
+const TOTAL_STEPS = 10;
 
 export function WorkshopsAssistant({
   open,
@@ -88,6 +94,11 @@ export function WorkshopsAssistant({
   );
   const [textInput, setTextInput] = useState("");
   const [simbologiaInput, setSimbologiaInput] = useState("");
+  const [stepsSubStep, setStepsSubStep] = useState<StepsSubStep>("title");
+  const [studySubStep, setStudySubStep] = useState<StudySubStep>("title");
+  const [pendingStepTitle, setPendingStepTitle] = useState("");
+  const [pendingStudyTitle, setPendingStudyTitle] = useState("");
+  const [studyUrlInput, setStudyUrlInput] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const stepNumber = useMemo(() => {
@@ -99,6 +110,7 @@ export function WorkshopsAssistant({
       "level",
       "coach",
       "materials",
+      "study",
       "steps",
       "confirm",
     ];
@@ -111,6 +123,11 @@ export function WorkshopsAssistant({
     setDraft(emptyDraft(defaultFlowerIndex));
     setTextInput("");
     setSimbologiaInput("");
+    setStepsSubStep("title");
+    setStudySubStep("title");
+    setPendingStepTitle("");
+    setPendingStudyTitle("");
+    setStudyUrlInput("");
     setMessages([
       msg(
         "assistant",
@@ -208,33 +225,152 @@ export function WorkshopsAssistant({
   }
 
   function continueFromMaterials() {
-    setStep("steps");
+    setStep("study");
+    setStudySubStep("title");
+    setPendingStudyTitle("");
+    setStudyUrlInput("");
     push(
       "assistant",
-      "Ahora el paso a paso (opcional). Escribe el paso y su simbología. Luego Continuar.",
+      "Agrega contenido de estudio: primero el título del recurso (ej. Guía PDF, video introductorio). Puedes saltar si no aplica.",
     );
     setTextInput("");
+  }
+
+  function submitStudyTitle() {
+    const title = textInput.trim();
+    if (!title) return;
+    setPendingStudyTitle(title);
+    push("user", title);
+    setTextInput("");
+    setStudySubStep("url");
+    push("assistant", "¿Cuál es la URL de ese recurso?");
+  }
+
+  function submitStudyUrl() {
+    const url = studyUrlInput.trim();
+    const title = pendingStudyTitle.trim();
+    if (!title || !url) return;
+
+    const entry = { title, url };
+    const nextCount = draft.studyContent.length + 1;
+
+    setDraft((prev) => ({
+      ...prev,
+      studyContent: [...prev.studyContent, entry],
+    }));
+    push("user", url);
+    push(
+      "assistant",
+      `Recurso ${nextCount} guardado. ¿Quieres agregar otro contenido de estudio?`,
+    );
+    setPendingStudyTitle("");
+    setStudyUrlInput("");
+    setStudySubStep("choice");
+  }
+
+  function addAnotherStudy() {
+    setStudySubStep("title");
+    setPendingStudyTitle("");
+    setTextInput("");
+    setStudyUrlInput("");
+    push(
+      "assistant",
+      `Recurso ${draft.studyContent.length + 1}: ¿qué título le ponemos?`,
+    );
+  }
+
+  function continueFromStudy() {
+    let extraStudy = [...draft.studyContent];
+
+    if (studySubStep === "url" && pendingStudyTitle.trim() && studyUrlInput.trim()) {
+      extraStudy.push({
+        title: pendingStudyTitle.trim(),
+        url: studyUrlInput.trim(),
+      });
+    }
+
+    setDraft((prev) => ({ ...prev, studyContent: extraStudy }));
+    setPendingStudyTitle("");
+    setTextInput("");
+    setStudyUrlInput("");
+    setStudySubStep("title");
+    setStep("steps");
+    setStepsSubStep("title");
+    setPendingStepTitle("");
+    push(
+      "assistant",
+      "Vamos con el paso a paso (opcional). Paso 1: ¿qué se hace en este paso?",
+    );
     setSimbologiaInput("");
   }
 
-  function addStep() {
+  function submitStepTitle() {
     const title = textInput.trim();
     if (!title) return;
-    const simbologia = simbologiaInput.trim();
+    setPendingStepTitle(title);
+    push("user", title);
+    setTextInput("");
+    setStepsSubStep("simbologia");
+    push(
+      "assistant",
+      "¿Qué simbología acompaña este paso? Escríbela o pulsa Saltar si no aplica.",
+    );
+  }
+
+  function submitStepSimbologia(skip = false) {
+    const simbologia = skip ? "" : simbologiaInput.trim();
+    const title = pendingStepTitle.trim();
+    if (!title) return;
+
+    const entry = { title, simbologia };
+    const nextCount = draft.steps.length + 1;
+
     setDraft((prev) => ({
       ...prev,
-      steps: [...prev.steps, { title, simbologia }],
+      steps: [...prev.steps, entry],
     }));
     push(
       "user",
-      simbologia ? `Paso: ${title} · Simbología: ${simbologia}` : `Paso: ${title}`,
+      entry.simbologia ? `Simbología: ${entry.simbologia}` : "Sin simbología",
     );
+    push(
+      "assistant",
+      `Paso ${nextCount} guardado. ¿Quieres agregar otro paso?`,
+    );
+    setPendingStepTitle("");
+    setSimbologiaInput("");
+    setTextInput("");
+    setStepsSubStep("choice");
+  }
+
+  function addAnotherStep() {
+    setStepsSubStep("title");
+    setPendingStepTitle("");
     setTextInput("");
     setSimbologiaInput("");
-    push("assistant", "¿Otro paso? Complétalo o pulsa Continuar.");
+    push(
+      "assistant",
+      `Paso ${draft.steps.length + 1}: ¿qué se hace en este paso?`,
+    );
   }
 
   function continueFromSteps() {
+    let extraSteps = [...draft.steps];
+
+    if (stepsSubStep === "title" && textInput.trim()) {
+      extraSteps.push({ title: textInput.trim(), simbologia: "" });
+    } else if (stepsSubStep === "simbologia" && pendingStepTitle.trim()) {
+      extraSteps.push({
+        title: pendingStepTitle.trim(),
+        simbologia: simbologiaInput.trim(),
+      });
+    }
+
+    setDraft((prev) => ({ ...prev, steps: extraSteps }));
+    setPendingStepTitle("");
+    setTextInput("");
+    setSimbologiaInput("");
+    setStepsSubStep("title");
     setStep("confirm");
     push("assistant", "Listo. Revisa el resumen y confirma para crear el taller.");
   }
@@ -250,6 +386,12 @@ export function WorkshopsAssistant({
       duration: draft.duration.trim(),
       coach: draft.coach.trim(),
       materials: draft.materials.map((item) => item.trim()).filter(Boolean),
+      studyContent: draft.studyContent
+        .map((item) => ({
+          title: item.title.trim(),
+          url: item.url.trim(),
+        }))
+        .filter((item) => item.title && item.url),
       steps: draft.steps
         .map((stepItem) => ({
           title: stepItem.title.trim(),
@@ -311,6 +453,44 @@ export function WorkshopsAssistant({
             </div>
           ))}
 
+          {step === "study" && draft.studyContent.length > 0 ? (
+            <div className="border border-[color:var(--line)] bg-white p-3 text-sm">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+                Contenido de estudio ({draft.studyContent.length})
+              </p>
+              <ul className="mt-2 space-y-2 text-xs text-[color:var(--ink)]">
+                {draft.studyContent.map((item, index) => (
+                  <li key={`${item.title}-${index}`}>
+                    <span className="font-semibold">{item.title}</span>
+                    <p className="mt-0.5 break-all text-[color:var(--muted)]">{item.url}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {step === "steps" && draft.steps.length > 0 ? (
+            <div className="border border-[color:var(--line)] bg-white p-3 text-sm">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+                Pasos agregados ({draft.steps.length})
+              </p>
+              <ul className="mt-2 space-y-2 text-xs text-[color:var(--ink)]">
+                {draft.steps.map((stepItem, index) => (
+                  <li key={`${stepItem.title}-${index}`}>
+                    <span className="font-semibold">
+                      {index + 1}. {stepItem.title}
+                    </span>
+                    {stepItem.simbologia ? (
+                      <p className="mt-0.5 text-[color:var(--muted)]">
+                        Simbología: {stepItem.simbologia}
+                      </p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           {step === "confirm" ? (
             <div className="border border-[color:var(--line)] bg-white p-3 text-sm">
               <p className="text-xs text-[color:var(--muted)]">{flowerName}</p>
@@ -324,6 +504,15 @@ export function WorkshopsAssistant({
                 <p className="mt-2 text-xs text-[color:var(--muted)]">
                   Materiales: {draft.materials.join(", ")}
                 </p>
+              ) : null}
+              {draft.studyContent.length ? (
+                <ul className="mt-2 space-y-1 text-xs text-[color:var(--muted)]">
+                  {draft.studyContent.map((item, index) => (
+                    <li key={`${item.title}-${index}`}>
+                      {item.title}: {item.url}
+                    </li>
+                  ))}
+                </ul>
               ) : null}
               {draft.steps.length ? (
                 <ul className="mt-2 space-y-1 text-xs text-[color:var(--muted)]">
@@ -478,38 +667,175 @@ export function WorkshopsAssistant({
             </div>
           ) : null}
 
+          {step === "study" ? (
+            <div className="space-y-2">
+              {studySubStep === "title" ? (
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    value={textInput}
+                    onChange={(event) => setTextInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        submitStudyTitle();
+                      }
+                    }}
+                    placeholder="Título del recurso"
+                    className="min-w-[12rem] flex-1 border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
+                  />
+                  <button
+                    type="button"
+                    onClick={submitStudyTitle}
+                    disabled={!textInput.trim()}
+                    className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    Siguiente
+                  </button>
+                  <button
+                    type="button"
+                    onClick={continueFromStudy}
+                    className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
+                  >
+                    {draft.studyContent.length ? "Continuar" : "Saltar"}
+                  </button>
+                </div>
+              ) : null}
+
+              {studySubStep === "url" ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-[color:var(--muted)]">
+                    Recurso:{" "}
+                    <span className="font-semibold text-[color:var(--ink)]">
+                      {pendingStudyTitle}
+                    </span>
+                  </p>
+                  <input
+                    value={studyUrlInput}
+                    onChange={(event) => setStudyUrlInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        submitStudyUrl();
+                      }
+                    }}
+                    placeholder="https://…"
+                    className="w-full border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
+                  />
+                  <button
+                    type="button"
+                    onClick={submitStudyUrl}
+                    disabled={!studyUrlInput.trim()}
+                    className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    Guardar recurso
+                  </button>
+                </div>
+              ) : null}
+
+              {studySubStep === "choice" ? (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={addAnotherStudy}
+                    className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
+                  >
+                    Agregar otro recurso
+                  </button>
+                  <button
+                    type="button"
+                    onClick={continueFromStudy}
+                    className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
+                  >
+                    Continuar
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           {step === "steps" ? (
             <div className="space-y-2">
-              <input
-                value={textInput}
-                onChange={(event) => setTextInput(event.target.value)}
-                placeholder="Descripción del paso"
-                className="w-full border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
-              />
-              <textarea
-                value={simbologiaInput}
-                onChange={(event) => setSimbologiaInput(event.target.value)}
-                rows={2}
-                placeholder="Simbología (solo exportación)"
-                className="w-full border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
-              />
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={addStep}
-                  disabled={!textInput.trim()}
-                  className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold disabled:opacity-50"
-                >
-                  Agregar paso
-                </button>
-                <button
-                  type="button"
-                  onClick={continueFromSteps}
-                  className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
-                >
-                  Continuar
-                </button>
-              </div>
+              {stepsSubStep === "title" ? (
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    value={textInput}
+                    onChange={(event) => setTextInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        submitStepTitle();
+                      }
+                    }}
+                    placeholder={`Descripción del paso ${draft.steps.length + 1}`}
+                    className="min-w-[12rem] flex-1 border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
+                  />
+                  <button
+                    type="button"
+                    onClick={submitStepTitle}
+                    disabled={!textInput.trim()}
+                    className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    Siguiente
+                  </button>
+                  <button
+                    type="button"
+                    onClick={continueFromSteps}
+                    className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
+                  >
+                    {draft.steps.length ? "Terminar pasos" : "Saltar pasos"}
+                  </button>
+                </div>
+              ) : null}
+
+              {stepsSubStep === "simbologia" ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-[color:var(--muted)]">
+                    Paso: <span className="font-semibold text-[color:var(--ink)]">{pendingStepTitle}</span>
+                  </p>
+                  <textarea
+                    value={simbologiaInput}
+                    onChange={(event) => setSimbologiaInput(event.target.value)}
+                    rows={3}
+                    placeholder="Simbología de este paso (solo exportación)"
+                    className="w-full border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => submitStepSimbologia(true)}
+                      className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
+                    >
+                      Saltar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => submitStepSimbologia(false)}
+                      className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
+                    >
+                      Guardar paso
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {stepsSubStep === "choice" ? (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={addAnotherStep}
+                    className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
+                  >
+                    Agregar otro paso
+                  </button>
+                  <button
+                    type="button"
+                    onClick={continueFromSteps}
+                    className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
+                  >
+                    Terminar pasos
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : null}
 

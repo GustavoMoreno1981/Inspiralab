@@ -111,10 +111,21 @@ function exportWorkshopDocument({
   workshop: Dictionary["workshops"]["categories"][number]["workshops"][number];
 }) {
   const materials = workshop.materials || [];
+  const studyContent = workshop.studyContent || [];
   const steps = workshop.steps || [];
   const materialsHtml = materials.length
     ? `<ul>${materials.map((item) => `<li>${escapeHtml(item.title)}</li>`).join("")}</ul>`
     : "<p>Sin materiales registrados.</p>";
+  const studyHtml = studyContent.length
+    ? `<ul>${studyContent
+        .map(
+          (item) =>
+            `<li><strong>${escapeHtml(item.title)}</strong> — <a href="${escapeHtml(
+              item.url,
+            )}">${escapeHtml(item.url)}</a></li>`,
+        )
+        .join("")}</ul>`
+    : "<p>Sin contenido de estudio registrado.</p>";
   const stepsHtml = steps.length
     ? `<ol>${steps
         .map((step, index) => {
@@ -156,6 +167,10 @@ function exportWorkshopDocument({
     <section>
       <h2>Materiales</h2>
       ${materialsHtml}
+    </section>
+    <section>
+      <h2>Contenido de estudio</h2>
+      ${studyHtml}
     </section>
     <section>
       <h2>Paso a paso</h2>
@@ -222,6 +237,9 @@ export function WorkshopsBoard() {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [stepDrafts, setStepDrafts] = useState<Record<string, string>>({});
   const [materialDrafts, setMaterialDrafts] = useState<Record<string, string>>({});
+  const [studyDrafts, setStudyDrafts] = useState<
+    Record<string, { title: string; url: string }>
+  >({});
   const [activeFlower, setActiveFlower] = useState(0);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [leaveTarget, setLeaveTarget] = useState<string | null>(null);
@@ -357,6 +375,7 @@ export function WorkshopsBoard() {
               level: 1,
               coach: "",
               materials: [],
+              studyContent: [],
               steps: [],
             });
           })
@@ -388,6 +407,11 @@ export function WorkshopsBoard() {
           materials: draft.materials.map((title) => ({
             id: createWorkshopId(),
             title,
+          })),
+          studyContent: draft.studyContent.map((item) => ({
+            id: createWorkshopId(),
+            title: item.title,
+            url: item.url,
           })),
           steps: draft.steps.map((step) => ({
             id: createWorkshopId(),
@@ -560,6 +584,55 @@ export function WorkshopsBoard() {
             const workshop = findWorkshop(dict, catIndex, workshopId);
             if (!workshop) return;
             workshop.materials = workshop.materials.filter((item) => item.id !== materialId);
+          })
+        : prev,
+    );
+  }
+
+  function addStudyContent(catIndex: number, workshopId: string) {
+    const draft = studyDrafts[workshopId] || { title: "", url: "" };
+    const title = draft.title.trim();
+    const url = draft.url.trim();
+    if (!title || !url) return;
+    const id = createWorkshopId();
+    setContent((prev) =>
+      prev
+        ? updateBothLocales(prev, (dict) => {
+            const workshop = findWorkshop(dict, catIndex, workshopId);
+            if (!workshop) return;
+            if (!Array.isArray(workshop.studyContent)) workshop.studyContent = [];
+            workshop.studyContent.push({ id, title, url });
+          })
+        : prev,
+    );
+    setStudyDrafts((prev) => ({ ...prev, [workshopId]: { title: "", url: "" } }));
+  }
+
+  function updateStudyContentItem(
+    catIndex: number,
+    workshopId: string,
+    itemId: string,
+    patch: Partial<{ title: string; url: string }>,
+  ) {
+    setContent((prev) =>
+      prev
+        ? updateBothLocales(prev, (dict) => {
+            const item = findWorkshop(dict, catIndex, workshopId)?.studyContent.find(
+              (entry) => entry.id === itemId,
+            );
+            if (item) Object.assign(item, patch);
+          })
+        : prev,
+    );
+  }
+
+  function removeStudyContent(catIndex: number, workshopId: string, itemId: string) {
+    setContent((prev) =>
+      prev
+        ? updateBothLocales(prev, (dict) => {
+            const workshop = findWorkshop(dict, catIndex, workshopId);
+            if (!workshop) return;
+            workshop.studyContent = workshop.studyContent.filter((item) => item.id !== itemId);
           })
         : prev,
     );
@@ -804,6 +877,7 @@ export function WorkshopsBoard() {
                   const expanded = expandedIds.has(workshop.id);
                   const steps = workshop.steps || [];
                   const materials = workshop.materials || [];
+                  const studyContent = workshop.studyContent || [];
                   const doneCount = steps.filter((step) => step.done).length;
                   const uploadKey = `${activeFlower}-${workshop.id}`;
 
@@ -1060,6 +1134,111 @@ export function WorkshopsBoard() {
                               >
                                 {t.common.add}
                               </button>
+                            </form>
+                          </div>
+
+                          <div className="border border-[color:var(--line)] p-4">
+                            <h3 className="text-sm font-bold text-[color:var(--ink)]">
+                              {t.workshops.studyContent}
+                            </h3>
+                            <p className="text-xs text-[color:var(--muted)]">
+                              {t.workshops.studyContentHint}
+                            </p>
+                            <ul className="mt-3 space-y-2">
+                              {studyContent.length === 0 ? (
+                                <li className="text-sm text-[color:var(--muted)]">
+                                  {t.workshops.noStudyContent}
+                                </li>
+                              ) : (
+                                studyContent.map((item) => (
+                                  <li
+                                    key={item.id}
+                                    className="space-y-2 border border-[color:var(--line)] bg-[color:var(--mist)] px-3 py-2"
+                                  >
+                                    <input
+                                      value={item.title}
+                                      onChange={(e) =>
+                                        updateStudyContentItem(
+                                          activeFlower,
+                                          workshop.id,
+                                          item.id,
+                                          { title: e.target.value },
+                                        )
+                                      }
+                                      placeholder={t.workshops.studyTitlePlaceholder}
+                                      className="w-full bg-transparent text-sm font-semibold outline-none"
+                                    />
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        value={item.url}
+                                        onChange={(e) =>
+                                          updateStudyContentItem(
+                                            activeFlower,
+                                            workshop.id,
+                                            item.id,
+                                            { url: e.target.value },
+                                          )
+                                        }
+                                        placeholder={t.workshops.studyUrlPlaceholder}
+                                        className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          removeStudyContent(activeFlower, workshop.id, item.id)
+                                        }
+                                        className="text-xs font-semibold text-[color:var(--accent)]"
+                                      >
+                                        {t.common.remove}
+                                      </button>
+                                    </div>
+                                  </li>
+                                ))
+                              )}
+                            </ul>
+                            <form
+                              className="mt-3 space-y-2"
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                addStudyContent(activeFlower, workshop.id);
+                              }}
+                            >
+                              <input
+                                value={studyDrafts[workshop.id]?.title || ""}
+                                onChange={(e) =>
+                                  setStudyDrafts((prev) => ({
+                                    ...prev,
+                                    [workshop.id]: {
+                                      title: e.target.value,
+                                      url: prev[workshop.id]?.url || "",
+                                    },
+                                  }))
+                                }
+                                placeholder={t.workshops.studyTitlePlaceholder}
+                                className="w-full border border-[color:var(--line)] bg-white px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
+                              />
+                              <div className="flex gap-2">
+                                <input
+                                  value={studyDrafts[workshop.id]?.url || ""}
+                                  onChange={(e) =>
+                                    setStudyDrafts((prev) => ({
+                                      ...prev,
+                                      [workshop.id]: {
+                                        title: prev[workshop.id]?.title || "",
+                                        url: e.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder={t.workshops.studyUrlPlaceholder}
+                                  className="min-w-0 flex-1 border border-[color:var(--line)] bg-white px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
+                                />
+                                <button
+                                  type="submit"
+                                  className="bg-[color:var(--ink)] px-3 py-2 text-xs font-semibold text-white"
+                                >
+                                  {t.common.add}
+                                </button>
+                              </div>
                             </form>
                           </div>
 

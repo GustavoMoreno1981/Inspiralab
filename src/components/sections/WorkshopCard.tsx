@@ -11,6 +11,7 @@ export type WorkshopCardData = {
   duration?: string;
   level?: number;
   coach?: string;
+  studyContent?: Array<{ id?: string; title: string; url: string }>;
 };
 
 export function WorkshopCard({ workshop }: { workshop: WorkshopCardData }) {
@@ -60,6 +61,24 @@ export function WorkshopCard({ workshop }: { workshop: WorkshopCardData }) {
       <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)]">
         {workshop.text}
       </p>
+      {(workshop.studyContent || []).filter((item) => item.title && item.url).length > 0 ? (
+        <ul className="mt-4 space-y-2">
+          {(workshop.studyContent || [])
+            .filter((item) => item.title && item.url)
+            .map((item, index) => (
+              <li key={item.id || `${item.title}-${index}`}>
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm font-semibold text-[color:var(--accent)] underline-offset-2 hover:underline"
+                >
+                  {item.title}
+                </a>
+              </li>
+            ))}
+        </ul>
+      ) : null}
     </li>
   );
 }

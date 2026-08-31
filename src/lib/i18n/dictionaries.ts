@@ -62,6 +62,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
             {
@@ -74,6 +75,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
             {
@@ -86,6 +88,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
             {
@@ -98,6 +101,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
           ],
@@ -116,6 +120,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
             {
@@ -128,6 +133,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
             {
@@ -140,6 +146,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
             {
@@ -152,6 +159,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
           ],
@@ -170,6 +178,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
             {
@@ -182,6 +191,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
             {
@@ -194,6 +204,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
             {
@@ -206,6 +217,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
           ],
@@ -335,6 +347,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
             {
@@ -347,6 +360,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
             {
@@ -359,6 +373,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
             {
@@ -371,6 +386,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
           ],
@@ -389,6 +405,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
             {
@@ -401,6 +418,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
             {
@@ -413,6 +431,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
             {
@@ -425,6 +444,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
           ],
@@ -443,6 +463,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
             {
@@ -455,6 +476,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
             {
@@ -467,6 +489,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
             {
@@ -479,6 +502,7 @@ export const dictionaries = {
               level: 1 as 1 | 2 | 3,
               coach: "",
               materials: [] as { id: string; title: string }[],
+              studyContent: [] as { id: string; title: string; url: string }[],
               steps: [] as { id: string; title: string; done: boolean; simbologia: string }[],
             },
           ],

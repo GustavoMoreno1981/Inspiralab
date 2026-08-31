@@ -22,6 +22,12 @@ export type WorkshopMaterial = {
   title: string;
 };
 
+export type WorkshopStudyResource = {
+  id: string;
+  title: string;
+  url: string;
+};
+
 export type WorkshopItem = {
   id: string;
   title: string;
@@ -32,6 +38,8 @@ export type WorkshopItem = {
   level: WorkshopLevel;
   coach: string;
   materials: WorkshopMaterial[];
+  /** Enlaces de contenido de estudio (título + URL). */
+  studyContent: WorkshopStudyResource[];
   /** Paso a paso del taller (antes tasks). */
   steps: WorkshopStep[];
 };
@@ -65,6 +73,17 @@ function normalizeWorkshopMaterial(
   };
 }
 
+function normalizeWorkshopStudyResource(
+  item: Partial<WorkshopStudyResource>,
+  fallbackId: string,
+): WorkshopStudyResource {
+  return {
+    id: item.id || fallbackId,
+    title: item.title || "",
+    url: item.url || "",
+  };
+}
+
 function normalizeLevel(value: unknown): WorkshopLevel {
   const n = typeof value === "number" ? value : Number(value);
   if (n === 2 || n === 3) return n;
@@ -81,6 +100,7 @@ function normalizeWorkshop(
       ? workshop.tasks
       : [];
   const rawMaterials = Array.isArray(workshop.materials) ? workshop.materials : [];
+  const rawStudyContent = Array.isArray(workshop.studyContent) ? workshop.studyContent : [];
 
   return {
     id: workshop.id || fallbackId,
@@ -95,6 +115,12 @@ function normalizeWorkshop(
       normalizeWorkshopMaterial(
         material as Partial<WorkshopMaterial>,
         `${fallbackId}-mat-${index}`,
+      ),
+    ),
+    studyContent: rawStudyContent.map((item, index) =>
+      normalizeWorkshopStudyResource(
+        item as Partial<WorkshopStudyResource>,
+        `${fallbackId}-study-${index}`,
       ),
     ),
     steps: rawSteps.map((step, index) =>
@@ -174,6 +200,7 @@ export function normalizeContent(content: SiteContent): SiteContent {
       pair.level = workshop.level;
       pair.coach = workshop.coach;
       pair.materials = workshop.materials.map((item) => ({ ...item }));
+      pair.studyContent = workshop.studyContent.map((item) => ({ ...item }));
       pair.steps = workshop.steps.map((step) => ({ ...step }));
     });
   });
