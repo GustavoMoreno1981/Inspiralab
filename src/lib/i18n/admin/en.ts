@@ -355,6 +355,13 @@ export const adminEn: AdminDictionary = {
     approveAndSchedule: "Approve and schedule",
     saveProposal: "Save proposal",
     approvalHint: "Don Saul or whoever authorizes must approve before publishing on the calendar.",
+    assistantGreeting:
+      "Do you want to submit a new workshop or event request, or update an existing session?",
+    assistantRequestTitle: "Scheduling request",
+    assistantRequestNotice:
+      "You are filling out a workshop or event request. It is not on the calendar yet: once the director approves it, it will be scheduled automatically.",
+    assistantNewRequest: "New request",
+    assistantUpdateSession: "Update session",
   },
   workshops: {
     pageTitle: "Workshops",

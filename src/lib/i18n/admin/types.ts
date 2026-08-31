@@ -354,6 +354,11 @@ export type AdminDictionary = {
     approveAndSchedule: string;
     saveProposal: string;
     approvalHint: string;
+    assistantGreeting: string;
+    assistantRequestTitle: string;
+    assistantRequestNotice: string;
+    assistantNewRequest: string;
+    assistantUpdateSession: string;
   };
   workshops: {
     pageTitle: string;

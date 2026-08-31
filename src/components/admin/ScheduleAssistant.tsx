@@ -17,6 +17,7 @@ import {
   type FieldDef,
 } from "@/lib/followup/types";
 import { printProposalDocument } from "@/lib/schedule/export-proposal";
+import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 import {
   SESSION_STATUSES,
   createId,
@@ -173,6 +174,7 @@ export function ScheduleAssistant({
   onApprove,
   onUpdate,
 }: Props) {
+  const { t } = useAdminLanguage();
   const [intent, setIntent] = useState<Intent | null>(null);
   const [step, setStep] = useState<Step>("intent");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -245,13 +247,8 @@ export function ScheduleAssistant({
     setBeforeEvaluatedBy("");
     setBeforeFieldIndex(0);
     setSavedProposal(null);
-    setMessages([
-      msg(
-        "assistant",
-        "Hola. Te guío para el cronograma. ¿Quieres programar algo nuevo o actualizar una sesión?",
-      ),
-    ]);
-  }, [open, defaultDate]);
+    setMessages([msg("assistant", t.schedule.assistantGreeting)]);
+  }, [open, defaultDate, t.schedule.assistantGreeting]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -263,7 +260,12 @@ export function ScheduleAssistant({
 
   function chooseIntent(next: Intent) {
     setIntent(next);
-    push("user", next === "create" ? "Programar sesión" : "Actualizar sesión");
+    push(
+      "user",
+      next === "create"
+        ? t.schedule.assistantNewRequest
+        : t.schedule.assistantUpdateSession,
+    );
     if (next === "create") {
       setStep("kind");
       push("assistant", "¿Es un taller del catálogo o un evento libre?");
@@ -651,6 +653,17 @@ export function ScheduleAssistant({
         </div>
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-4">
+          {step !== "pendingApproval" && (step === "intent" || intent === "create") ? (
+            <div className="border border-[color:var(--accent)]/35 bg-[color:var(--mist)] p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--accent)]">
+                {t.schedule.assistantRequestTitle}
+              </p>
+              <p className="mt-1.5 text-xs leading-relaxed text-[color:var(--ink)]">
+                {t.schedule.assistantRequestNotice}
+              </p>
+            </div>
+          ) : null}
+
           {messages.map((item) => (
             <div
               key={item.id}
@@ -757,14 +770,14 @@ export function ScheduleAssistant({
                 onClick={() => chooseIntent("create")}
                 className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
               >
-                Programar sesión
+                {t.schedule.assistantNewRequest}
               </button>
               <button
                 type="button"
                 onClick={() => chooseIntent("update")}
                 className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
               >
-                Actualizar sesión
+                {t.schedule.assistantUpdateSession}
               </button>
             </div>
           ) : null}
@@ -1158,7 +1171,7 @@ export function ScheduleAssistant({
                 onClick={() => chooseIntent("create")}
                 className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
               >
-                Programar sesión
+                {t.schedule.assistantNewRequest}
               </button>
             ) : (
               <ul className="max-h-48 space-y-2 overflow-y-auto">

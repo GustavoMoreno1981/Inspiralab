@@ -355,6 +355,13 @@ export const adminEs: AdminDictionary = {
     approveAndSchedule: "Aprobar y programar",
     saveProposal: "Guardar propuesta",
     approvalHint: "Don Saul o quien autorice debe aprobar antes de publicar en el calendario.",
+    assistantGreeting:
+      "¿Quieres enviar una nueva solicitud de taller o evento, o actualizar una sesión ya existente?",
+    assistantRequestTitle: "Solicitud de programación",
+    assistantRequestNotice:
+      "Vas a diligenciar la solicitud de un taller o evento. Aún no queda en el calendario: cuando el director la apruebe, se programará automáticamente.",
+    assistantNewRequest: "Nueva solicitud",
+    assistantUpdateSession: "Actualizar sesión",
   },
   workshops: {
     pageTitle: "Talleres",
