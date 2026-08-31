@@ -10,6 +10,27 @@ type Props = {
   compact?: boolean;
 };
 
+function MoneyValue({
+  amountCop,
+  usdRate,
+  emphasis = "bold",
+}: {
+  amountCop: number;
+  usdRate: number;
+  emphasis?: "bold" | "semibold";
+}) {
+  return (
+    <>
+      <p
+        className={`${emphasis === "bold" ? "font-bold" : "font-semibold"} text-[color:var(--ink)]`}
+      >
+        {formatUsdFromCop(amountCop, usdRate)}
+      </p>
+      <p className="text-[10px] text-[color:var(--muted)]">{formatCop(amountCop)}</p>
+    </>
+  );
+}
+
 export function ApprovalBudgetPanel({ budget, proposedCop = 0, compact = false }: Props) {
   const { t } = useAdminLanguage();
   const p = t.schedule;
@@ -37,16 +58,15 @@ export function ApprovalBudgetPanel({ budget, proposedCop = 0, compact = false }
       <div className={`mt-2 grid gap-2 ${compact ? "text-xs" : "text-sm sm:grid-cols-2"}`}>
         <div>
           <p className="text-[color:var(--muted)]">{p.approvalBudgetAvailable}</p>
-          <p className="font-bold text-[color:var(--ink)]">{formatCop(budget.availableCop)}</p>
-          <p className="text-[10px] text-[color:var(--muted)]">
-            {formatUsdFromCop(budget.availableCop, budget.usdRate)}
-          </p>
+          <MoneyValue amountCop={budget.availableCop} usdRate={budget.usdRate} />
         </div>
         <div>
           <p className="text-[color:var(--muted)]">{p.approvalBudgetAllocated}</p>
-          <p className="font-semibold text-[color:var(--ink)]">
-            {formatCop(budget.workshopAllocatedCop)}
-          </p>
+          <MoneyValue
+            amountCop={budget.workshopAllocatedCop}
+            usdRate={budget.usdRate}
+            emphasis="semibold"
+          />
         </div>
       </div>
       {proposedCop > 0 ? (
@@ -54,8 +74,9 @@ export function ApprovalBudgetPanel({ budget, proposedCop = 0, compact = false }
           <p>
             <span className="text-[color:var(--muted)]">{p.approvalBudgetProposed}: </span>
             <span className="font-semibold text-[color:var(--ink)]">
-              {formatCop(proposedCop)}
+              {formatUsdFromCop(proposedCop, budget.usdRate)}
             </span>
+            <span className="text-[color:var(--muted)]"> · {formatCop(proposedCop)}</span>
           </p>
           <p className="mt-1">
             <span className="text-[color:var(--muted)]">{p.approvalBudgetAfter}: </span>
@@ -64,8 +85,9 @@ export function ApprovalBudgetPanel({ budget, proposedCop = 0, compact = false }
                 remainingAfter < 0 ? "text-[color:var(--accent)]" : "text-[#177245]"
               }`}
             >
-              {formatCop(remainingAfter)}
+              {formatUsdFromCop(remainingAfter, budget.usdRate)}
             </span>
+            <span className="text-[color:var(--muted)]"> · {formatCop(remainingAfter)}</span>
           </p>
           {remainingAfter < 0 ? (
             <p className="mt-1 font-semibold text-[color:var(--accent)]">
