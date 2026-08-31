@@ -230,7 +230,7 @@ export function WorkshopsAssistant({
     setStep("coach");
     push(
       "assistant",
-      "Agrega coaches uno por uno. Cuando termines, pulsa Continuar.",
+      "Puedes agregar varios coaches. Escribe un nombre, pulsa Agregar y repite. Cuando termines, pulsa Continuar.",
     );
     setTextInput("");
   }
@@ -244,10 +244,22 @@ export function WorkshopsAssistant({
     }));
     push("user", `Coach: ${value}`);
     setTextInput("");
-    push("assistant", "¿Otro coach? Escríbelo o pulsa Continuar.");
+    push(
+      "assistant",
+      `Coach guardado (${draft.coaches.length + 1} en total). ¿Agregas otro o pulsas Continuar?`,
+    );
   }
 
   function continueFromCoaches() {
+    const pending = textInput.trim();
+    if (pending) {
+      push("user", `Coach: ${pending}`);
+    }
+    setTextInput("");
+    setDraft((prev) => ({
+      ...prev,
+      coaches: pending ? [...prev.coaches, pending] : prev.coaches,
+    }));
     setStep("materials");
     push(
       "assistant",
@@ -513,6 +525,21 @@ export function WorkshopsAssistant({
             </div>
           ))}
 
+          {step === "coach" && draft.coaches.length > 0 ? (
+            <div className="border border-[color:var(--line)] bg-white p-3 text-sm">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+                Coaches agregados ({draft.coaches.length})
+              </p>
+              <ul className="mt-2 space-y-1 text-xs text-[color:var(--ink)]">
+                {draft.coaches.map((coachName, index) => (
+                  <li key={`${coachName}-${index}`}>
+                    {index + 1}. {coachName}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           {step === "study" && draft.studyContent.length > 0 ? (
             <div className="border border-[color:var(--line)] bg-white p-3 text-sm">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">
@@ -685,23 +712,25 @@ export function WorkshopsAssistant({
                   disabled={!textInput.trim()}
                   className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold disabled:opacity-50"
                 >
-                  Agregar
+                  {draft.coaches.length ? "Agregar otro" : "Agregar"}
                 </button>
               </div>
               <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={skipCoaches}
-                  className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
-                >
-                  Saltar
-                </button>
+                {draft.coaches.length === 0 ? (
+                  <button
+                    type="button"
+                    onClick={skipCoaches}
+                    className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
+                  >
+                    Saltar
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={continueFromCoaches}
                   className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
                 >
-                  Continuar
+                  {draft.coaches.length ? "Continuar" : "Continuar sin coaches"}
                 </button>
               </div>
             </div>
