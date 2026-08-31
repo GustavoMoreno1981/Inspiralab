@@ -21,6 +21,8 @@ type Props = {
   onPrint: (session: WorkshopSession) => void;
   onView: (session: WorkshopSession) => void;
   onEdit: (session: WorkshopSession) => void;
+  onDelete?: (session: WorkshopSession) => void;
+  saving?: boolean;
 };
 
 export function RejectedProposalsModal({
@@ -35,6 +37,8 @@ export function RejectedProposalsModal({
   onPrint,
   onView,
   onEdit,
+  onDelete,
+  saving = false,
 }: Props) {
   const { t } = useAdminLanguage();
 
@@ -137,6 +141,16 @@ export function RejectedProposalsModal({
                     >
                       {t.common.edit}
                     </button>
+                    {onDelete ? (
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => onDelete(session)}
+                        className="border border-red-200 bg-white px-2 py-1 text-[10px] font-semibold text-red-700 disabled:opacity-50"
+                      >
+                        {t.common.delete}
+                      </button>
+                    ) : null}
                   </div>
                 </li>
               ))}

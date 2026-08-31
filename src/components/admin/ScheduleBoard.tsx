@@ -1488,6 +1488,8 @@ export function ScheduleBoard() {
           setRejectedModalOpen(false);
           openEdit(session);
         }}
+        onDelete={(session) => void handleDelete(session.id)}
+        saving={saving}
       />
 
       <ScheduleAssistant
