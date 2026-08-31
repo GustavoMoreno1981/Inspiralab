@@ -1,13 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Activity, TaskBankItem } from "@/lib/tasks/types";
 import type { PrivateItemType } from "@/lib/tasks/private-auth";
+import type { SecurityQuestionKey } from "@/lib/tasks/security-questions";
 import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 import {
-  EMPTY_PRIVATE_SETUP,
+  createEmptyPrivateSetup,
   PrivateItemSetupFields,
+  shuffleRecoveryQuestions,
   validatePrivateSetup,
+  type PrivateSetupValues,
 } from "@/components/admin/PrivateItemSetupFields";
 
 export type PrivateUnlockPayload = {
@@ -36,9 +39,50 @@ export function PrivateItemUnlockModal({
   const p = t.private;
   const [mode, setMode] = useState<"unlock" | "recover">("unlock");
   const [pin, setPin] = useState("");
-  const [recover, setRecover] = useState(EMPTY_PRIVATE_SETUP);
+  const [recover, setRecover] = useState(() => createEmptyPrivateSetup());
+  const [recoveryQuestionKeys, setRecoveryQuestionKeys] = useState<SecurityQuestionKey[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setMode("unlock");
+    setPin("");
+    setRecover(createEmptyPrivateSetup());
+    setRecoveryQuestionKeys([]);
+    setError("");
+  }, [open, itemType, itemId]);
+
+  useEffect(() => {
+    if (!open || mode !== "recover") return;
+    let cancelled = false;
+
+    void fetch(
+      `/api/tasks/private/setup?itemType=${encodeURIComponent(itemType)}&itemId=${encodeURIComponent(itemId)}`,
+      { cache: "no-store" },
+    )
+      .then((res) => res.json())
+      .then((data: { questionKeys?: SecurityQuestionKey[] }) => {
+        if (cancelled) return;
+        const configured = Array.isArray(data.questionKeys) ? data.questionKeys : [];
+        const shuffled = shuffleRecoveryQuestions(configured);
+        setRecoveryQuestionKeys(shuffled);
+        setRecover((prev) => ({
+          ...createEmptyPrivateSetup(shuffled),
+          pin: prev.pin,
+          pinConfirm: prev.pinConfirm,
+        }));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setError(p.recoverFailed);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, mode, itemType, itemId, p.recoverFailed]);
 
   if (!open) return null;
 
@@ -74,7 +118,10 @@ export function PrivateItemUnlockModal({
 
   async function handleRecover(event: React.FormEvent) {
     event.preventDefault();
-    const validation = validatePrivateSetup(recover, p);
+    const validation = validatePrivateSetup(
+      { ...recover, questionKeys: recoveryQuestionKeys },
+      p,
+    );
     if (validation) {
       setError(validation);
       return;
@@ -88,9 +135,8 @@ export function PrivateItemUnlockModal({
         body: JSON.stringify({
           itemType,
           itemId,
-          motherName: recover.motherName,
-          petName: recover.petName,
-          birthYear: recover.birthYear,
+          questionKeys: recoveryQuestionKeys,
+          answers: recover.answers,
           newPin: recover.pin,
         }),
       });
@@ -107,7 +153,7 @@ export function PrivateItemUnlockModal({
         activity: data.activity,
         bankItem: data.bankItem,
       });
-      setRecover(EMPTY_PRIVATE_SETUP);
+      setRecover(createEmptyPrivateSetup());
       onClose();
     } finally {
       setLoading(false);
@@ -170,9 +216,15 @@ export function PrivateItemUnlockModal({
               {p.recover}
             </button>
           </form>
+        ) : recoveryQuestionKeys.length === 0 ? (
+          <p className="mt-4 text-sm text-[color:var(--muted)]">{p.verifying}</p>
         ) : (
           <form onSubmit={(e) => void handleRecover(e)} className="mt-4 space-y-3">
-            <PrivateItemSetupFields values={recover} onChange={setRecover} />
+            <PrivateItemSetupFields
+              values={{ ...recover, questionKeys: recoveryQuestionKeys }}
+              onChange={setRecover}
+              questionKeys={recoveryQuestionKeys}
+            />
             {error ? (
               <p className="text-xs font-semibold text-[color:var(--accent)]">{error}</p>
             ) : null}

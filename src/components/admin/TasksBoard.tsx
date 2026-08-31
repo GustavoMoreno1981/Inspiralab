@@ -41,7 +41,7 @@ import { ReviewResponsePanel } from "@/components/admin/ReviewResponsePanel";
 import { TasksAssistant } from "@/components/admin/TasksAssistant";
 import { DeliveryUrlsModal } from "@/components/admin/DeliveryUrlsModal";
 import {
-  EMPTY_PRIVATE_SETUP,
+  createEmptyPrivateSetup,
   PrivateItemSetupFields,
   validatePrivateSetup,
   type PrivateSetupValues,
@@ -319,9 +319,9 @@ export function TasksBoard() {
     Record<string, { title: string; url: string }>
   >({});
   const [newVisibility, setNewVisibility] = useState<ItemVisibility>("public");
-  const [newPrivateSetup, setNewPrivateSetup] = useState<PrivateSetupValues>(EMPTY_PRIVATE_SETUP);
+  const [newPrivateSetup, setNewPrivateSetup] = useState(() => createEmptyPrivateSetup());
   const [bankVisibility, setBankVisibility] = useState<ItemVisibility>("public");
-  const [bankPrivateSetup, setBankPrivateSetup] = useState<PrivateSetupValues>(EMPTY_PRIVATE_SETUP);
+  const [bankPrivateSetup, setBankPrivateSetup] = useState(() => createEmptyPrivateSetup());
   const [unlockTarget, setUnlockTarget] = useState<{
     itemType: PrivateItemType;
     itemId: string;
@@ -690,12 +690,12 @@ export function TasksBoard() {
 
   function resetNewPrivateForm() {
     setNewVisibility("public");
-    setNewPrivateSetup(EMPTY_PRIVATE_SETUP);
+    setNewPrivateSetup(createEmptyPrivateSetup());
   }
 
   function resetBankPrivateForm() {
     setBankVisibility("public");
-    setBankPrivateSetup(EMPTY_PRIVATE_SETUP);
+    setBankPrivateSetup(createEmptyPrivateSetup());
   }
 
   async function setupPrivateItem(
@@ -710,9 +710,8 @@ export function TasksBoard() {
         itemType,
         itemId,
         pin: values.pin,
-        motherName: values.motherName,
-        petName: values.petName,
-        birthYear: values.birthYear,
+        questionKeys: values.questionKeys,
+        answers: values.answers,
       }),
     });
     const data = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -981,7 +980,7 @@ export function TasksBoard() {
     setNewFirstSubtask("");
     setNewFirstSubtaskUrl("");
     setNewVisibility(item.visibility === "private" ? "private" : "public");
-    setNewPrivateSetup(EMPTY_PRIVATE_SETUP);
+    setNewPrivateSetup(createEmptyPrivateSetup());
     setShowCreateModal(true);
   }
 
@@ -3315,6 +3314,7 @@ export function TasksBoard() {
                             <PrivateItemSetupFields
                               values={bankPrivateSetup}
                               onChange={setBankPrivateSetup}
+                              questionKeys={bankPrivateSetup.questionKeys}
                             />
                           ) : null}
                         </div>
@@ -3708,6 +3708,7 @@ export function TasksBoard() {
                   <PrivateItemSetupFields
                     values={newPrivateSetup}
                     onChange={setNewPrivateSetup}
+                    questionKeys={newPrivateSetup.questionKeys}
                   />
                 )
               ) : null}

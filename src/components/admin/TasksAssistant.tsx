@@ -14,7 +14,7 @@ import {
   type TeamMember,
 } from "@/lib/tasks/types";
 import {
-  EMPTY_PRIVATE_SETUP,
+  createEmptyPrivateSetup,
   PrivateItemSetupFields,
   validatePrivateSetup,
   type PrivateSetupValues,
@@ -198,7 +198,7 @@ export function TasksAssistant({
   );
   const [updateDraft, setUpdateDraft] = useState<UpdateDraft>(emptyUpdateDraft);
   const [bankItemId, setBankItemId] = useState<string | null>(null);
-  const [privateSetup, setPrivateSetup] = useState<PrivateSetupValues>(EMPTY_PRIVATE_SETUP);
+  const [privateSetup, setPrivateSetup] = useState(() => createEmptyPrivateSetup());
   const [textInput, setTextInput] = useState("");
   const [dateStart, setDateStart] = useState(todayIso());
   const [dateEnd, setDateEnd] = useState(weekLaterIso());
@@ -270,7 +270,7 @@ export function TasksAssistant({
     setCreateDraft(emptyCreateDraft(defaultAssigneeId));
     setUpdateDraft(emptyUpdateDraft());
     setBankItemId(null);
-    setPrivateSetup(EMPTY_PRIVATE_SETUP);
+    setPrivateSetup(createEmptyPrivateSetup());
     setTextInput("");
     setDateStart(todayIso());
     setDateEnd(weekLaterIso());
@@ -314,7 +314,7 @@ export function TasksAssistant({
     setCreateDraft((prev) => ({ ...prev, visibility }));
     push("user", visibility === "private" ? a.private : a.public);
     if (visibility === "private") {
-      setPrivateSetup(EMPTY_PRIVATE_SETUP);
+      setPrivateSetup(createEmptyPrivateSetup());
       setStep("privateSetup");
       push("assistant", a.privateSetup);
       return;
@@ -937,7 +937,11 @@ export function TasksAssistant({
 
           {step === "privateSetup" ? (
             <div className="space-y-3">
-              <PrivateItemSetupFields values={privateSetup} onChange={setPrivateSetup} />
+              <PrivateItemSetupFields
+                values={privateSetup}
+                onChange={setPrivateSetup}
+                questionKeys={privateSetup.questionKeys}
+              />
               <button
                 type="button"
                 onClick={submitPrivateSetup}
