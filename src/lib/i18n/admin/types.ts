@@ -337,6 +337,9 @@ export type AdminDictionary = {
     rejectedSuccess: string;
     rejectedApproval: string;
     rejectedHint: string;
+    noPendingProposals: string;
+    noRejectedProposals: string;
+    openRejectedFolder: string;
     printProposal: string;
     scheduleSession: string;
     editWorkshop: string;

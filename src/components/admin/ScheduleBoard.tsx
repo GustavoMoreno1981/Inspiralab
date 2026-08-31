@@ -4,7 +4,10 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ApprovalBudgetPanel } from "@/components/admin/ApprovalBudgetPanel";
+import { ApprovalBudgetCards } from "@/components/admin/ApprovalBudgetCards";
 import { ProposalBudgetBreakdown } from "@/components/admin/ProposalBudgetBreakdown";
+import { RejectedProposalsModal } from "@/components/admin/RejectedProposalsModal";
+import { ScheduleSidebarAccordion } from "@/components/admin/ScheduleSidebarAccordion";
 import { AdminFooter } from "@/components/admin/AdminFooter";
 import { AdminLanguageSwitcher } from "@/components/admin/AdminLanguageSwitcher";
 import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
@@ -217,6 +220,7 @@ export function ScheduleBoard() {
   const [beforeEvaluatedBy, setBeforeEvaluatedBy] = useState("");
   const [canApproveProposals, setCanApproveProposals] = useState(false);
   const [approvalBudget, setApprovalBudget] = useState<ApprovalBudgetContext | null>(null);
+  const [rejectedModalOpen, setRejectedModalOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -1231,248 +1235,183 @@ export function ScheduleBoard() {
                 </div>
               </section>
 
-              <aside className="space-y-4">
-                <div className="border border-amber-200 bg-amber-50/80 p-4">
-                  <h2 className="text-sm font-semibold text-amber-950">
-                    {t.schedule.pendingApproval}
-                  </h2>
-                  <p className="mt-1 text-xs text-amber-900">
-                    {canApproveProposals
+              <aside className="space-y-3">
+                {canApproveProposals ? (
+                  <ApprovalBudgetCards budget={approvalBudget} />
+                ) : null}
+
+                <ScheduleSidebarAccordion
+                  title={t.schedule.pendingApproval}
+                  count={pendingProposals.length}
+                  hint={
+                    canApproveProposals
                       ? t.schedule.approvalHint
-                      : t.schedule.approvalOnlyAdmin}
-                  </p>
-                  {canApproveProposals ? (
-                    <div className="mt-3">
-                      <ApprovalBudgetPanel budget={approvalBudget} compact />
-                    </div>
-                  ) : null}
-                  {pendingProposals.length === 0 ? (
-                    <p className="mt-3 text-sm text-amber-900/80">
-                      No hay propuestas pendientes.
-                    </p>
-                  ) : (
-                    <ul className="mt-3 space-y-3">
-                      {pendingProposals.map((session) => (
-                        <li
-                          key={session.id}
-                          className="border border-amber-200 bg-white px-3 py-2"
-                        >
-                          <p className="text-sm font-semibold text-[color:var(--ink)]">
-                            {sessionDisplayTitle(session)}
-                          </p>
-                          <p className="mt-1.5">
-                            <span className="text-sm font-bold tabular-nums text-[color:var(--ink)]">
-                              {session.date.split("-").reverse().join("/")}
-                            </span>
-                            <span className="mx-1 text-sm text-[color:var(--muted)]">
-                              ·
-                            </span>
-                            <span className="text-sm font-medium text-[color:var(--ink)]">
-                              {formatTimeRange(session.startTime, session.endTime)}
-                            </span>
-                          </p>
-                          <SessionCardMeta
-                            session={session}
-                            beneficiaries={beneficiaries}
+                      : t.schedule.approvalOnlyAdmin
+                  }
+                  variant="amber"
+                  defaultOpen={false}
+                  isEmpty={pendingProposals.length === 0}
+                  emptyMessage={t.schedule.noPendingProposals}
+                >
+                  <ul className="space-y-3">
+                    {pendingProposals.map((session) => (
+                      <li
+                        key={session.id}
+                        className="border border-amber-200 bg-white px-3 py-2"
+                      >
+                        <p className="text-sm font-semibold text-[color:var(--ink)]">
+                          {sessionDisplayTitle(session)}
+                        </p>
+                        <p className="mt-1.5">
+                          <span className="text-sm font-bold tabular-nums text-[color:var(--ink)]">
+                            {session.date.split("-").reverse().join("/")}
+                          </span>
+                          <span className="mx-1 text-sm text-[color:var(--muted)]">
+                            ·
+                          </span>
+                          <span className="text-sm font-medium text-[color:var(--ink)]">
+                            {formatTimeRange(session.startTime, session.endTime)}
+                          </span>
+                        </p>
+                        <SessionCardMeta
+                          session={session}
+                          beneficiaries={beneficiaries}
+                        />
+                        <div className="mt-2">
+                          <ProposalBudgetBreakdown
+                            compact
+                            budgetMinimum={
+                              proposalFieldsFor(session.id).budgetMinimum
+                            }
+                            budgetOptional={
+                              proposalFieldsFor(session.id).budgetOptional
+                            }
                           />
-                          <div className="mt-2">
-                            <ProposalBudgetBreakdown
-                              compact
-                              budgetMinimum={
-                                proposalFieldsFor(session.id).budgetMinimum
-                              }
-                              budgetOptional={
-                                proposalFieldsFor(session.id).budgetOptional
-                              }
-                            />
-                          </div>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {canApproveProposals ? (
-                              <>
-                                <button
-                                  type="button"
-                                  disabled={saving}
-                                  onClick={() => void approveProposal(session.id)}
-                                  className="bg-[color:var(--accent)] px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50"
-                                >
-                                  {t.schedule.approve}
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={saving}
-                                  onClick={() => void rejectProposal(session.id)}
-                                  className="border border-red-300 bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-800 disabled:opacity-50"
-                                >
-                                  {t.schedule.reject}
-                                </button>
-                              </>
-                            ) : null}
-                            <button
-                              type="button"
-                              onClick={() => printPendingProposal(session)}
-                              className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
-                            >
-                              {t.schedule.printProposal}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openViewProposal(session)}
-                              className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
-                            >
-                              {t.common.view}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openEdit(session)}
-                              className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
-                            >
-                              {t.common.edit}
-                            </button>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {canApproveProposals ? (
+                            <>
+                              <button
+                                type="button"
+                                disabled={saving}
+                                onClick={() => void approveProposal(session.id)}
+                                className="bg-[color:var(--accent)] px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50"
+                              >
+                                {t.schedule.approve}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={saving}
+                                onClick={() => void rejectProposal(session.id)}
+                                className="border border-red-300 bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-800 disabled:opacity-50"
+                              >
+                                {t.schedule.reject}
+                              </button>
+                            </>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => printPendingProposal(session)}
+                            className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
+                          >
+                            {t.schedule.printProposal}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openViewProposal(session)}
+                            className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
+                          >
+                            {t.common.view}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openEdit(session)}
+                            className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
+                          >
+                            {t.common.edit}
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </ScheduleSidebarAccordion>
 
-                <div className="border border-red-200 bg-red-50/70 p-4">
-                  <h2 className="text-sm font-semibold text-red-950">
-                    {t.schedule.rejectedApproval}
-                  </h2>
-                  <p className="mt-1 text-xs text-red-900">{t.schedule.rejectedHint}</p>
-                  {rejectedProposals.length === 0 ? (
-                    <p className="mt-3 text-sm text-red-900/80">
-                      No hay propuestas rechazadas.
-                    </p>
-                  ) : (
-                    <ul className="mt-3 space-y-3">
-                      {rejectedProposals.map((session) => (
-                        <li
-                          key={session.id}
-                          className="border border-red-200 bg-white px-3 py-2"
-                        >
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-sm font-semibold text-[color:var(--ink)]">
-                              {sessionDisplayTitle(session)}
-                            </p>
-                            <span className="px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-red-100 text-red-900">
-                              {statusLabel("rejected")}
-                            </span>
-                          </div>
-                          <p className="mt-1.5">
-                            <span className="text-sm font-bold tabular-nums text-[color:var(--ink)]">
-                              {session.date.split("-").reverse().join("/")}
-                            </span>
-                            <span className="mx-1 text-sm text-[color:var(--muted)]">
-                              ·
-                            </span>
-                            <span className="text-sm font-medium text-[color:var(--ink)]">
-                              {formatTimeRange(session.startTime, session.endTime)}
-                            </span>
-                          </p>
-                          <SessionCardMeta
-                            session={session}
-                            beneficiaries={beneficiaries}
-                          />
-                          <div className="mt-2">
-                            <ProposalBudgetBreakdown
-                              compact
-                              budgetMinimum={
-                                proposalFieldsFor(session.id).budgetMinimum
-                              }
-                              budgetOptional={
-                                proposalFieldsFor(session.id).budgetOptional
-                              }
-                            />
-                          </div>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() => printPendingProposal(session)}
-                              className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
-                            >
-                              {t.schedule.printProposal}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openViewProposal(session)}
-                              className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
-                            >
-                              {t.common.view}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openEdit(session)}
-                              className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
-                            >
-                              {t.common.edit}
-                            </button>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setRejectedModalOpen(true)}
+                  className="flex w-full items-center justify-between gap-2 border border-red-200 bg-red-50/70 px-4 py-3 text-left transition-colors hover:bg-red-50"
+                >
+                  <span>
+                    <span className="block text-sm font-semibold text-red-950">
+                      {t.schedule.rejectedApproval}
+                      {rejectedProposals.length > 0
+                        ? ` (${rejectedProposals.length})`
+                        : ""}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-red-900">
+                      {t.schedule.openRejectedFolder}
+                    </span>
+                  </span>
+                  <span className="text-lg text-red-800" aria-hidden>
+                    📁
+                  </span>
+                </button>
 
-                <div className="border border-[color:var(--line)] bg-white p-4">
-                  <h2 className="text-sm font-semibold text-[color:var(--ink)]">
-                    {t.schedule.upcoming}
-                  </h2>
-                  {upcoming.length === 0 ? (
-                    <p className="mt-3 text-sm text-[color:var(--muted)]">
-                      No hay talleres programados a futuro.
-                    </p>
-                  ) : (
-                    <ul className="mt-3 space-y-3">
-                      {upcoming.map((session) => (
-                        <li
-                          key={session.id}
-                          className="border border-[color:var(--line)] px-3 py-2"
-                        >
-                          <p className="text-sm font-semibold text-[color:var(--ink)]">
-                            {session.kind === "event" ? "Evento · " : ""}
-                            {session.kind === "event"
-                              ? session.eventName || session.title
-                              : session.title}
-                          </p>
-                          <p className="mt-1.5">
-                            <span className="text-sm font-bold tabular-nums text-[color:var(--ink)]">
-                              {session.date.split("-").reverse().join("/")}
-                            </span>
-                            <span className="mx-1 text-sm text-[color:var(--muted)]">
-                              ·
-                            </span>
-                            <span className="text-sm font-medium text-[color:var(--ink)]">
-                              {formatTimeRange(session.startTime, session.endTime)}
-                            </span>
-                          </p>
-                          <SessionCardMeta
-                            session={session}
-                            beneficiaries={beneficiaries}
-                          />
-                          <div className="mt-2 flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => openEdit(session)}
-                              className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
-                            >
-                              {t.common.edit}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleDelete(session.id)}
-                              disabled={saving}
-                              className="border border-red-200 px-2 py-1 text-[10px] font-semibold text-red-700 disabled:opacity-50"
-                            >
-                              {t.common.delete}
-                            </button>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-
+                <ScheduleSidebarAccordion
+                  title={t.schedule.upcoming}
+                  count={upcoming.length}
+                  defaultOpen={upcoming.length > 0 && upcoming.length <= 3}
+                  isEmpty={upcoming.length === 0}
+                  emptyMessage="No hay talleres programados a futuro."
+                >
+                  <ul className="space-y-3">
+                    {upcoming.map((session) => (
+                      <li
+                        key={session.id}
+                        className="border border-[color:var(--line)] bg-white px-3 py-2"
+                      >
+                        <p className="text-sm font-semibold text-[color:var(--ink)]">
+                          {session.kind === "event" ? "Evento · " : ""}
+                          {session.kind === "event"
+                            ? session.eventName || session.title
+                            : session.title}
+                        </p>
+                        <p className="mt-1.5">
+                          <span className="text-sm font-bold tabular-nums text-[color:var(--ink)]">
+                            {session.date.split("-").reverse().join("/")}
+                          </span>
+                          <span className="mx-1 text-sm text-[color:var(--muted)]">
+                            ·
+                          </span>
+                          <span className="text-sm font-medium text-[color:var(--ink)]">
+                            {formatTimeRange(session.startTime, session.endTime)}
+                          </span>
+                        </p>
+                        <SessionCardMeta
+                          session={session}
+                          beneficiaries={beneficiaries}
+                        />
+                        <div className="mt-2 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEdit(session)}
+                            className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
+                          >
+                            {t.common.edit}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleDelete(session.id)}
+                            disabled={saving}
+                            className="border border-red-200 px-2 py-1 text-[10px] font-semibold text-red-700 disabled:opacity-50"
+                          >
+                            {t.common.delete}
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </ScheduleSidebarAccordion>
               </aside>
             </div>
           </div>
@@ -1529,6 +1468,26 @@ export function ScheduleBoard() {
               }
             : undefined
         }
+      />
+
+      <RejectedProposalsModal
+        open={rejectedModalOpen}
+        sessions={rejectedProposals}
+        beneficiaries={beneficiaries}
+        proposalFieldsFor={proposalFieldsFor}
+        formatTimeRange={formatTimeRange}
+        sessionDisplayTitle={sessionDisplayTitle}
+        beneficiaryNames={beneficiaryNames}
+        onClose={() => setRejectedModalOpen(false)}
+        onPrint={printPendingProposal}
+        onView={(session) => {
+          setRejectedModalOpen(false);
+          openViewProposal(session);
+        }}
+        onEdit={(session) => {
+          setRejectedModalOpen(false);
+          openEdit(session);
+        }}
       />
 
       <ScheduleAssistant
