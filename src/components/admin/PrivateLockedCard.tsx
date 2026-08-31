@@ -1,5 +1,6 @@
 "use client";
 
+import { PrivateLockButton } from "@/components/admin/PrivateLockButton";
 import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 
 type Props = {
@@ -23,13 +24,7 @@ export function PrivateLockedCard({ kind, onUnlock }: Props) {
           </h3>
           <p className="mt-1 text-xs text-[color:var(--muted)]">{p.unlockHint}</p>
         </div>
-        <button
-          type="button"
-          onClick={onUnlock}
-          className="bg-[color:var(--accent)] px-4 py-2 text-xs font-semibold text-white"
-        >
-          {p.unlock}
-        </button>
+        <PrivateLockButton locked onClick={onUnlock} label={p.unlock} />
       </div>
     </article>
   );

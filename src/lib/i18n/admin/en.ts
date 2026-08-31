@@ -319,6 +319,7 @@ export const adminEn: AdminDictionary = {
     recoverBack: "Back to enter PIN",
     recoverFailed: "Could not recover PIN",
     badge: "Private",
+    lockAgain: "Hide again",
   },
   schedule: {
     pageTitle: "Workshop schedule",

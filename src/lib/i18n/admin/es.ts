@@ -319,6 +319,7 @@ export const adminEs: AdminDictionary = {
     recoverBack: "Volver a ingresar clave",
     recoverFailed: "No se pudo recuperar la clave",
     badge: "Privada",
+    lockAgain: "Volver a ocultar",
   },
   schedule: {
     pageTitle: "Cronograma de talleres",

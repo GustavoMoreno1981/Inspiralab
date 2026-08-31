@@ -316,6 +316,7 @@ export type AdminDictionary = {
     recoverBack: string;
     recoverFailed: string;
     badge: string;
+    lockAgain: string;
   };
   schedule: {
     pageTitle: string;

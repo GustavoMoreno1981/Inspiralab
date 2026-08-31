@@ -48,6 +48,7 @@ import {
 } from "@/components/admin/PrivateItemSetupFields";
 import { PrivateItemUnlockModal, type PrivateUnlockPayload } from "@/components/admin/PrivateItemUnlockModal";
 import { PrivateLockedCard } from "@/components/admin/PrivateLockedCard";
+import { PrivateLockButton } from "@/components/admin/PrivateLockButton";
 import { usePrivateUnlock } from "@/hooks/usePrivateUnlock";
 import type { PrivateItemType } from "@/lib/tasks/private-auth";
 import { useToast } from "@/components/admin/AdminToast";
@@ -326,7 +327,7 @@ export function TasksBoard() {
     itemType: PrivateItemType;
     itemId: string;
   } | null>(null);
-  const { isUnlocked, markUnlocked } = usePrivateUnlock();
+  const { isUnlocked, markUnlocked, lockItem } = usePrivateUnlock();
 
   function isPrivateContentVisible(
     itemType: PrivateItemType,
@@ -334,6 +335,16 @@ export function TasksBoard() {
     hasContent: boolean,
   ) {
     return isUnlocked(itemType, itemId) && hasContent;
+  }
+
+  function relockPrivateItem(itemType: PrivateItemType, itemId: string) {
+    lockItem(itemType, itemId);
+    if (itemType === "activity") {
+      if (expandedActivityId === itemId) setExpandedActivityId(null);
+      return;
+    }
+    if (editingBankId === itemId) cancelEditBankItem();
+    if (viewingBankId === itemId) setViewingBankId(null);
   }
 
   function applyPrivateReveal(payload: PrivateUnlockPayload) {
@@ -1849,9 +1860,16 @@ export function TasksBoard() {
                                       {statusColor.label}
                                     </span>
                                     {activity.visibility === "private" ? (
-                                      <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-[#1e293b] text-white">
-                                        {t.common.private}
-                                      </span>
+                                      <>
+                                        <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-[#1e293b] text-white">
+                                          {t.common.private}
+                                        </span>
+                                        <PrivateLockButton
+                                          locked={false}
+                                          onClick={() => relockPrivateItem("activity", activity.id)}
+                                          label={t.private.lockAgain}
+                                        />
+                                      </>
                                     ) : null}
                                     {assignees.length > 0 ? (
                                       <div
@@ -3418,9 +3436,16 @@ export function TasksBoard() {
                                         {item.title}
                                       </p>
                                       {item.visibility === "private" ? (
-                                        <span className="mt-1 inline-block px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-[#1e293b] text-white">
-                                          {t.common.private}
-                                        </span>
+                                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                                          <span className="inline-block px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-[#1e293b] text-white">
+                                            {t.common.private}
+                                          </span>
+                                          <PrivateLockButton
+                                            locked={false}
+                                            onClick={() => relockPrivateItem("bank", item.id)}
+                                            label={t.private.lockAgain}
+                                          />
+                                        </div>
                                       ) : null}
                                       {!isViewing && item.notes ? (
                                         <p className="mt-1 text-sm text-[color:var(--muted)] line-clamp-2">
@@ -3520,12 +3545,23 @@ export function TasksBoard() {
                             key={item.id}
                             className="border border-[color:var(--line)] bg-[color:var(--mist)] px-4 py-3"
                           >
-                            <p className="text-sm font-semibold text-[color:var(--ink)] line-through opacity-70">
-                              {item.title || t.tasks.privateIdea}
-                            </p>
-                            <p className="text-xs text-[color:var(--muted)]">
-                              Convertida en actividad
-                            </p>
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div>
+                                <p className="text-sm font-semibold text-[color:var(--ink)] line-through opacity-70">
+                                  {item.title || t.tasks.privateIdea}
+                                </p>
+                                <p className="text-xs text-[color:var(--muted)]">
+                                  Convertida en actividad
+                                </p>
+                              </div>
+                              {item.visibility === "private" ? (
+                                <PrivateLockButton
+                                  locked={false}
+                                  onClick={() => relockPrivateItem("bank", item.id)}
+                                  label={t.private.lockAgain}
+                                />
+                              ) : null}
+                            </div>
                           </article>
                           ),
                         )}
