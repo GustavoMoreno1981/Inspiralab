@@ -372,6 +372,12 @@ export type AdminDictionary = {
     approvalBudgetAfter: string;
     approvalBudgetExceeded: string;
     approvalBudgetMissing: string;
+    approvalProposalBudgetTitle: string;
+    approvalProposalMaterials: string;
+    approvalProposalLogistics: string;
+    approvalProposalAdditional: string;
+    approvalProposalTotal: string;
+    approvalProposalBudgetEmpty: string;
     assistantGreeting: string;
     assistantRequestTitle: string;
     assistantRequestNotice: string;

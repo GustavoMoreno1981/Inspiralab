@@ -8,6 +8,7 @@ import {
 import { formatFieldDisplay, isBudgetField } from "@/lib/followup/list-fields";
 import type { ApprovalBudgetContext } from "@/lib/accounting/approval-budget";
 import { ApprovalBudgetPanel } from "@/components/admin/ApprovalBudgetPanel";
+import { ProposalBudgetBreakdown } from "@/components/admin/ProposalBudgetBreakdown";
 import type { ScheduleBeneficiary, WorkshopSession } from "@/lib/schedule/types";
 
 type Props = {
@@ -147,6 +148,13 @@ export function ProposalViewModal({
               <ApprovalBudgetPanel budget={approvalBudget} proposedCop={proposedCop} />
             </div>
           ) : null}
+
+          <div className="mb-4">
+            <ProposalBudgetBreakdown
+              budgetMinimum={fields.budgetMinimum}
+              budgetOptional={fields.budgetOptional}
+            />
+          </div>
 
           <dl className="grid gap-3 text-sm sm:grid-cols-2">
             <div>

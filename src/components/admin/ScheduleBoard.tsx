@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ApprovalBudgetPanel } from "@/components/admin/ApprovalBudgetPanel";
+import { ProposalBudgetBreakdown } from "@/components/admin/ProposalBudgetBreakdown";
 import { AdminFooter } from "@/components/admin/AdminFooter";
 import { AdminLanguageSwitcher } from "@/components/admin/AdminLanguageSwitcher";
 import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
@@ -1238,6 +1239,17 @@ export function ScheduleBoard() {
                             session={session}
                             beneficiaries={beneficiaries}
                           />
+                          <div className="mt-2">
+                            <ProposalBudgetBreakdown
+                              compact
+                              budgetMinimum={
+                                proposalFieldsFor(session.id).budgetMinimum
+                              }
+                              budgetOptional={
+                                proposalFieldsFor(session.id).budgetOptional
+                              }
+                            />
+                          </div>
                           <div className="mt-2 flex flex-wrap gap-2">
                             {canApproveProposals ? (
                               <button

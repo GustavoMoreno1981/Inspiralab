@@ -376,6 +376,12 @@ export const adminEn: AdminDictionary = {
     approvalBudgetAfter: "Would remain available",
     approvalBudgetExceeded: "This proposal exceeds the available budget.",
     approvalBudgetMissing: "No annual budget is configured in Accounting for this year.",
+    approvalProposalBudgetTitle: "Proposal costs",
+    approvalProposalMaterials: "Materials",
+    approvalProposalLogistics: "Logistics",
+    approvalProposalAdditional: "Additional expenses",
+    approvalProposalTotal: "Proposal total",
+    approvalProposalBudgetEmpty: "No budget recorded in the proposal.",
     assistantGreeting:
       "Do you want to submit a new workshop or event request, or update an existing session?",
     assistantRequestTitle: "Scheduling request",

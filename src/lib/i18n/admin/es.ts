@@ -377,6 +377,12 @@ export const adminEs: AdminDictionary = {
     approvalBudgetExceeded: "Esta propuesta supera el presupuesto disponible.",
     approvalBudgetMissing:
       "No hay presupuesto anual configurado en Contabilidad para este año.",
+    approvalProposalBudgetTitle: "Costos de la propuesta",
+    approvalProposalMaterials: "Materiales",
+    approvalProposalLogistics: "Logística",
+    approvalProposalAdditional: "Gastos adicionales",
+    approvalProposalTotal: "Total propuesta",
+    approvalProposalBudgetEmpty: "Sin presupuesto registrado en la propuesta.",
     assistantGreeting:
       "¿Quieres enviar una nueva solicitud de taller o evento, o actualizar una sesión ya existente?",
     assistantRequestTitle: "Solicitud de programación",

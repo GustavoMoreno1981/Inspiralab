@@ -20,6 +20,7 @@ import { printProposalDocument } from "@/lib/schedule/export-proposal";
 import type { ApprovalBudgetContext } from "@/lib/accounting/approval-budget";
 import { proposalBudgetTotalCop } from "@/lib/followup/budget-fields";
 import { ApprovalBudgetPanel } from "@/components/admin/ApprovalBudgetPanel";
+import { ProposalBudgetBreakdown } from "@/components/admin/ProposalBudgetBreakdown";
 import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 import {
   SESSION_STATUSES,
@@ -714,6 +715,11 @@ export function ScheduleAssistant({
                   compact
                 />
               ) : null}
+              <ProposalBudgetBreakdown
+                compact
+                budgetMinimum={beforeFields.budgetMinimum}
+                budgetOptional={beforeFields.budgetOptional}
+              />
             </div>
           ) : null}
 

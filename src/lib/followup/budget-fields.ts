@@ -94,6 +94,55 @@ export function proposalBudgetTotalCop(
   return minimum.totalCop + optional.totalCop;
 }
 
+export type ProposalBudgetCategory = "materials" | "logistics" | "additional";
+
+export type ProposalBudgetSummary = {
+  usdRate: number;
+  materialsCop: number;
+  logisticsCop: number;
+  additionalCop: number;
+  totalCop: number;
+};
+
+function categorizeProposalBudgetLine(label: string): ProposalBudgetCategory {
+  const lower = label.toLowerCase();
+  if (/log[ií]st|transport|viaje|traslad|aliment|viatic|desplaz/.test(lower)) {
+    return "logistics";
+  }
+  if (/imprev|adicional|extra|contingen|colabor|honorar|facilit|coach|instructor|persona|apoyo/.test(lower)) {
+    return "additional";
+  }
+  return "materials";
+}
+
+export function summarizeProposalBudget(
+  budgetMinimum: string,
+  budgetOptional = "",
+): ProposalBudgetSummary {
+  const minimum = parseBudgetField(budgetMinimum || "");
+  const optional = parseBudgetField(budgetOptional || "");
+  const usdRate = minimum.copPerUsd || optional.copPerUsd || 0;
+
+  let materialsCop = 0;
+  let logisticsCop = 0;
+  let additionalCop = budgetTotals(optional).totalCop;
+
+  for (const line of minimum.lines) {
+    const category = categorizeProposalBudgetLine(line.label);
+    if (category === "logistics") logisticsCop += line.cop;
+    else if (category === "additional") additionalCop += line.cop;
+    else materialsCop += line.cop;
+  }
+
+  return {
+    usdRate,
+    materialsCop,
+    logisticsCop,
+    additionalCop,
+    totalCop: materialsCop + logisticsCop + additionalCop,
+  };
+}
+
 export function formatCop(value: number) {
   return new Intl.NumberFormat("es-CO", {
     style: "currency",
