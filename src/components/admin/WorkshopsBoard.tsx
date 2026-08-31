@@ -89,6 +89,36 @@ function findWorkshop(dict: Dictionary, catIndex: number, workshopId: string) {
   return dict.workshops.categories[catIndex]?.workshops.find((item) => item.id === workshopId);
 }
 
+function workshopToAssistantDraft(
+  content: SiteContent,
+  catIndex: number,
+  workshopId: string,
+): WorkshopAssistantDraft | null {
+  const esWorkshop = findWorkshop(content.es, catIndex, workshopId);
+  const enWorkshop = findWorkshop(content.en, catIndex, workshopId);
+  if (!esWorkshop || !enWorkshop) return null;
+
+  return {
+    flowerIndex: catIndex,
+    titleEs: esWorkshop.title,
+    titleEn: enWorkshop.title,
+    textEs: esWorkshop.text,
+    textEn: enWorkshop.text,
+    duration: esWorkshop.duration || "",
+    level: esWorkshop.level || 1,
+    coach: esWorkshop.coach || "",
+    materials: (esWorkshop.materials || []).map((item) => item.title),
+    studyContent: (esWorkshop.studyContent || []).map((item) => ({
+      title: item.title,
+      url: item.url,
+    })),
+    steps: (esWorkshop.steps || []).map((item) => ({
+      title: item.title,
+      simbologia: item.simbologia || "",
+    })),
+  };
+}
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -242,6 +272,13 @@ export function WorkshopsBoard() {
   >({});
   const [activeFlower, setActiveFlower] = useState(0);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantMode, setAssistantMode] = useState<"create" | "edit">("create");
+  const [assistantInitialDraft, setAssistantInitialDraft] =
+    useState<WorkshopAssistantDraft | null>(null);
+  const [assistantEditing, setAssistantEditing] = useState<{
+    workshopId: string;
+    catIndex: number;
+  } | null>(null);
   const [leaveTarget, setLeaveTarget] = useState<string | null>(null);
   const [leaveLogout, setLeaveLogout] = useState(false);
   const { isDirty, markSaved } = useUnsavedChanges(content);
@@ -334,6 +371,34 @@ export function WorkshopsBoard() {
     });
   }
 
+  function expandWorkshop(id: string) {
+    setExpandedIds((prev) => new Set(prev).add(id));
+  }
+
+  function openCreateAssistant() {
+    setAssistantMode("create");
+    setAssistantEditing(null);
+    setAssistantInitialDraft(null);
+    setAssistantOpen(true);
+  }
+
+  function openAssistantEdit(catIndex: number, workshopId: string) {
+    if (!content) return;
+    const draft = workshopToAssistantDraft(content, catIndex, workshopId);
+    if (!draft) return;
+    setAssistantMode("edit");
+    setAssistantEditing({ workshopId, catIndex });
+    setAssistantInitialDraft(draft);
+    setAssistantOpen(true);
+  }
+
+  function closeAssistant() {
+    setAssistantOpen(false);
+    setAssistantMode("create");
+    setAssistantEditing(null);
+    setAssistantInitialDraft(null);
+  }
+
   async function uploadImage(catIndex: number, workshopId: string, file: File) {
     const key = `${catIndex}-${workshopId}`;
     setUploadingKey(key);
@@ -424,8 +489,78 @@ export function WorkshopsBoard() {
     });
     setActiveFlower(flowerIndex);
     setExpandedIds((prev) => new Set(prev).add(id));
-    setAssistantOpen(false);
+    closeAssistant();
     toast.success(t.workshops.created);
+    return true;
+  }
+
+  function handleAssistantUpdate(workshopId: string, draft: WorkshopAssistantDraft) {
+    const origin = assistantEditing;
+    if (!origin || origin.workshopId !== workshopId) return false;
+
+    const originalCatIndex = origin.catIndex;
+    const targetCatIndex = Math.min(
+      Math.max(0, draft.flowerIndex),
+      FLOWER_LABELS.es.length - 1,
+    );
+
+    setContent((prev) => {
+      if (!prev) return prev;
+      const next = structuredClone(prev) as SiteContent;
+
+      (["en", "es"] as const).forEach((lang) => {
+        const dict = next[lang];
+        let workshop = findWorkshop(dict, originalCatIndex, workshopId);
+        if (!workshop) return;
+
+        const preserved = {
+          image: workshop.image,
+          youtubeUrl: workshop.youtubeUrl,
+          materials: workshop.materials || [],
+          studyContent: workshop.studyContent || [],
+          steps: workshop.steps || [],
+        };
+
+        if (targetCatIndex !== originalCatIndex) {
+          dict.workshops.categories[originalCatIndex].workshops =
+            dict.workshops.categories[originalCatIndex].workshops.filter(
+              (item) => item.id !== workshopId,
+            );
+          workshop = structuredClone(workshop);
+          dict.workshops.categories[targetCatIndex]?.workshops.push(workshop);
+        }
+
+        workshop.title = lang === "es" ? draft.titleEs : draft.titleEn;
+        workshop.text = lang === "es" ? draft.textEs : draft.textEn;
+        workshop.duration = draft.duration;
+        workshop.level = draft.level;
+        workshop.coach = draft.coach;
+        workshop.image = preserved.image;
+        workshop.youtubeUrl = preserved.youtubeUrl;
+        workshop.materials = draft.materials.map((title, index) => ({
+          id: preserved.materials[index]?.id || createWorkshopId(),
+          title,
+        }));
+        workshop.studyContent = draft.studyContent.map((item, index) => ({
+          id: preserved.studyContent[index]?.id || createWorkshopId(),
+          title: item.title,
+          url: item.url,
+        }));
+        workshop.steps = draft.steps.map((step, index) => ({
+          id: preserved.steps[index]?.id || createWorkshopId(),
+          title: step.title,
+          simbologia: step.simbologia,
+          done: preserved.steps[index]?.done ?? false,
+        }));
+      });
+
+      return next;
+    });
+
+    setActiveFlower(targetCatIndex);
+    setExpandedIds((prev) => new Set(prev).add(workshopId));
+    closeAssistant();
+    toast.success(t.workshops.updated);
     return true;
   }
 
@@ -823,7 +958,7 @@ export function WorkshopsBoard() {
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() => setAssistantOpen(true)}
+                  onClick={openCreateAssistant}
                   className="bg-[color:var(--accent)] px-4 py-2 text-xs font-semibold text-white"
                 >
                   {t.common.guidedAssistant}
@@ -866,6 +1001,8 @@ export function WorkshopsBoard() {
                 }
               />
             </div>
+
+            <p className="mt-4 text-xs text-[color:var(--muted)]">{t.workshops.expandToEdit}</p>
 
             <div className="mt-6 grid gap-3">
               {category.workshops.length === 0 ? (
@@ -914,6 +1051,20 @@ export function WorkshopsBoard() {
                           </div>
                         </button>
                         <div className="flex shrink-0 flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => expandWorkshop(workshop.id)}
+                            className="border border-[color:var(--line)] px-3 py-1.5 text-xs font-semibold"
+                          >
+                            {t.workshops.editWorkshop}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openAssistantEdit(activeFlower, workshop.id)}
+                            className="border border-[color:var(--accent)] px-3 py-1.5 text-xs font-semibold text-[color:var(--accent)]"
+                          >
+                            {t.workshops.editWithAssistant}
+                          </button>
                           <button
                             type="button"
                             onClick={() =>
@@ -1379,12 +1530,21 @@ export function WorkshopsBoard() {
       <AdminFooter />
 
       <WorkshopsAssistant
+        key={
+          assistantMode === "edit" && assistantEditing
+            ? `edit-${assistantEditing.workshopId}`
+            : "create"
+        }
         open={assistantOpen}
+        mode={assistantMode}
+        initialDraft={assistantInitialDraft}
+        editingWorkshopId={assistantEditing?.workshopId ?? null}
         flowerLabels={FLOWER_LABELS.es}
         defaultFlowerIndex={activeFlower}
         saving={saving}
-        onClose={() => setAssistantOpen(false)}
+        onClose={closeAssistant}
         onCreate={handleAssistantCreate}
+        onUpdate={handleAssistantUpdate}
       />
     </div>
   );

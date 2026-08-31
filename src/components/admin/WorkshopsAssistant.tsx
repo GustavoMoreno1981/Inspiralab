@@ -40,11 +40,18 @@ export type WorkshopAssistantDraft = {
 
 type Props = {
   open: boolean;
+  mode?: "create" | "edit";
+  initialDraft?: WorkshopAssistantDraft | null;
+  editingWorkshopId?: string | null;
   flowerLabels: string[];
   defaultFlowerIndex?: number;
   saving?: boolean;
   onClose: () => void;
   onCreate: (draft: WorkshopAssistantDraft) => Promise<boolean> | boolean;
+  onUpdate?: (
+    workshopId: string,
+    draft: WorkshopAssistantDraft,
+  ) => Promise<boolean> | boolean;
 };
 
 function msg(role: ChatMessage["role"], text: string): ChatMessage {
@@ -81,11 +88,15 @@ const TOTAL_STEPS = 10;
 
 export function WorkshopsAssistant({
   open,
+  mode = "create",
+  initialDraft = null,
+  editingWorkshopId = null,
   flowerLabels,
   defaultFlowerIndex = 0,
   saving = false,
   onClose,
   onCreate,
+  onUpdate,
 }: Props) {
   const [step, setStep] = useState<Step>("flower");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -119,8 +130,6 @@ export function WorkshopsAssistant({
 
   useEffect(() => {
     if (!open) return;
-    setStep("flower");
-    setDraft(emptyDraft(defaultFlowerIndex));
     setTextInput("");
     setSimbologiaInput("");
     setStepsSubStep("title");
@@ -128,13 +137,37 @@ export function WorkshopsAssistant({
     setPendingStepTitle("");
     setPendingStudyTitle("");
     setStudyUrlInput("");
+
+    if (mode === "edit" && initialDraft) {
+      setDraft(initialDraft);
+      setStep("title");
+      setMessages([
+        msg(
+          "assistant",
+          `Editando «${initialDraft.titleEs || initialDraft.titleEn || "taller"}». Puedes cambiar cualquier dato paso a paso.`,
+        ),
+        msg("assistant", "¿Cómo se llama el taller?"),
+      ]);
+      return;
+    }
+
+    setStep("flower");
+    setDraft(emptyDraft(defaultFlowerIndex));
     setMessages([
       msg(
         "assistant",
         "Hola. Te guío para crear un taller. ¿En qué flor lo publicamos?",
       ),
     ]);
-  }, [open, defaultFlowerIndex]);
+  }, [open, defaultFlowerIndex, mode, initialDraft]);
+
+  useEffect(() => {
+    if (!open || mode !== "edit") return;
+    if (step === "title") setTextInput(draft.titleEs);
+    else if (step === "text") setTextInput(draft.textEs);
+    else if (step === "duration") setTextInput(draft.duration);
+    else if (step === "coach") setTextInput(draft.coach);
+  }, [open, mode, step, draft.titleEs, draft.textEs, draft.duration, draft.coach]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -372,12 +405,17 @@ export function WorkshopsAssistant({
     setSimbologiaInput("");
     setStepsSubStep("title");
     setStep("confirm");
-    push("assistant", "Listo. Revisa el resumen y confirma para crear el taller.");
+    push(
+      "assistant",
+      mode === "edit"
+        ? "Listo. Revisa el resumen y confirma para guardar los cambios."
+        : "Listo. Revisa el resumen y confirma para crear el taller.",
+    );
   }
 
   async function confirmSave() {
     if (!draft.titleEs.trim()) return;
-    const ok = await onCreate({
+    const payload: WorkshopAssistantDraft = {
       ...draft,
       titleEs: draft.titleEs.trim(),
       titleEn: draft.titleEn.trim() || draft.titleEs.trim(),
@@ -398,7 +436,12 @@ export function WorkshopsAssistant({
           simbologia: stepItem.simbologia.trim(),
         }))
         .filter((stepItem) => stepItem.title),
-    });
+    };
+
+    const ok =
+      mode === "edit" && editingWorkshopId && onUpdate
+        ? await onUpdate(editingWorkshopId, payload)
+        : await onCreate(payload);
     if (ok) onClose();
   }
 
@@ -413,7 +456,7 @@ export function WorkshopsAssistant({
         <div className="flex items-start justify-between gap-3 border-b border-[color:var(--line)] px-4 py-3">
           <div>
             <h2 className="font-[family-name:var(--font-display)] text-lg font-bold text-[color:var(--ink)]">
-              Asistente guiado
+              {mode === "edit" ? "Editar taller" : "Asistente guiado"}
             </h2>
             <p className="mt-0.5 text-xs text-[color:var(--muted)]">
               Paso {stepNumber} de {TOTAL_STEPS} · Sin IA, solo preguntas
@@ -531,7 +574,7 @@ export function WorkshopsAssistant({
         </div>
 
         <div className="shrink-0 border-t border-[color:var(--line)] bg-white px-4 py-3">
-          {step === "flower" ? (
+          {step === "flower" && mode === "create" ? (
             <div className="flex flex-wrap gap-2">
               {flowerLabels.map((label, index) => (
                 <button
@@ -854,7 +897,13 @@ export function WorkshopsAssistant({
                 onClick={() => void confirmSave()}
                 className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
               >
-                {saving ? "Creando..." : "Confirmar y crear"}
+                {saving
+                  ? mode === "edit"
+                    ? "Guardando..."
+                    : "Creando..."
+                  : mode === "edit"
+                    ? "Confirmar cambios"
+                    : "Confirmar y crear"}
               </button>
             </div>
           ) : null}

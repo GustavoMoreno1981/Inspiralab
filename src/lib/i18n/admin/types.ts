@@ -368,6 +368,9 @@ export type AdminDictionary = {
     faith: string;
     hope: string;
     addWorkshop: string;
+    editWorkshop: string;
+    editWithAssistant: string;
+    expandToEdit: string;
     workshopTitle: string;
     workshopDesc: string;
     duration: string;
@@ -391,6 +394,7 @@ export type AdminDictionary = {
     loading: string;
     saved: string;
     created: string;
+    updated: string;
     imageUpdated: string;
     deleteConfirm: string;
     removeImage: string;
