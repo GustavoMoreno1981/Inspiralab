@@ -32,7 +32,7 @@ export type WorkshopAssistantDraft = {
   textEn: string;
   duration: string;
   level: WorkshopLevel;
-  coach: string;
+  coaches: string[];
   materials: string[];
   studyContent: Array<{ title: string; url: string }>;
   steps: Array<{ title: string; simbologia: string }>;
@@ -71,7 +71,7 @@ function emptyDraft(flowerIndex = 0): WorkshopAssistantDraft {
     textEn: "",
     duration: "",
     level: 1,
-    coach: "",
+    coaches: [],
     materials: [],
     studyContent: [],
     steps: [],
@@ -166,8 +166,7 @@ export function WorkshopsAssistant({
     if (step === "title") setTextInput(draft.titleEs);
     else if (step === "text") setTextInput(draft.textEs);
     else if (step === "duration") setTextInput(draft.duration);
-    else if (step === "coach") setTextInput(draft.coach);
-  }, [open, mode, step, draft.titleEs, draft.textEs, draft.duration, draft.coach]);
+  }, [open, mode, step, draft.titleEs, draft.textEs, draft.duration]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -229,20 +228,38 @@ export function WorkshopsAssistant({
     setDraft((prev) => ({ ...prev, level }));
     push("user", label);
     setStep("coach");
-    push("assistant", "¿Quién es el coach? Puedes escribirlo o saltar.");
+    push(
+      "assistant",
+      "Agrega coaches uno por uno. Cuando termines, pulsa Continuar.",
+    );
     setTextInput("");
   }
 
-  function submitCoach(skip = false) {
-    const coach = skip ? "" : textInput.trim();
-    setDraft((prev) => ({ ...prev, coach }));
-    push("user", coach || "Sin coach");
+  function addCoach() {
+    const value = textInput.trim();
+    if (!value) return;
+    setDraft((prev) => ({
+      ...prev,
+      coaches: [...prev.coaches, value],
+    }));
+    push("user", `Coach: ${value}`);
     setTextInput("");
+    push("assistant", "¿Otro coach? Escríbelo o pulsa Continuar.");
+  }
+
+  function continueFromCoaches() {
     setStep("materials");
     push(
       "assistant",
       "Agrega materiales uno por uno. Cuando termines, pulsa Continuar.",
     );
+    setTextInput("");
+  }
+
+  function skipCoaches() {
+    setDraft((prev) => ({ ...prev, coaches: [] }));
+    push("user", "Sin coaches");
+    continueFromCoaches();
   }
 
   function addMaterial() {
@@ -422,7 +439,7 @@ export function WorkshopsAssistant({
       textEs: draft.textEs.trim(),
       textEn: draft.textEn.trim() || draft.textEs.trim(),
       duration: draft.duration.trim(),
-      coach: draft.coach.trim(),
+      coaches: draft.coaches.map((item) => item.trim()).filter(Boolean),
       materials: draft.materials.map((item) => item.trim()).filter(Boolean),
       studyContent: draft.studyContent
         .map((item) => ({
@@ -541,7 +558,9 @@ export function WorkshopsAssistant({
               <p className="mt-2 text-xs text-[color:var(--muted)]">{draft.textEs}</p>
               <p className="mt-2 text-xs text-[color:var(--muted)]">
                 {draft.duration || "—"} · Nivel {draft.level}
-                {draft.coach ? ` · Coach: ${draft.coach}` : ""}
+                {draft.coaches.length
+                  ? ` · Coaches: ${draft.coaches.join(", ")}`
+                  : ""}
               </p>
               {draft.materials.length ? (
                 <p className="mt-2 text-xs text-[color:var(--muted)]">
@@ -646,33 +665,45 @@ export function WorkshopsAssistant({
           ) : null}
 
           {step === "coach" ? (
-            <div className="flex flex-wrap gap-2">
-              <input
-                value={textInput}
-                onChange={(event) => setTextInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    submitCoach(false);
-                  }
-                }}
-                placeholder="Nombre del coach"
-                className="min-w-[12rem] flex-1 border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
-              />
-              <button
-                type="button"
-                onClick={() => submitCoach(true)}
-                className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
-              >
-                Saltar
-              </button>
-              <button
-                type="button"
-                onClick={() => submitCoach(false)}
-                className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
-              >
-                Siguiente
-              </button>
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <input
+                  value={textInput}
+                  onChange={(event) => setTextInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addCoach();
+                    }
+                  }}
+                  placeholder="Nombre del coach"
+                  className="min-w-[12rem] flex-1 border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
+                />
+                <button
+                  type="button"
+                  onClick={addCoach}
+                  disabled={!textInput.trim()}
+                  className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold disabled:opacity-50"
+                >
+                  Agregar
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={skipCoaches}
+                  className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
+                >
+                  Saltar
+                </button>
+                <button
+                  type="button"
+                  onClick={continueFromCoaches}
+                  className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
+                >
+                  Continuar
+                </button>
+              </div>
             </div>
           ) : null}
 

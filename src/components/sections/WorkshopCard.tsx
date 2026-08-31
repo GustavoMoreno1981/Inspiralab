@@ -1,6 +1,7 @@
 "use client";
 
 import { extractYoutubeId } from "@/lib/media/youtube";
+import { workshopCoachesLabel } from "@/lib/content/workshop-coaches";
 
 export type WorkshopCardData = {
   id?: string;
@@ -10,12 +11,14 @@ export type WorkshopCardData = {
   youtubeUrl?: string;
   duration?: string;
   level?: number;
+  coaches?: string[];
   coach?: string;
   studyContent?: Array<{ id?: string; title: string; url: string }>;
 };
 
 export function WorkshopCard({ workshop }: { workshop: WorkshopCardData }) {
   const youtubeId = extractYoutubeId(workshop.youtubeUrl || "");
+  const coachesLabel = workshopCoachesLabel(workshop);
 
   return (
     <li className="px-6 py-5 md:px-7">
@@ -47,12 +50,12 @@ export function WorkshopCard({ workshop }: { workshop: WorkshopCardData }) {
       <h4 className="font-[family-name:var(--font-display)] text-base font-semibold text-[color:var(--ink)]">
         {workshop.title}
       </h4>
-      {(workshop.duration || workshop.level || workshop.coach) && (
+      {(workshop.duration || workshop.level || coachesLabel) && (
         <p className="mt-1.5 text-xs font-medium text-[color:var(--accent)]">
           {[
             workshop.duration || null,
             workshop.level ? `Nivel ${workshop.level}` : null,
-            workshop.coach || null,
+            coachesLabel || null,
           ]
             .filter(Boolean)
             .join(" · ")}

@@ -36,7 +36,7 @@ export type WorkshopItem = {
   youtubeUrl: string;
   duration: string;
   level: WorkshopLevel;
-  coach: string;
+  coaches: string[];
   materials: WorkshopMaterial[];
   /** Enlaces de contenido de estudio (título + URL). */
   studyContent: WorkshopStudyResource[];
@@ -91,7 +91,7 @@ function normalizeLevel(value: unknown): WorkshopLevel {
 }
 
 function normalizeWorkshop(
-  workshop: Partial<WorkshopItem> & { tasks?: WorkshopStep[] },
+  workshop: Partial<WorkshopItem> & { tasks?: WorkshopStep[]; coach?: string },
   fallbackId: string,
 ): WorkshopItem {
   const rawSteps = Array.isArray(workshop.steps)
@@ -101,6 +101,13 @@ function normalizeWorkshop(
       : [];
   const rawMaterials = Array.isArray(workshop.materials) ? workshop.materials : [];
   const rawStudyContent = Array.isArray(workshop.studyContent) ? workshop.studyContent : [];
+  const legacyCoach = typeof workshop.coach === "string" ? workshop.coach.trim() : "";
+  const rawCoaches = Array.isArray(workshop.coaches)
+    ? workshop.coaches
+    : legacyCoach
+      ? [legacyCoach]
+      : [];
+  const coaches = rawCoaches.map((coach) => String(coach).trim()).filter(Boolean);
 
   return {
     id: workshop.id || fallbackId,
@@ -110,7 +117,7 @@ function normalizeWorkshop(
     youtubeUrl: workshop.youtubeUrl || "",
     duration: workshop.duration || "",
     level: normalizeLevel(workshop.level),
-    coach: workshop.coach || "",
+    coaches,
     materials: rawMaterials.map((material, index) =>
       normalizeWorkshopMaterial(
         material as Partial<WorkshopMaterial>,
@@ -198,7 +205,7 @@ export function normalizeContent(content: SiteContent): SiteContent {
       // Campos operativos compartidos (EN → ES).
       pair.duration = workshop.duration;
       pair.level = workshop.level;
-      pair.coach = workshop.coach;
+      pair.coaches = [...workshop.coaches];
       pair.materials = workshop.materials.map((item) => ({ ...item }));
       pair.studyContent = workshop.studyContent.map((item) => ({ ...item }));
       pair.steps = workshop.steps.map((step) => ({ ...step }));

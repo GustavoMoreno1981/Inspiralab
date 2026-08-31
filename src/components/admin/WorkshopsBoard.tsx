@@ -15,6 +15,7 @@ import {
 } from "@/components/admin/WorkshopsAssistant";
 import type { Dictionary, Locale, SiteContent } from "@/lib/i18n/dictionaries";
 import { createWorkshopId } from "@/lib/media/youtube";
+import { workshopCoachesLabel } from "@/lib/content/workshop-coaches";
 
 const FLOWER_LABELS: Record<Locale, string[]> = {
   es: ["Flor del Amor", "Flor de la Fe", "Flor de la Esperanza"],
@@ -106,7 +107,7 @@ function workshopToAssistantDraft(
     textEn: enWorkshop.text,
     duration: esWorkshop.duration || "",
     level: esWorkshop.level || 1,
-    coach: esWorkshop.coach || "",
+    coaches: [...(esWorkshop.coaches || [])],
     materials: (esWorkshop.materials || []).map((item) => item.title),
     studyContent: (esWorkshop.studyContent || []).map((item) => ({
       title: item.title,
@@ -187,7 +188,7 @@ function exportWorkshopDocument({
       <table>
         <tr><th>Duración</th><td>${escapeHtml(workshop.duration || "—")}</td></tr>
         <tr><th>Nivel</th><td>${escapeHtml(levelLabel(workshop.level || 1))}</td></tr>
-        <tr><th>Coach</th><td>${escapeHtml(workshop.coach || "—")}</td></tr>
+        <tr><th>Coaches</th><td>${escapeHtml(workshopCoachesLabel(workshop, ", ") || "—")}</td></tr>
       </table>
     </section>
     <section>
@@ -267,6 +268,7 @@ export function WorkshopsBoard() {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [stepDrafts, setStepDrafts] = useState<Record<string, string>>({});
   const [materialDrafts, setMaterialDrafts] = useState<Record<string, string>>({});
+  const [coachDrafts, setCoachDrafts] = useState<Record<string, string>>({});
   const [studyDrafts, setStudyDrafts] = useState<
     Record<string, { title: string; url: string }>
   >({});
@@ -438,7 +440,7 @@ export function WorkshopsBoard() {
               youtubeUrl: "",
               duration: "",
               level: 1,
-              coach: "",
+              coaches: [],
               materials: [],
               studyContent: [],
               steps: [],
@@ -468,7 +470,7 @@ export function WorkshopsBoard() {
           youtubeUrl: "",
           duration: draft.duration,
           level: draft.level,
-          coach: draft.coach,
+          coaches: draft.coaches,
           materials: draft.materials.map((title) => ({
             id: createWorkshopId(),
             title,
@@ -534,7 +536,7 @@ export function WorkshopsBoard() {
         workshop.text = lang === "es" ? draft.textEs : draft.textEn;
         workshop.duration = draft.duration;
         workshop.level = draft.level;
-        workshop.coach = draft.coach;
+        workshop.coaches = [...draft.coaches];
         workshop.image = preserved.image;
         workshop.youtubeUrl = preserved.youtubeUrl;
         workshop.materials = draft.materials.map((title, index) => ({
@@ -583,7 +585,7 @@ export function WorkshopsBoard() {
     patch: Partial<{
       duration: string;
       level: 1 | 2 | 3;
-      coach: string;
+      coaches: string[];
       youtubeUrl: string;
       image: string;
     }>,
@@ -672,6 +674,51 @@ export function WorkshopsBoard() {
             const workshop = findWorkshop(dict, catIndex, workshopId);
             if (!workshop) return;
             workshop.steps = workshop.steps.filter((item) => item.id !== stepId);
+          })
+        : prev,
+    );
+  }
+
+  function addCoach(catIndex: number, workshopId: string) {
+    const name = (coachDrafts[workshopId] || "").trim();
+    if (!name) return;
+    setContent((prev) =>
+      prev
+        ? updateBothLocales(prev, (dict) => {
+            const workshop = findWorkshop(dict, catIndex, workshopId);
+            if (!workshop) return;
+            if (!Array.isArray(workshop.coaches)) workshop.coaches = [];
+            workshop.coaches.push(name);
+          })
+        : prev,
+    );
+    setCoachDrafts((prev) => ({ ...prev, [workshopId]: "" }));
+  }
+
+  function updateCoachName(
+    catIndex: number,
+    workshopId: string,
+    coachIndex: number,
+    name: string,
+  ) {
+    setContent((prev) =>
+      prev
+        ? updateBothLocales(prev, (dict) => {
+            const workshop = findWorkshop(dict, catIndex, workshopId);
+            if (!workshop?.coaches[coachIndex]) return;
+            workshop.coaches[coachIndex] = name;
+          })
+        : prev,
+    );
+  }
+
+  function removeCoach(catIndex: number, workshopId: string, coachIndex: number) {
+    setContent((prev) =>
+      prev
+        ? updateBothLocales(prev, (dict) => {
+            const workshop = findWorkshop(dict, catIndex, workshopId);
+            if (!workshop) return;
+            workshop.coaches = workshop.coaches.filter((_, index) => index !== coachIndex);
           })
         : prev,
     );
@@ -1014,6 +1061,7 @@ export function WorkshopsBoard() {
                   const expanded = expandedIds.has(workshop.id);
                   const steps = workshop.steps || [];
                   const materials = workshop.materials || [];
+                  const coaches = workshop.coaches || [];
                   const studyContent = workshop.studyContent || [];
                   const doneCount = steps.filter((step) => step.done).length;
                   const uploadKey = `${activeFlower}-${workshop.id}`;
@@ -1040,7 +1088,9 @@ export function WorkshopsBoard() {
                               {[
                                 workshop.duration || null,
                                 `Nivel ${workshop.level || 1}`,
-                                workshop.coach ? `Coach: ${workshop.coach}` : null,
+                                coaches.length
+                                  ? `Coaches: ${coaches.join(", ")}`
+                                  : null,
                                 steps.length
                                   ? `${doneCount}/${steps.length} pasos`
                                   : "Sin paso a paso",
@@ -1159,14 +1209,76 @@ export function WorkshopsBoard() {
                                 ))}
                               </select>
                             </label>
-                            <Field
-                              label={t.workshops.coach}
-                              value={workshop.coach || ""}
-                              placeholder={t.workshops.coachPlaceholder}
-                              onChange={(value) =>
-                                patchShared(activeFlower, workshop.id, { coach: value })
-                              }
-                            />
+                          </div>
+
+                          <div className="border border-[color:var(--line)] p-4">
+                            <h3 className="text-sm font-bold text-[color:var(--ink)]">
+                              {t.workshops.coaches}
+                            </h3>
+                            <p className="text-xs text-[color:var(--muted)]">
+                              Facilitadores o responsables del taller
+                            </p>
+                            <ul className="mt-3 space-y-2">
+                              {coaches.length === 0 ? (
+                                <li className="text-sm text-[color:var(--muted)]">
+                                  {t.workshops.noCoaches}
+                                </li>
+                              ) : (
+                                coaches.map((coachName, coachIndex) => (
+                                  <li
+                                    key={`${workshop.id}-coach-${coachIndex}`}
+                                    className="flex items-center gap-2 border border-[color:var(--line)] bg-[color:var(--mist)] px-3 py-2"
+                                  >
+                                    <input
+                                      value={coachName}
+                                      onChange={(e) =>
+                                        updateCoachName(
+                                          activeFlower,
+                                          workshop.id,
+                                          coachIndex,
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        removeCoach(activeFlower, workshop.id, coachIndex)
+                                      }
+                                      className="text-xs font-semibold text-[color:var(--accent)]"
+                                    >
+                                      {t.common.remove}
+                                    </button>
+                                  </li>
+                                ))
+                              )}
+                            </ul>
+                            <form
+                              className="mt-3 flex gap-2"
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                addCoach(activeFlower, workshop.id);
+                              }}
+                            >
+                              <input
+                                value={coachDrafts[workshop.id] || ""}
+                                onChange={(e) =>
+                                  setCoachDrafts((prev) => ({
+                                    ...prev,
+                                    [workshop.id]: e.target.value,
+                                  }))
+                                }
+                                placeholder={t.workshops.coachesPlaceholder}
+                                className="min-w-0 flex-1 border border-[color:var(--line)] bg-white px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
+                              />
+                              <button
+                                type="submit"
+                                className="bg-[color:var(--ink)] px-3 py-2 text-xs font-semibold text-white"
+                              >
+                                {t.common.add}
+                              </button>
+                            </form>
                           </div>
 
                           <div className="grid gap-4 md:grid-cols-2">

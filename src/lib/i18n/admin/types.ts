@@ -375,6 +375,9 @@ export type AdminDictionary = {
     workshopDesc: string;
     duration: string;
     coach: string;
+    coaches: string;
+    coachesPlaceholder: string;
+    noCoaches: string;
     materials: string;
     studyContent: string;
     studyContentHint: string;

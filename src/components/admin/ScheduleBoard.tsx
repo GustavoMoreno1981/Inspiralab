@@ -22,6 +22,7 @@ import {
   type WorkshopEvaluation,
 } from "@/lib/followup/types";
 import type { SiteContent } from "@/lib/i18n/dictionaries";
+import { workshopCoachesLabel } from "@/lib/content/workshop-coaches";
 import { printProposalDocument } from "@/lib/schedule/export-proposal";
 import {
   SESSION_KINDS,
@@ -146,7 +147,7 @@ function extractWorkshopOptions(content: SiteContent | null): WorkshopOption[] {
         title: workshop.title || "Sin título",
         flowerIndex,
         flowerName: category.title || `Flor ${flowerIndex + 1}`,
-        coach: workshop.coach || "",
+        coach: workshopCoachesLabel(workshop, ", "),
         duration: workshop.duration || "",
       });
     });
