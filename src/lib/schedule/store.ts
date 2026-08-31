@@ -69,7 +69,8 @@ function rowToSession(row: SessionRow): WorkshopSession {
     status:
       row.status === "done" ||
       row.status === "cancelled" ||
-      row.status === "pending_approval"
+      row.status === "pending_approval" ||
+      row.status === "rejected"
         ? row.status
         : "scheduled",
     notes: row.notes || "",

@@ -62,6 +62,13 @@ function scheduleSaveErrorMessage(error: unknown): string {
     raw.includes("workshop_sessions_status_check") ||
     raw.includes("23514")
   ) {
+    if (raw.includes("rejected") || raw.toLowerCase().includes("rechaz")) {
+      return (
+        "Supabase aún no acepta el estado «rechazada». " +
+        "Ejecuta en el SQL Editor el archivo supabase/add-schedule-rejected.sql " +
+        "(tabla workshop_sessions) y vuelve a rechazar la propuesta."
+      );
+    }
     return (
       "Supabase aún no acepta el estado «pendiente de aprobación». " +
       "Ejecuta en el SQL Editor el archivo supabase/add-schedule-pending-approval.sql " +
@@ -93,14 +100,14 @@ export async function PUT(request: Request) {
         const previous = previousBoard.sessions.find((item) => item.id === nextSession.id);
         return (
           previous?.status === "pending_approval" &&
-          nextSession.status === "scheduled"
+          (nextSession.status === "scheduled" || nextSession.status === "rejected")
         );
       });
       if (blocked) {
         return NextResponse.json(
           {
             error:
-              "Solo el perfil de administración puede aprobar propuestas del cronograma.",
+              "Solo el perfil de administración puede aprobar o rechazar propuestas del cronograma.",
           },
           { status: 403 },
         );

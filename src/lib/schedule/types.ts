@@ -2,7 +2,8 @@ export type SessionStatus =
   | "scheduled"
   | "done"
   | "cancelled"
-  | "pending_approval";
+  | "pending_approval"
+  | "rejected";
 
 export type SessionKind = "workshop" | "event";
 
@@ -46,6 +47,7 @@ export type ScheduleBoard = {
 export const SESSION_STATUSES: { value: SessionStatus; label: string }[] = [
   { value: "scheduled", label: "Programado" },
   { value: "pending_approval", label: "Pendiente de aprobación" },
+  { value: "rejected", label: "Rechazada" },
   { value: "done", label: "Realizado" },
   { value: "cancelled", label: "Cancelado" },
 ];
@@ -77,7 +79,8 @@ export function normalizeStatus(value: unknown): SessionStatus {
     value === "done" ||
     value === "cancelled" ||
     value === "scheduled" ||
-    value === "pending_approval"
+    value === "pending_approval" ||
+    value === "rejected"
   ) {
     return value;
   }

@@ -137,6 +137,7 @@ function statusClass(status: SessionStatus) {
   if (status === "done") return "bg-emerald-50 text-emerald-800";
   if (status === "cancelled") return "bg-stone-100 text-stone-500 line-through";
   if (status === "pending_approval") return "bg-amber-50 text-amber-900";
+  if (status === "rejected") return "bg-red-50 text-red-900";
   return "bg-[color:var(--mist)] text-[color:var(--ink)]";
 }
 
@@ -353,13 +354,26 @@ export function ScheduleBoard() {
     [board.sessions],
   );
 
+  const rejectedProposals = useMemo(
+    () =>
+      [...board.sessions]
+        .filter((item) => item.status === "rejected")
+        .sort((a, b) => {
+          const byDate = b.date.localeCompare(a.date);
+          if (byDate !== 0) return byDate;
+          return (b.startTime || "").localeCompare(a.startTime || "");
+        }),
+    [board.sessions],
+  );
+
   const upcoming = useMemo(() => {
     return [...board.sessions]
       .filter(
         (item) =>
           item.date >= todayIso &&
           item.status !== "cancelled" &&
-          item.status !== "pending_approval",
+          item.status !== "pending_approval" &&
+          item.status !== "rejected",
       )
       .sort((a, b) => {
         const byDate = a.date.localeCompare(b.date);
@@ -427,6 +441,24 @@ export function ScheduleBoard() {
       return;
     }
     toast.success("Listo para imprimir la propuesta");
+  }
+
+  async function rejectProposal(sessionId: string) {
+    if (!canApproveProposals) {
+      toast.error(t.schedule.approvalOnlyAdmin);
+      return false;
+    }
+    if (!window.confirm(t.schedule.rejectConfirm)) return false;
+    const nextSessions = board.sessions.map((item) =>
+      item.id === sessionId
+        ? {
+            ...item,
+            status: "rejected" as SessionStatus,
+            updatedAt: new Date().toISOString(),
+          }
+        : item,
+    );
+    return persist({ sessions: nextSessions }, t.schedule.rejectedSuccess);
   }
 
   async function approveProposal(sessionId: string) {
@@ -666,6 +698,10 @@ export function ScheduleBoard() {
       if (y && m) setCursor({ year: y, month: m - 1 });
     }
     return ok;
+  }
+
+  async function handleAssistantReject(sessionId: string) {
+    return rejectProposal(sessionId);
   }
 
   async function handleAssistantUpdate(input: {
@@ -1252,15 +1288,104 @@ export function ScheduleBoard() {
                           </div>
                           <div className="mt-2 flex flex-wrap gap-2">
                             {canApproveProposals ? (
-                              <button
-                                type="button"
-                                disabled={saving}
-                                onClick={() => void approveProposal(session.id)}
-                                className="bg-[color:var(--accent)] px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50"
-                              >
-                                {t.schedule.approve}
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={saving}
+                                  onClick={() => void approveProposal(session.id)}
+                                  className="bg-[color:var(--accent)] px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50"
+                                >
+                                  {t.schedule.approve}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={saving}
+                                  onClick={() => void rejectProposal(session.id)}
+                                  className="border border-red-300 bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-800 disabled:opacity-50"
+                                >
+                                  {t.schedule.reject}
+                                </button>
+                              </>
                             ) : null}
+                            <button
+                              type="button"
+                              onClick={() => printPendingProposal(session)}
+                              className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
+                            >
+                              {t.schedule.printProposal}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openViewProposal(session)}
+                              className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
+                            >
+                              {t.common.view}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openEdit(session)}
+                              className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
+                            >
+                              {t.common.edit}
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="border border-red-200 bg-red-50/70 p-4">
+                  <h2 className="text-sm font-semibold text-red-950">
+                    {t.schedule.rejectedApproval}
+                  </h2>
+                  <p className="mt-1 text-xs text-red-900">{t.schedule.rejectedHint}</p>
+                  {rejectedProposals.length === 0 ? (
+                    <p className="mt-3 text-sm text-red-900/80">
+                      No hay propuestas rechazadas.
+                    </p>
+                  ) : (
+                    <ul className="mt-3 space-y-3">
+                      {rejectedProposals.map((session) => (
+                        <li
+                          key={session.id}
+                          className="border border-red-200 bg-white px-3 py-2"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-[color:var(--ink)]">
+                              {sessionDisplayTitle(session)}
+                            </p>
+                            <span className="px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-red-100 text-red-900">
+                              {statusLabel("rejected")}
+                            </span>
+                          </div>
+                          <p className="mt-1.5">
+                            <span className="text-sm font-bold tabular-nums text-[color:var(--ink)]">
+                              {session.date.split("-").reverse().join("/")}
+                            </span>
+                            <span className="mx-1 text-sm text-[color:var(--muted)]">
+                              ·
+                            </span>
+                            <span className="text-sm font-medium text-[color:var(--ink)]">
+                              {formatTimeRange(session.startTime, session.endTime)}
+                            </span>
+                          </p>
+                          <SessionCardMeta
+                            session={session}
+                            beneficiaries={beneficiaries}
+                          />
+                          <div className="mt-2">
+                            <ProposalBudgetBreakdown
+                              compact
+                              budgetMinimum={
+                                proposalFieldsFor(session.id).budgetMinimum
+                              }
+                              budgetOptional={
+                                proposalFieldsFor(session.id).budgetOptional
+                              }
+                            />
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-2">
                             <button
                               type="button"
                               onClick={() => printPendingProposal(session)}
@@ -1394,6 +1519,16 @@ export function ScheduleBoard() {
             if (ok) setViewingProposal(null);
           });
         }}
+        onReject={
+          canApproveProposals
+            ? () => {
+                if (!viewingProposal) return;
+                void rejectProposal(viewingProposal.id).then((ok) => {
+                  if (ok) setViewingProposal(null);
+                });
+              }
+            : undefined
+        }
       />
 
       <ScheduleAssistant
@@ -1408,6 +1543,7 @@ export function ScheduleBoard() {
         onClose={() => setAssistantOpen(false)}
         onCreate={handleAssistantCreate}
         onApprove={handleAssistantApprove}
+        onReject={handleAssistantReject}
         onUpdate={handleAssistantUpdate}
       />
 
@@ -1785,6 +1921,18 @@ export function ScheduleBoard() {
                     className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
                   >
                     {t.schedule.approveAndSchedule}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() =>
+                      void rejectProposal(editingId).then((ok) => {
+                        if (ok) setModalOpen(false);
+                      })
+                    }
+                    className="border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800 disabled:opacity-50"
+                  >
+                    {t.schedule.reject}
                   </button>
                   <button
                     type="button"

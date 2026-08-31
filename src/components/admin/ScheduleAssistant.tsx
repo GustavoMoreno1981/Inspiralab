@@ -93,6 +93,7 @@ type Props = {
     before?: { fields: EvaluationFields; evaluatedBy: string },
   ) => Promise<boolean>;
   onApprove: (sessionId: string) => Promise<boolean>;
+  onReject?: (sessionId: string) => Promise<boolean>;
   onUpdate: (input: {
     sessionId: string;
     status: SessionStatus;
@@ -180,6 +181,7 @@ export function ScheduleAssistant({
   onClose,
   onCreate,
   onApprove,
+  onReject,
   onUpdate,
 }: Props) {
   const { t } = useAdminLanguage();
@@ -607,6 +609,13 @@ export function ScheduleAssistant({
   async function approveProposal() {
     if (!savedProposal) return;
     const ok = await onApprove(savedProposal.id);
+    if (ok) onClose();
+  }
+
+  async function rejectProposal() {
+    if (!savedProposal || !onReject) return;
+    if (!window.confirm(t.schedule.rejectConfirm)) return;
+    const ok = await onReject(savedProposal.id);
     if (ok) onClose();
   }
 
@@ -1225,7 +1234,8 @@ export function ScheduleAssistant({
           {step === "status" ? (
             <div className="flex flex-wrap gap-2">
               {SESSION_STATUSES.filter(
-                (item) => item.value !== "pending_approval",
+                (item) =>
+                  item.value !== "pending_approval" && item.value !== "rejected",
               ).map((item) => (
                 <button
                   key={item.value}
@@ -1297,14 +1307,26 @@ export function ScheduleAssistant({
           {step === "pendingApproval" ? (
             <div className="flex flex-col gap-2">
               {canApprove ? (
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() => void approveProposal()}
-                  className="bg-[color:var(--accent)] px-3 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
-                >
-                  {saving ? "Guardando…" : "Aprobar y programar en calendario"}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void approveProposal()}
+                    className="bg-[color:var(--accent)] px-3 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    {saving ? "Guardando…" : "Aprobar y programar en calendario"}
+                  </button>
+                  {onReject ? (
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void rejectProposal()}
+                      className="border border-red-300 bg-red-50 px-3 py-2.5 text-xs font-semibold text-red-800 disabled:opacity-50"
+                    >
+                      {t.schedule.reject}
+                    </button>
+                  ) : null}
+                </>
               ) : null}
               <button
                 type="button"

@@ -281,6 +281,7 @@ export function WorkshopFollowUpBoard() {
         (item) =>
           item.status !== "cancelled" &&
           item.status !== "pending_approval" &&
+          item.status !== "rejected" &&
           Boolean(item.date),
       ),
     [sessions],

@@ -9,6 +9,7 @@ import { formatFieldDisplay, isBudgetField } from "@/lib/followup/list-fields";
 import type { ApprovalBudgetContext } from "@/lib/accounting/approval-budget";
 import { ApprovalBudgetPanel } from "@/components/admin/ApprovalBudgetPanel";
 import { ProposalBudgetBreakdown } from "@/components/admin/ProposalBudgetBreakdown";
+import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 import type { ScheduleBeneficiary, WorkshopSession } from "@/lib/schedule/types";
 
 type Props = {
@@ -25,6 +26,7 @@ type Props = {
   onEdit: () => void;
   onPrint: () => void;
   onApprove: () => void;
+  onReject?: () => void;
 };
 
 function sessionTitle(session: WorkshopSession) {
@@ -104,7 +106,9 @@ export function ProposalViewModal({
   onEdit,
   onPrint,
   onApprove,
+  onReject,
 }: Props) {
+  const { t } = useAdminLanguage();
   if (!open || !session) return null;
 
   const beforeFields = fieldsForPhase("before");
@@ -260,14 +264,26 @@ export function ProposalViewModal({
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-[color:var(--line)] bg-white px-5 py-3">
           <div className="flex flex-wrap gap-2">
             {canApprove ? (
-              <button
-                type="button"
-                disabled={saving}
-                onClick={onApprove}
-                className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-              >
-                Aprobar y programar
-              </button>
+              <>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={onApprove}
+                  className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                >
+                  Aprobar y programar
+                </button>
+                {onReject ? (
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={onReject}
+                    className="border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800 disabled:opacity-50"
+                  >
+                    {t.schedule.reject}
+                  </button>
+                ) : null}
+              </>
             ) : null}
             <button
               type="button"
