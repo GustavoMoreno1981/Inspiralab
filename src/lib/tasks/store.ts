@@ -513,7 +513,7 @@ async function readTasksSupabaseRaw(): Promise<StoredBoard> {
           id: row.id,
           title: row.title,
           notes: row.notes,
-          ownerId: row.owner_id,
+          ownerId: row.owner_id || row.created_by_id || "",
           suggestedAssigneeIds: row.suggested_assignee_ids,
           convertedActivityId: row.converted_activity_id,
           createdAt: row.created_at,

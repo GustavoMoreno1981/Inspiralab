@@ -24,8 +24,11 @@ import {
   type ReviewResponseValue,
   type TaskStatus,
   type TasksBoard,
+  type TasksBoardResponse,
   type TeamMember,
   type ItemVisibility,
+  countPendingBankByMember,
+  resolveBankItemOwnerId,
 } from "@/lib/tasks/types";
 import {
   latestReviewResponse,
@@ -257,6 +260,9 @@ export function TasksBoard() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [sessionName, setSessionName] = useState("");
   const [sessionMemberId, setSessionMemberId] = useState("");
+  const [bankPendingCountByMemberOverride, setBankPendingCountByMemberOverride] = useState<
+    Record<string, number> | null
+  >(null);
   const [tab, setTab] = useState<"tasks" | "team">("tasks");
   const [viewMode, setViewMode] = useState<
     "list" | "gantt" | "reports" | "bank" | "history"
@@ -392,7 +398,7 @@ export function TasksBoard() {
       : "/api/tasks";
     const tasksRes = await fetch(tasksUrl, { cache: "no-store" });
     if (tasksRes.ok) {
-      const data = (await tasksRes.json()) as TasksBoard;
+      const data = (await tasksRes.json()) as TasksBoardResponse;
       setBoard({
         members: (data.members || []).map((member) => normalizeMember(member)),
         activities: (data.activities || []).map((activity) =>
@@ -406,6 +412,7 @@ export function TasksBoard() {
             }))
           : [],
       });
+      setBankPendingCountByMemberOverride(data.bankPendingCountByMember || null);
     }
     setLoading(false);
   }, [selectedMemberId]);
@@ -462,13 +469,9 @@ export function TasksBoard() {
   );
   /** Ideas pendientes del banco por integrante (para las tarjetas). */
   const pendingBankCountByMember = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const item of board.bank || []) {
-      if (item.convertedActivityId) continue;
-      counts[item.ownerId] = (counts[item.ownerId] || 0) + 1;
-    }
-    return counts;
-  }, [board.bank]);
+    if (bankPendingCountByMemberOverride) return bankPendingCountByMemberOverride;
+    return countPendingBankByMember(board.bank || [], board.members);
+  }, [bankPendingCountByMemberOverride, board.bank, board.members]);
   const pendingBankTotal = useMemo(
     () =>
       Object.values(pendingBankCountByMember).reduce((sum, n) => sum + n, 0),
@@ -1860,16 +1863,9 @@ export function TasksBoard() {
                                       {statusColor.label}
                                     </span>
                                     {activity.visibility === "private" ? (
-                                      <>
-                                        <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-[#1e293b] text-white">
-                                          {t.common.private}
-                                        </span>
-                                        <PrivateLockButton
-                                          locked={false}
-                                          onClick={() => relockPrivateItem("activity", activity.id)}
-                                          label={t.private.lockAgain}
-                                        />
-                                      </>
+                                      <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-[#1e293b] text-white">
+                                        {t.common.private}
+                                      </span>
                                     ) : null}
                                     {assignees.length > 0 ? (
                                       <div
@@ -2169,6 +2165,18 @@ export function TasksBoard() {
                                 </div>
 
                                 <div className="flex flex-wrap gap-2">
+                                  {activity.visibility === "private" &&
+                                  isPrivateContentVisible(
+                                    "activity",
+                                    activity.id,
+                                    Boolean(activity.title.trim()),
+                                  ) ? (
+                                    <PrivateLockButton
+                                      locked={false}
+                                      onClick={() => relockPrivateItem("activity", activity.id)}
+                                      label={t.private.lockAgain}
+                                    />
+                                  ) : null}
                                   <button
                                     type="button"
                                     disabled={!canComplete}
@@ -2995,6 +3003,9 @@ export function TasksBoard() {
                               ? `WhatsApp: ${formatMemberPhone(member)}`
                               : "Sin teléfono registrado"}
                           </p>
+                          <p className="mt-1 text-xs font-semibold text-[color:var(--ink)]">
+                            {pendingBankCountByMember[member.id] || 0} {t.tasks.memberBankCount}
+                          </p>
                           <label className="mt-2 inline-flex cursor-pointer text-xs font-semibold text-[color:var(--accent)]">
                             {member.photo ? "Cambiar foto" : "Subir foto"}
                             <input
@@ -3379,7 +3390,14 @@ export function TasksBoard() {
                             );
                           }
 
-                          const owner = board.members.find((m) => m.id === item.ownerId);
+                          const owner = board.members.find(
+                            (member) =>
+                              member.id ===
+                              resolveBankItemOwnerId(
+                                item,
+                                new Set(board.members.map((entry) => entry.id)),
+                              ),
+                          );
                           const isEditing = editingBankId === item.id;
                           const isViewing = viewingBankId === item.id;
                           return (
@@ -3436,16 +3454,9 @@ export function TasksBoard() {
                                         {item.title}
                                       </p>
                                       {item.visibility === "private" ? (
-                                        <div className="mt-1 flex flex-wrap items-center gap-2">
-                                          <span className="inline-block px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-[#1e293b] text-white">
-                                            {t.common.private}
-                                          </span>
-                                          <PrivateLockButton
-                                            locked={false}
-                                            onClick={() => relockPrivateItem("bank", item.id)}
-                                            label={t.private.lockAgain}
-                                          />
-                                        </div>
+                                        <span className="mt-1 inline-block px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-[#1e293b] text-white">
+                                          {t.common.private}
+                                        </span>
                                       ) : null}
                                       {!isViewing && item.notes ? (
                                         <p className="mt-1 text-sm text-[color:var(--muted)] line-clamp-2">
@@ -3457,6 +3468,18 @@ export function TasksBoard() {
                                       </p>
                                     </div>
                                     <div className="flex flex-wrap gap-2">
+                                      {item.visibility === "private" &&
+                                      isPrivateContentVisible(
+                                        "bank",
+                                        item.id,
+                                        Boolean(item.title.trim() || item.notes.trim()),
+                                      ) ? (
+                                        <PrivateLockButton
+                                          locked={false}
+                                          onClick={() => relockPrivateItem("bank", item.id)}
+                                          label={t.private.lockAgain}
+                                        />
+                                      ) : null}
                                       <button
                                         type="button"
                                         onClick={() => {

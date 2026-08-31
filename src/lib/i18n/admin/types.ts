@@ -92,6 +92,7 @@ export type AdminDictionary = {
     filterAllTeam: string;
     filterActive: string;
     filterInBank: string;
+    memberBankCount: string;
     filterAllStatuses: string;
     newActivity: string;
     guidedAssistant: string;

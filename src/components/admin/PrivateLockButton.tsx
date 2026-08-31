@@ -41,7 +41,7 @@ export function PrivateLockButton({ locked, onClick, label }: Props) {
       onClick={onClick}
       title={label}
       aria-label={label}
-      className="inline-flex items-center justify-center border border-[color:var(--line)] p-1.5 text-[color:var(--ink)] transition-colors hover:bg-[color:var(--mist)]"
+      className="inline-flex items-center justify-center border border-[color:var(--line)] bg-white p-2 text-[color:var(--ink)] shadow-sm transition-colors hover:border-[color:var(--accent)] hover:bg-[color:var(--mist)]"
     >
       {locked ? <LockClosedIcon /> : <LockOpenIcon />}
     </button>

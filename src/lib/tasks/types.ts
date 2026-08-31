@@ -152,6 +152,38 @@ export type TasksBoard = {
   bank: TaskBankItem[];
 };
 
+/** Respuesta GET /api/tasks (puede incluir conteos para el admin). */
+export type TasksBoardResponse = TasksBoard & {
+  bankPendingCountByMember?: Record<string, number>;
+};
+
+export function resolveBankItemOwnerId(
+  item: Pick<TaskBankItem, "ownerId" | "createdById" | "suggestedAssigneeIds">,
+  memberIds: Set<string>,
+): string {
+  if (item.ownerId && memberIds.has(item.ownerId)) return item.ownerId;
+  if (item.createdById && memberIds.has(item.createdById)) return item.createdById;
+  for (const id of item.suggestedAssigneeIds || []) {
+    if (memberIds.has(id)) return id;
+  }
+  return item.ownerId || item.createdById || "";
+}
+
+export function countPendingBankByMember(
+  bank: TaskBankItem[],
+  members: Pick<TeamMember, "id">[],
+): Record<string, number> {
+  const memberIds = new Set(members.map((member) => member.id));
+  const counts: Record<string, number> = {};
+  for (const item of bank) {
+    if (item.convertedActivityId) continue;
+    const ownerId = resolveBankItemOwnerId(item, memberIds);
+    if (!ownerId) continue;
+    counts[ownerId] = (counts[ownerId] || 0) + 1;
+  }
+  return counts;
+}
+
 /** Idea o propuesta pendiente de convertirse en actividad. */
 export type TaskBankItem = {
   id: string;
