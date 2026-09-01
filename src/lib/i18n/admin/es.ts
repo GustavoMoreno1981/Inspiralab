@@ -665,9 +665,9 @@ export const adminEs: AdminDictionary = {
     pasteActivities: "Pegar varias actividades (una por línea)",
     pastePlaceholder: "Pega aquí varias tareas, una por línea…",
     addFromPaste: "Agregar desde el texto",
-    suggestedActivities: "Actividades pendientes en seguimiento de tareas",
+    suggestedActivities: "Actividades en seguimiento de tareas",
     suggestedActivitiesEmpty:
-      "No hay actividades pendientes de este integrante en el periodo seleccionado.",
+      "No hay actividades de este integrante en el periodo seleccionado.",
     selectAllSuggested: "Seleccionar todas",
     clearSuggested: "Quitar selección",
     extraActivities: "Actividades adicionales",

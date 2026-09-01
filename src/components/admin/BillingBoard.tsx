@@ -209,24 +209,50 @@ export function BillingBoard() {
   return (
     <div className="flex min-h-[100svh] flex-col bg-[color:var(--mist)]">
       <header className="border-b border-[color:var(--line)] bg-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-5 py-5 md:px-8">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-5 py-5 md:px-8">
           <div>
+            <p className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--accent)]">
+              Inspiralab
+            </p>
+            <p className="text-sm text-[color:var(--muted)]">{p.title}</p>
+            <p className="mt-1 text-[11px] text-[color:var(--muted)]">{p.subtitle}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <AdminLanguageSwitcher />
             <Link
               href="/admin"
-              className="text-xs font-semibold text-[color:var(--muted)] hover:text-[color:var(--accent)]"
+              className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
             >
-              ← {t.common.panel}
+              {t.common.panel}
             </Link>
-            <h1 className="mt-1 font-[family-name:var(--font-display)] text-2xl font-bold text-[color:var(--ink)]">
-              {p.title}
-            </h1>
-            <p className="mt-1 text-sm text-[color:var(--muted)]">{p.subtitle}</p>
+            <Link
+              href="/"
+              className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold text-[color:var(--ink)]"
+            >
+              {t.common.viewSite}
+            </Link>
+            {!isAdmin ? (
+              <button
+                type="button"
+                onClick={() => setAssistantOpen(true)}
+                className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
+              >
+                {p.uploadButton}
+              </button>
+            ) : null}
           </div>
-          <AdminLanguageSwitcher />
         </div>
       </header>
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-5 py-8 pb-16 md:px-8">
+        <div>
+          <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold text-[color:var(--ink)]">
+            {p.title}
+          </h1>
+          <p className="mt-2 max-w-xl text-sm text-[color:var(--muted)]">{p.subtitle}</p>
+        </div>
+
+        <div className="mt-8">
         {loading ? (
           <p className="text-sm text-[color:var(--muted)]">{p.loading}</p>
         ) : isAdmin ? (
@@ -272,13 +298,6 @@ export function BillingBoard() {
           <div className="space-y-4">
             <div className="border border-[color:var(--line)] bg-white p-6">
               <p className="text-sm leading-relaxed text-[color:var(--ink)]">{p.memberIntro}</p>
-              <button
-                type="button"
-                onClick={() => setAssistantOpen(true)}
-                className="mt-4 bg-[color:var(--accent)] px-4 py-2.5 text-sm font-semibold text-white"
-              >
-                {p.uploadButton}
-              </button>
             </div>
 
             {submissions.length > 0 ? (
@@ -295,6 +314,7 @@ export function BillingBoard() {
             ) : null}
           </div>
         )}
+        </div>
       </main>
 
       <AdminFooter />

@@ -11,8 +11,8 @@ export function activityOverlapsPeriod(
   return start <= periodEnd && end >= periodStart;
 }
 
-/** Actividades pendientes del integrante que cruzan el periodo de la cuenta de cobro. */
-export function pendingActivitiesForBilling(
+/** Actividades del integrante que cruzan el periodo de la cuenta de cobro (cualquier estado). */
+export function activitiesForBilling(
   activities: Activity[],
   memberId: string,
   periodStart: string,
@@ -21,7 +21,6 @@ export function pendingActivitiesForBilling(
   return activities
     .filter((activity) => {
       if (!(activity.assigneeIds || []).includes(memberId)) return false;
-      if (activity.status === "done") return false;
       return activityOverlapsPeriod(activity, periodStart, periodEnd);
     })
     .sort((a, b) => {

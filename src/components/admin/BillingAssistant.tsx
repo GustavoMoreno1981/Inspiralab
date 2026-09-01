@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { MemberAvatar } from "@/components/admin/MemberAvatar";
 import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 import {
+  activitiesForBilling,
   activityBillingLabel,
-  pendingActivitiesForBilling,
 } from "@/lib/billing/task-suggestions";
 import { getTaskStatuses } from "@/lib/i18n/admin";
 import type { Activity, TeamMember } from "@/lib/tasks/types";
@@ -135,7 +135,7 @@ export function BillingAssistant({
 
   const suggestedActivities = useMemo(
     () =>
-      pendingActivitiesForBilling(
+      activitiesForBilling(
         taskActivities,
         draft.memberId,
         draft.periodStart,
