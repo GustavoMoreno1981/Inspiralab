@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MemberAvatar } from "@/components/admin/MemberAvatar";
 import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
-import type { TeamMember } from "@/lib/tasks/types";
+import {
+  activityBillingLabel,
+  pendingActivitiesForBilling,
+} from "@/lib/billing/task-suggestions";
+import { getTaskStatuses } from "@/lib/i18n/admin";
+import type { Activity, TeamMember } from "@/lib/tasks/types";
 
 type Step =
   | "greeting"
@@ -32,6 +37,7 @@ type Draft = {
 type Props = {
   open: boolean;
   members: TeamMember[];
+  taskActivities: Activity[];
   saving?: boolean;
   onClose: () => void;
   onSubmit: (input: {
@@ -105,12 +111,14 @@ function emptyDraft(): Draft {
 export function BillingAssistant({
   open,
   members,
+  taskActivities,
   saving = false,
   onClose,
   onSubmit,
 }: Props) {
   const { t } = useAdminLanguage();
   const p = t.billing;
+  const taskStatuses = useMemo(() => getTaskStatuses(t), [t]);
   const [step, setStep] = useState<Step>("greeting");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
@@ -120,9 +128,33 @@ export function BillingAssistant({
   const [bulkActivities, setBulkActivities] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const presets = useMemo(() => quincenaPresets(), []);
+
+  const suggestedActivities = useMemo(
+    () =>
+      pendingActivitiesForBilling(
+        taskActivities,
+        draft.memberId,
+        draft.periodStart,
+        draft.periodEnd,
+      ),
+    [taskActivities, draft.memberId, draft.periodStart, draft.periodEnd],
+  );
+
+  const mergedActivities = useMemo(() => {
+    const fromTasks = suggestedActivities
+      .filter((activity) => selectedTaskIds.has(activity.id))
+      .map(activityBillingLabel)
+      .filter(Boolean);
+    const extras = draft.activities.filter((line) => !fromTasks.includes(line));
+    return [...fromTasks, ...extras];
+  }, [suggestedActivities, selectedTaskIds, draft.activities]);
+
+  const statusLabel = (status: Activity["status"]) =>
+    taskStatuses.find((item) => item.value === status)?.label || status;
 
   useEffect(() => {
     if (!open) return;
@@ -135,6 +167,7 @@ export function BillingAssistant({
     setActivityInput("");
     setBulkActivities("");
     setUploadError("");
+    setSelectedTaskIds(new Set());
   }, [open, p.greeting]);
 
   useEffect(() => {
@@ -198,6 +231,10 @@ export function BillingAssistant({
   function continueAfterUpload() {
     push("user", p.continueButton);
     push("assistant", p.activitiesPrompt);
+    setDraft((prev) => ({ ...prev, activities: [] }));
+    setSelectedTaskIds(new Set());
+    setActivityInput("");
+    setBulkActivities("");
     setStep("activities");
   }
 
@@ -234,22 +271,51 @@ export function BillingAssistant({
     setBulkActivities("");
   }
 
-  function removeActivity(index: number) {
+  function removeActivity(line: string) {
+    const linked = suggestedActivities.find(
+      (activity) =>
+        selectedTaskIds.has(activity.id) && activityBillingLabel(activity) === line,
+    );
+    if (linked) {
+      setSelectedTaskIds((prev) => {
+        const next = new Set(prev);
+        next.delete(linked.id);
+        return next;
+      });
+      return;
+    }
     setDraft((prev) => ({
       ...prev,
-      activities: prev.activities.filter((_, i) => i !== index),
+      activities: prev.activities.filter((item) => item !== line),
     }));
   }
 
+  function toggleSuggestedTask(activityId: string) {
+    setSelectedTaskIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(activityId)) next.delete(activityId);
+      else next.add(activityId);
+      return next;
+    });
+  }
+
+  function selectAllSuggested() {
+    setSelectedTaskIds(new Set(suggestedActivities.map((activity) => activity.id)));
+  }
+
+  function clearSuggested() {
+    setSelectedTaskIds(new Set());
+  }
+
   async function finishActivities() {
-    if (draft.activities.length === 0) return;
+    if (mergedActivities.length === 0) return;
     const ok = await onSubmit({
       memberId: draft.memberId,
       periodStart: draft.periodStart,
       periodEnd: draft.periodEnd,
       fileUrl: draft.fileUrl,
       fileName: draft.fileName,
-      activities: draft.activities,
+      activities: mergedActivities,
     });
     if (!ok) return;
     push("user", p.finishButton);
@@ -439,56 +505,123 @@ export function BillingAssistant({
           ) : null}
 
           {step === "activities" ? (
-            <div className="space-y-3">
-              <div className="flex gap-2">
-                <input
-                  value={activityInput}
-                  onChange={(event) => setActivityInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      addActivityFromInput();
-                    }
-                  }}
-                  placeholder={p.activityPlaceholder}
-                  className="min-w-0 flex-1 border border-[color:var(--line)] px-3 py-2 text-sm"
-                />
-                <button
-                  type="button"
-                  onClick={addActivityFromInput}
-                  className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
-                >
-                  {t.common.add}
-                </button>
+            <div className="space-y-4">
+              <div className="space-y-2 border border-[color:var(--line)] bg-[color:var(--mist)]/50 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-[color:var(--ink)]">
+                    {p.suggestedActivities}
+                  </p>
+                  {suggestedActivities.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={selectAllSuggested}
+                        className="border border-[color:var(--line)] bg-white px-2 py-1 text-[10px] font-semibold"
+                      >
+                        {p.selectAllSuggested}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearSuggested}
+                        className="border border-[color:var(--line)] bg-white px-2 py-1 text-[10px] font-semibold"
+                      >
+                        {p.clearSuggested}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+                {suggestedActivities.length === 0 ? (
+                  <p className="text-xs text-[color:var(--muted)]">{p.suggestedActivitiesEmpty}</p>
+                ) : (
+                  <ul className="max-h-44 space-y-2 overflow-y-auto">
+                    {suggestedActivities.map((activity) => {
+                      const checked = selectedTaskIds.has(activity.id);
+                      const label = activityBillingLabel(activity);
+                      return (
+                        <li key={activity.id}>
+                          <label className="flex cursor-pointer items-start gap-2 border border-[color:var(--line)] bg-white px-2 py-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleSuggestedTask(activity.id)}
+                              className="mt-0.5"
+                            />
+                            <span className="min-w-0">
+                              <span className="block font-semibold text-[color:var(--ink)]">
+                                {label}
+                              </span>
+                              <span className="mt-0.5 block text-[10px] text-[color:var(--muted)]">
+                                {formatDate(activity.date)}
+                                {activity.finishedDate
+                                  ? ` – ${formatDate(activity.finishedDate)}`
+                                  : ""}
+                                {" · "}
+                                {statusLabel(activity.status)}
+                              </span>
+                            </span>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </div>
-              <div className="space-y-2">
+
+              <div className="space-y-3">
                 <p className="text-xs font-semibold text-[color:var(--muted)]">
-                  {p.pasteActivities}
+                  {p.extraActivities}
                 </p>
-                <textarea
-                  rows={4}
-                  value={bulkActivities}
-                  onChange={(event) => setBulkActivities(event.target.value)}
-                  placeholder={p.pastePlaceholder}
-                  className="w-full border border-[color:var(--line)] px-3 py-2 text-sm"
-                />
-                <button
-                  type="button"
-                  onClick={addActivitiesFromBulk}
-                  disabled={!bulkActivities.trim()}
-                  className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold disabled:opacity-50"
-                >
-                  {p.addFromPaste}
-                </button>
+                <div className="flex gap-2">
+                  <input
+                    value={activityInput}
+                    onChange={(event) => setActivityInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        addActivityFromInput();
+                      }
+                    }}
+                    placeholder={p.activityPlaceholder}
+                    className="min-w-0 flex-1 border border-[color:var(--line)] px-3 py-2 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={addActivityFromInput}
+                    className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
+                  >
+                    {t.common.add}
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-[color:var(--muted)]">
+                    {p.pasteActivities}
+                  </p>
+                  <textarea
+                    rows={4}
+                    value={bulkActivities}
+                    onChange={(event) => setBulkActivities(event.target.value)}
+                    placeholder={p.pastePlaceholder}
+                    className="w-full border border-[color:var(--line)] px-3 py-2 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={addActivitiesFromBulk}
+                    disabled={!bulkActivities.trim()}
+                    className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold disabled:opacity-50"
+                  >
+                    {p.addFromPaste}
+                  </button>
+                </div>
               </div>
-              {draft.activities.length > 0 ? (
+
+              {mergedActivities.length > 0 ? (
                 <ol className="list-decimal space-y-1 pl-5 text-sm text-[color:var(--ink)]">
-                  {draft.activities.map((line, index) => (
+                  {mergedActivities.map((line, index) => (
                     <li key={`${line}-${index}`} className="flex items-start justify-between gap-2">
                       <span>{line}</span>
                       <button
                         type="button"
-                        onClick={() => removeActivity(index)}
+                        onClick={() => removeActivity(line)}
                         className="shrink-0 text-[10px] font-semibold text-red-700"
                       >
                         {t.common.remove}
@@ -501,7 +634,7 @@ export function BillingAssistant({
               )}
               <button
                 type="button"
-                disabled={saving || draft.activities.length === 0}
+                disabled={saving || mergedActivities.length === 0}
                 onClick={() => void finishActivities()}
                 className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
               >

@@ -11,7 +11,7 @@ import { ScheduleSidebarAccordion } from "@/components/admin/ScheduleSidebarAcco
 import { useToast } from "@/components/admin/AdminToast";
 import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 import type { BillingSubmission } from "@/lib/billing/types";
-import type { TeamMember } from "@/lib/tasks/types";
+import type { Activity, TeamMember } from "@/lib/tasks/types";
 
 function formatDate(iso: string) {
   if (!iso) return "—";
@@ -37,25 +37,36 @@ export function BillingBoard() {
   const [saving, setSaving] = useState(false);
   const [submissions, setSubmissions] = useState<BillingSubmission[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
+  const [taskActivities, setTaskActivities] = useState<Activity[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
 
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch("/api/billing", { cache: "no-store" });
-      if (res.status === 401) {
+      const [billingRes, tasksRes] = await Promise.all([
+        fetch("/api/billing", { cache: "no-store" }),
+        fetch("/api/tasks", { cache: "no-store" }),
+      ]);
+      if (billingRes.status === 401 || tasksRes.status === 401) {
         router.push("/login");
         return;
       }
-      if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!billingRes.ok) {
+        const data = (await billingRes.json().catch(() => null)) as { error?: string } | null;
         throw new Error(data?.error || p.loadError);
       }
-      const data = (await res.json()) as ApiResponse;
+      const data = (await billingRes.json()) as ApiResponse;
       setSubmissions(Array.isArray(data.submissions) ? data.submissions : []);
       setMembers(Array.isArray(data.members) ? data.members : []);
       setIsAdmin(Boolean(data.isAdmin));
+
+      if (tasksRes.ok) {
+        const tasksData = (await tasksRes.json()) as { activities?: Activity[] };
+        setTaskActivities(Array.isArray(tasksData.activities) ? tasksData.activities : []);
+      } else {
+        setTaskActivities([]);
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : p.loadError);
     } finally {
@@ -291,6 +302,7 @@ export function BillingBoard() {
       <BillingAssistant
         open={assistantOpen}
         members={members}
+        taskActivities={taskActivities}
         saving={saving}
         onClose={() => {
           setAssistantOpen(false);

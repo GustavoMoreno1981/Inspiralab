@@ -645,6 +645,11 @@ export type AdminDictionary = {
     pasteActivities: string;
     pastePlaceholder: string;
     addFromPaste: string;
+    suggestedActivities: string;
+    suggestedActivitiesEmpty: string;
+    selectAllSuggested: string;
+    clearSuggested: string;
+    extraActivities: string;
     noActivitiesYet: string;
     finishButton: string;
     doneMessage: string;
