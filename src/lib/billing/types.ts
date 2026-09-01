@@ -10,6 +10,7 @@ export type BillingSubmission = {
   activities: string[];
   notes: string;
   status: BillingSubmissionStatus;
+  archivedAt: string | null;
   submittedAt: string;
   createdAt: string;
   updatedAt: string;
@@ -54,6 +55,8 @@ export function normalizeSubmission(item: Partial<BillingSubmission>): BillingSu
       : [],
     notes: String(item.notes || ""),
     status: normalizeStatus(item.status),
+    archivedAt:
+      typeof item.archivedAt === "string" && item.archivedAt ? item.archivedAt : null,
     submittedAt: String(item.submittedAt || now),
     createdAt: String(item.createdAt || now),
     updatedAt: String(item.updatedAt || now),

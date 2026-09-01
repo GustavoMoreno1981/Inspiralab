@@ -499,6 +499,8 @@ export type AdminDictionary = {
     surplusLabel: string;
     shortfallLabel: string;
     fromSchedule: string;
+    billingButton: string;
+    backToAccounting: string;
   };
   followup: {
     pageTitle: string;
@@ -679,6 +681,18 @@ export type AdminDictionary = {
     saveError: string;
     savedSuccess: string;
     uploadError: string;
+    adminPanelHint: string;
+    activeSection: string;
+    archiveButton: string;
+    archiveConfirm: string;
+    archiveError: string;
+    archivedSuccess: string;
+    archivedSection: string;
+    archivedSectionHint: string;
+    archivedModalTitle: string;
+    archivedEmpty: string;
+    archivedLabel: string;
+    archivedOn: string;
     deleteConfirm: string;
     deleteError: string;
     deletedSuccess: string;

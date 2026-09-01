@@ -24,6 +24,7 @@ type SubmissionRow = {
   activities: string[] | null;
   notes: string | null;
   status: string | null;
+  archived_at: string | null;
   submitted_at: string;
   created_at: string;
   updated_at: string;
@@ -59,6 +60,7 @@ function rowToSubmission(row: SubmissionRow): BillingSubmission {
     notes: row.notes || "",
     status:
       row.status === "reviewed" || row.status === "paid" ? row.status : "submitted",
+    archivedAt: row.archived_at || null,
     submittedAt: row.submitted_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -76,6 +78,7 @@ function submissionToRow(item: BillingSubmission): SubmissionRow {
     activities: item.activities,
     notes: item.notes,
     status: item.status,
+    archived_at: item.archivedAt,
     submitted_at: item.submittedAt,
     created_at: item.createdAt,
     updated_at: item.updatedAt,
@@ -136,16 +139,32 @@ export async function createBillingSubmission(
   return submission;
 }
 
-export async function deleteBillingSubmission(id: string) {
+export async function archiveBillingSubmission(id: string): Promise<BillingSubmission> {
+  const now = new Date().toISOString();
+
   if (isSupabaseConfigured()) {
     const supabase = getSupabaseAdmin();
-    const { error } = await supabase.from("billing_submissions").delete().eq("id", id);
+    const { data, error } = await supabase
+      .from("billing_submissions")
+      .update({ archived_at: now, updated_at: now })
+      .eq("id", id)
+      .select("*")
+      .single();
+
     if (error) throw error;
-    return;
+    return rowToSubmission(data as SubmissionRow);
   }
 
   const board = await readLocal();
-  await writeLocal({
-    submissions: board.submissions.filter((item) => item.id !== id),
+  let archived: BillingSubmission | null = null;
+  const submissions = board.submissions.map((item) => {
+    if (item.id !== id) return item;
+    archived = { ...item, archivedAt: now, updatedAt: now };
+    return archived;
   });
+  if (!archived) {
+    throw new Error("Cuenta de cobro no encontrada");
+  }
+  await writeLocal({ submissions });
+  return archived;
 }

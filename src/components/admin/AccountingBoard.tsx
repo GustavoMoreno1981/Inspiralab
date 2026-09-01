@@ -26,6 +26,7 @@ import { AdminFooter } from "@/components/admin/AdminFooter";
 import { AdminLanguageSwitcher } from "@/components/admin/AdminLanguageSwitcher";
 import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 import { AccountingReports } from "@/components/admin/AccountingReports";
+import { BillingAdminPanel } from "@/components/admin/BillingAdminPanel";
 import { BUDGET_WARNING_PERCENT, getBudgetAlarm } from "@/lib/alarms";
 import { useToast } from "@/components/admin/AdminToast";
 
@@ -79,6 +80,14 @@ export function AccountingBoard() {
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
   const [tab, setTab] = useState<Tab>("summary");
+  const [showBilling, setShowBilling] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (new URLSearchParams(window.location.search).get("billing") === "1") {
+      setShowBilling(true);
+    }
+  }, []);
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const yearOptions = useMemo(() => {
@@ -700,6 +709,17 @@ export function AccountingBoard() {
             </Link>
             <button
               type="button"
+              onClick={() => setShowBilling((prev) => !prev)}
+              className={`border px-3 py-2 text-xs font-semibold ${
+                showBilling
+                  ? "border-[color:var(--accent)] bg-[color:var(--accent)] text-white"
+                  : "border-[color:var(--line)]"
+              }`}
+            >
+              {t.accounting.billingButton}
+            </button>
+            <button
+              type="button"
               onClick={() => void logout()}
               className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
             >
@@ -710,6 +730,10 @@ export function AccountingBoard() {
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-5 py-8 pb-12 md:px-8">
+        {showBilling ? (
+          <BillingAdminPanel onBack={() => setShowBilling(false)} />
+        ) : (
+          <>
         <div className="mb-6 flex flex-wrap gap-2 border border-[color:var(--line)] bg-white p-1 w-fit">
           {(
             [
@@ -1674,6 +1698,8 @@ export function AccountingBoard() {
         )}
 
         {tab === "reports" && <AccountingReports board={board} year={year} />}
+          </>
+        )}
       </main>
 
       <AdminFooter />

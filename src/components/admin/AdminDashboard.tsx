@@ -332,7 +332,7 @@ export function AdminDashboard() {
             </Link>
           )}
 
-          {canBilling && (
+          {canBilling && !isAdmin && (
             <Link
               href="/admin/cuentas-cobro"
               className="group flex flex-col items-start gap-5 border border-[color:var(--line)] bg-white p-7 transition-all duration-300 hover:-translate-y-1 hover:border-[color:var(--accent)] hover:shadow-[0_18px_40px_-28px_rgba(224,13,69,0.45)]"

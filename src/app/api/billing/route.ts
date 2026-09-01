@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
+  archiveBillingSubmission,
   createBillingSubmission,
-  deleteBillingSubmission,
   readBillingBoard,
 } from "@/lib/billing/store";
 import type { CreateBillingSubmissionInput, BillingSubmission } from "@/lib/billing/types";
@@ -55,9 +55,12 @@ export async function GET() {
     ]);
 
     const isAdmin = session.role === "admin";
+    const visibleSubmissions = isAdmin
+      ? board.submissions
+      : board.submissions.filter((item) => !item.archivedAt);
 
     return NextResponse.json({
-      submissions: board.submissions.map((item) =>
+      submissions: visibleSubmissions.map((item) =>
         sanitizeSubmissionForRole(item, isAdmin),
       ),
       members: tasksBoard.members,
@@ -129,7 +132,7 @@ export async function POST(request: Request) {
   }
 }
 
-export async function DELETE(request: Request) {
+export async function PATCH(request: Request) {
   const session = await requireAdmin();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -140,11 +143,19 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Missing id" }, { status: 400 });
   }
 
+  const body = (await request.json().catch(() => null)) as { action?: string } | null;
+  if (body?.action !== "archive") {
+    return NextResponse.json({ error: "Acción no válida" }, { status: 400 });
+  }
+
   try {
-    await deleteBillingSubmission(id);
-    return NextResponse.json({ ok: true });
+    const submission = await archiveBillingSubmission(id);
+    return NextResponse.json({
+      ok: true,
+      submission: sanitizeSubmissionForRole(submission, true),
+    });
   } catch (error) {
-    console.error("deleteBillingSubmission failed:", error);
+    console.error("archiveBillingSubmission failed:", error);
     return NextResponse.json(
       { error: billingSaveErrorMessage(error) },
       { status: 500 },
