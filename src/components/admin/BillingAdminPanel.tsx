@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { MemberAvatar } from "@/components/admin/MemberAvatar";
+import { BillingActivitiesEditor } from "@/components/admin/BillingActivitiesEditor";
 import { useToast } from "@/components/admin/AdminToast";
 import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 import type { BillingSubmission } from "@/lib/billing/types";
@@ -176,6 +177,7 @@ export function BillingAdminPanel({ onBack }: BillingAdminPanelProps) {
     options: { showArchive?: boolean; showDelete?: boolean } = {},
   ) {
     const { showArchive = false, showDelete = false } = options;
+    const canEditActivities = !submission.archivedAt;
     const member = membersById.get(submission.memberId);
     return (
       <li
@@ -215,16 +217,12 @@ export function BillingAdminPanel({ onBack }: BillingAdminPanelProps) {
             </a>
           ) : null}
         </div>
-        <div className="mt-3">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-[color:var(--muted)]">
-            {p.activitiesTitle}
-          </p>
-          <ol className="mt-1 list-decimal space-y-0.5 pl-5 text-sm text-[color:var(--ink)]">
-            {submission.activities.map((line, index) => (
-              <li key={`${submission.id}-${index}`}>{line}</li>
-            ))}
-          </ol>
-        </div>
+        <BillingActivitiesEditor
+          submissionId={submission.id}
+          activities={submission.activities}
+          editable={canEditActivities}
+          onUpdated={load}
+        />
         {showArchive || showDelete ? (
           <div className="mt-3 flex flex-wrap gap-2">
             {showArchive ? (

@@ -238,6 +238,42 @@ function MemberAvatar({
   );
 }
 
+function RemovableAssigneeAvatar({
+  member,
+  canRemove,
+  removeTitle,
+  onRemove,
+  size = "sm",
+}: {
+  member: { name: string; photo?: string };
+  canRemove: boolean;
+  removeTitle: string;
+  onRemove: () => void;
+  size?: "sm" | "md" | "lg";
+}) {
+  if (!canRemove) {
+    return <MemberAvatar name={member.name} photo={member.photo} size={size} />;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onRemove();
+      }}
+      className="group relative shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
+      title={removeTitle}
+      aria-label={removeTitle}
+    >
+      <MemberAvatar name={member.name} photo={member.photo} size={size} />
+      <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-black/55 opacity-0 transition-opacity group-hover:opacity-100">
+        <span className="text-sm font-bold leading-none text-white">×</span>
+      </span>
+    </button>
+  );
+}
+
 const emptyMemberForm = {
   name: "",
   role: "",
@@ -1873,10 +1909,14 @@ export function TasksBoard() {
                                         title={assignees.map((m) => m.name).join(", ")}
                                       >
                                         {assignees.slice(0, 4).map((member) => (
-                                          <MemberAvatar
+                                          <RemovableAssigneeAvatar
                                             key={member.id}
-                                            name={member.name}
-                                            photo={member.photo}
+                                            member={member}
+                                            canRemove={assignees.length > 1}
+                                            removeTitle={`${t.common.remove} ${member.name}`}
+                                            onRemove={() =>
+                                              toggleActivityAssignee(activity.id, member.id)
+                                            }
                                           />
                                         ))}
                                         {assignees.length > 4 ? (
@@ -1987,7 +2027,7 @@ export function TasksBoard() {
                                         >
                                           {editingAssigneesActivityId === activity.id
                                             ? t.common.confirm
-                                            : `${t.common.add} / ${t.common.remove}`}
+                                            : t.common.add}
                                         </button>
                                       </div>
                                       {assignees.length === 0 ? (
@@ -2001,28 +2041,20 @@ export function TasksBoard() {
                                               key={member.id}
                                               className="flex items-center gap-2 border border-[color:var(--line)] bg-white px-2 py-1.5"
                                             >
-                                              <MemberAvatar
-                                                name={member.name}
-                                                photo={member.photo}
+                                              <RemovableAssigneeAvatar
+                                                member={member}
+                                                canRemove={assignees.length > 1}
+                                                removeTitle={`${t.common.remove} ${member.name}`}
+                                                onRemove={() =>
+                                                  toggleActivityAssignee(
+                                                    activity.id,
+                                                    member.id,
+                                                  )
+                                                }
                                               />
                                               <span className="text-xs font-semibold text-[color:var(--ink)]">
                                                 {member.name}
                                               </span>
-                                              {editingAssigneesActivityId === activity.id ? (
-                                                <button
-                                                  type="button"
-                                                  onClick={() =>
-                                                    toggleActivityAssignee(
-                                                      activity.id,
-                                                      member.id,
-                                                    )
-                                                  }
-                                                  className="text-[11px] font-semibold text-[color:var(--accent)]"
-                                                  title={t.common.remove}
-                                                >
-                                                  {t.common.remove}
-                                                </button>
-                                              ) : null}
                                             </div>
                                           ))}
                                         </div>

@@ -4,6 +4,7 @@ import {
   createBillingSubmission,
   deleteBillingSubmission,
   readBillingBoard,
+  updateBillingSubmissionActivities,
 } from "@/lib/billing/store";
 import type { CreateBillingSubmissionInput, BillingSubmission } from "@/lib/billing/types";
 import { requireAdmin, requireModule } from "@/lib/auth/server";
@@ -134,34 +135,64 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const session = await requireAdmin();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const id = new URL(request.url).searchParams.get("id");
   if (!id) {
     return NextResponse.json({ error: "Missing id" }, { status: 400 });
   }
 
-  const body = (await request.json().catch(() => null)) as { action?: string } | null;
-  if (body?.action !== "archive") {
-    return NextResponse.json({ error: "Acción no válida" }, { status: 400 });
+  const body = (await request.json().catch(() => null)) as {
+    action?: string;
+    activities?: string[];
+  } | null;
+
+  if (body?.action === "archive") {
+    const session = await requireAdmin();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    try {
+      const submission = await archiveBillingSubmission(id);
+      return NextResponse.json({
+        ok: true,
+        submission: sanitizeSubmissionForRole(submission, true),
+      });
+    } catch (error) {
+      console.error("archiveBillingSubmission failed:", error);
+      return NextResponse.json(
+        { error: billingSaveErrorMessage(error) },
+        { status: 500 },
+      );
+    }
   }
 
-  try {
-    const submission = await archiveBillingSubmission(id);
-    return NextResponse.json({
-      ok: true,
-      submission: sanitizeSubmissionForRole(submission, true),
-    });
-  } catch (error) {
-    console.error("archiveBillingSubmission failed:", error);
-    return NextResponse.json(
-      { error: billingSaveErrorMessage(error) },
-      { status: 500 },
-    );
+  if (body?.action === "updateActivities") {
+    const session = await requireModule("cuentas-cobro");
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (!Array.isArray(body.activities)) {
+      return NextResponse.json({ error: "Actividades inválidas" }, { status: 400 });
+    }
+
+    try {
+      const submission = await updateBillingSubmissionActivities(id, body.activities);
+      const isAdmin = session.role === "admin";
+      return NextResponse.json({
+        ok: true,
+        submission: sanitizeSubmissionForRole(submission, isAdmin),
+      });
+    } catch (error) {
+      console.error("updateBillingSubmissionActivities failed:", error);
+      return NextResponse.json(
+        { error: billingSaveErrorMessage(error) },
+        { status: 500 },
+      );
+    }
   }
+
+  return NextResponse.json({ error: "Acción no válida" }, { status: 400 });
 }
 
 export async function DELETE(request: Request) {

@@ -693,6 +693,11 @@ export type AdminDictionary = {
     archivedEmpty: string;
     archivedLabel: string;
     archivedOn: string;
+    addActivity: string;
+    deleteActivityConfirm: string;
+    activitiesUpdated: string;
+    updateActivitiesError: string;
+    activityRequired: string;
     deleteConfirm: string;
     deleteError: string;
     deletedSuccess: string;

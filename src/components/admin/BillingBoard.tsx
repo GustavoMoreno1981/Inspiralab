@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BillingAssistant } from "@/components/admin/BillingAssistant";
+import { BillingActivitiesEditor } from "@/components/admin/BillingActivitiesEditor";
 import { AdminFooter } from "@/components/admin/AdminFooter";
 import { AdminLanguageSwitcher } from "@/components/admin/AdminLanguageSwitcher";
 import { MemberAvatar } from "@/components/admin/MemberAvatar";
@@ -141,16 +142,12 @@ export function BillingBoard() {
             {p.invoiceSent}
           </span>
         </div>
-        <div className="mt-3">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-[color:var(--muted)]">
-            {p.activitiesTitle}
-          </p>
-          <ol className="mt-1 list-decimal space-y-0.5 pl-5 text-sm text-[color:var(--ink)]">
-            {submission.activities.map((line, index) => (
-              <li key={`${submission.id}-${index}`}>{line}</li>
-            ))}
-          </ol>
-        </div>
+        <BillingActivitiesEditor
+          submissionId={submission.id}
+          activities={submission.activities}
+          editable={!submission.archivedAt}
+          onUpdated={load}
+        />
       </li>
     );
   }

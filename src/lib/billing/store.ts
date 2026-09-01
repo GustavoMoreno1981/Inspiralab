@@ -169,6 +169,59 @@ export async function archiveBillingSubmission(id: string): Promise<BillingSubmi
   return archived;
 }
 
+export async function updateBillingSubmissionActivities(
+  id: string,
+  activities: string[],
+): Promise<BillingSubmission> {
+  const normalized = activities.map((line) => String(line).trim()).filter(Boolean);
+  if (normalized.length === 0) {
+    throw new Error("Debe haber al menos una actividad");
+  }
+
+  const now = new Date().toISOString();
+
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabaseAdmin();
+    const { data: existing, error: readError } = await supabase
+      .from("billing_submissions")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (readError) throw readError;
+    if (!existing) throw new Error("Cuenta de cobro no encontrada");
+    if (existing.archived_at) {
+      throw new Error("No se pueden editar cuentas archivadas");
+    }
+
+    const { data, error } = await supabase
+      .from("billing_submissions")
+      .update({ activities: normalized, updated_at: now })
+      .eq("id", id)
+      .select("*")
+      .single();
+
+    if (error) throw error;
+    return rowToSubmission(data as SubmissionRow);
+  }
+
+  const board = await readLocal();
+  let updated: BillingSubmission | null = null;
+  const submissions = board.submissions.map((item) => {
+    if (item.id !== id) return item;
+    if (item.archivedAt) {
+      throw new Error("No se pueden editar cuentas archivadas");
+    }
+    updated = { ...item, activities: normalized, updatedAt: now };
+    return updated;
+  });
+  if (!updated) {
+    throw new Error("Cuenta de cobro no encontrada");
+  }
+  await writeLocal({ submissions });
+  return updated;
+}
+
 export async function deleteBillingSubmission(id: string) {
   if (isSupabaseConfigured()) {
     const supabase = getSupabaseAdmin();
