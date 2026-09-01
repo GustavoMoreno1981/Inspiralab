@@ -651,9 +651,15 @@ export type AdminDictionary = {
     selectAllSuggested: string;
     clearSuggested: string;
     extraActivities: string;
+    extraActivitiesHint: string;
     noActivitiesYet: string;
     finishButton: string;
     doneMessage: string;
+    receiptTitle: string;
+    receiptMember: string;
+    receiptPeriod: string;
+    submissionsRecord: string;
+    submissionsRecordHint: string;
     complete: string;
     stepLabel: string;
     stepOf: string;

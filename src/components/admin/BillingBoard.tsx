@@ -7,7 +7,6 @@ import { BillingAssistant } from "@/components/admin/BillingAssistant";
 import { AdminFooter } from "@/components/admin/AdminFooter";
 import { AdminLanguageSwitcher } from "@/components/admin/AdminLanguageSwitcher";
 import { MemberAvatar } from "@/components/admin/MemberAvatar";
-import { ScheduleSidebarAccordion } from "@/components/admin/ScheduleSidebarAccordion";
 import { useToast } from "@/components/admin/AdminToast";
 import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 import type { BillingSubmission } from "@/lib/billing/types";
@@ -107,7 +106,7 @@ export function BillingBoard() {
     fileUrl: string;
     fileName: string;
     activities: string[];
-  }) {
+  }): Promise<BillingSubmission | null> {
     setSaving(true);
     try {
       const res = await fetch("/api/billing", {
@@ -119,12 +118,13 @@ export function BillingBoard() {
         const data = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(data?.error || p.saveError);
       }
+      const data = (await res.json()) as { submission?: BillingSubmission };
       toast.success(p.savedSuccess);
       await load();
-      return true;
+      return data.submission || null;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : p.saveError);
-      return false;
+      return null;
     } finally {
       setSaving(false);
     }
@@ -151,14 +151,23 @@ export function BillingBoard() {
   }
 
   function renderSubmissionCard(submission: BillingSubmission) {
+    const member = membersById.get(submission.memberId);
     return (
       <li
         key={submission.id}
         className="border border-[color:var(--line)] bg-white px-3 py-3"
       >
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <p className="text-sm font-bold text-[color:var(--ink)]">
+        <div className="flex items-start gap-3 border-b border-[color:var(--line)]/60 pb-3">
+          <MemberAvatar
+            name={member?.name || p.unknownMember}
+            photo={member?.photo}
+            size="md"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-[color:var(--ink)]">
+              {p.receiptMember.replace("{name}", member?.name || p.unknownMember)}
+            </p>
+            <p className="mt-1 text-sm font-bold text-[color:var(--ink)]">
               {formatPeriod(submission.periodStart, submission.periodEnd)}
             </p>
             <p className="mt-0.5 text-xs text-[color:var(--muted)]">
@@ -169,7 +178,7 @@ export function BillingBoard() {
             href={submission.fileUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
+            className="shrink-0 border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
           >
             {p.viewInvoice}
           </a>
@@ -295,16 +304,17 @@ export function BillingBoard() {
             </div>
 
             {submissions.length > 0 ? (
-              <ScheduleSidebarAccordion
-                title={p.mySubmissions}
-                count={submissions.length}
-                defaultOpen={false}
-                isEmpty={false}
-              >
-                <ul className="space-y-3">
+              <section className="border border-[color:var(--line)] bg-white p-4">
+                <h2 className="text-sm font-semibold text-[color:var(--ink)]">
+                  {p.submissionsRecord}
+                </h2>
+                <p className="mt-1 text-xs text-[color:var(--muted)]">
+                  {p.submissionsRecordHint}
+                </p>
+                <ul className="mt-4 space-y-3">
                   {submissions.map((submission) => renderSubmissionCard(submission))}
                 </ul>
-              </ScheduleSidebarAccordion>
+              </section>
             ) : null}
           </div>
         )}

@@ -8,6 +8,7 @@ import {
   activityBillingLabel,
   activityOverlapsPeriod,
 } from "@/lib/billing/task-suggestions";
+import type { BillingSubmission } from "@/lib/billing/types";
 import { getTaskStatuses } from "@/lib/i18n/admin";
 import type { Activity, TeamMember } from "@/lib/tasks/types";
 
@@ -48,7 +49,7 @@ type Props = {
     fileUrl: string;
     fileName: string;
     activities: string[];
-  }) => Promise<boolean>;
+  }) => Promise<BillingSubmission | null>;
 };
 
 function msg(role: ChatMessage["role"], text: string): ChatMessage {
@@ -130,6 +131,7 @@ export function BillingAssistant({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
+  const [receipt, setReceipt] = useState<BillingSubmission | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const presets = useMemo(() => quincenaPresets(), []);
@@ -169,6 +171,7 @@ export function BillingAssistant({
     setBulkActivities("");
     setUploadError("");
     setSelectedTaskIds(new Set());
+    setReceipt(null);
   }, [open, p.greeting]);
 
   useEffect(() => {
@@ -239,28 +242,17 @@ export function BillingAssistant({
     setStep("activities");
   }
 
-  function addActivityLine(line: string) {
-    const trimmed = line.trim();
-    if (!trimmed) return;
-    setDraft((prev) => ({
-      ...prev,
-      activities: prev.activities.includes(trimmed)
-        ? prev.activities
-        : [...prev.activities, trimmed],
-    }));
-  }
-
-  function addActivityFromInput() {
-    if (!activityInput.trim()) return;
-    addActivityLine(activityInput);
-    setActivityInput("");
-  }
-
-  function addActivitiesFromBulk() {
-    const lines = bulkActivities
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
+  function addExtraActivities() {
+    const lines: string[] = [];
+    if (activityInput.trim()) lines.push(activityInput.trim());
+    if (bulkActivities.trim()) {
+      lines.push(
+        ...bulkActivities
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean),
+      );
+    }
     if (!lines.length) return;
     setDraft((prev) => {
       const merged = [...prev.activities];
@@ -269,8 +261,11 @@ export function BillingAssistant({
       }
       return { ...prev, activities: merged };
     });
+    setActivityInput("");
     setBulkActivities("");
   }
+
+  const canAddExtras = Boolean(activityInput.trim() || bulkActivities.trim());
 
   function removeActivity(line: string) {
     const linked = suggestedActivities.find(
@@ -310,7 +305,7 @@ export function BillingAssistant({
 
   async function finishActivities() {
     if (mergedActivities.length === 0) return;
-    const ok = await onSubmit({
+    const submission = await onSubmit({
       memberId: draft.memberId,
       periodStart: draft.periodStart,
       periodEnd: draft.periodEnd,
@@ -318,11 +313,16 @@ export function BillingAssistant({
       fileName: draft.fileName,
       activities: mergedActivities,
     });
-    if (!ok) return;
+    if (!submission) return;
+    setReceipt(submission);
     push("user", p.finishButton);
     push("assistant", p.doneMessage);
     setStep("done");
   }
+
+  const receiptMemberName = receipt
+    ? members.find((item) => item.id === receipt.memberId)?.name || p.unknownMember
+    : "";
 
   if (!open) return null;
 
@@ -581,47 +581,28 @@ export function BillingAssistant({
                 <p className="text-xs font-semibold text-[color:var(--muted)]">
                   {p.extraActivities}
                 </p>
-                <div className="flex gap-2">
-                  <input
-                    value={activityInput}
-                    onChange={(event) => setActivityInput(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        addActivityFromInput();
-                      }
-                    }}
-                    placeholder={p.activityPlaceholder}
-                    className="min-w-0 flex-1 border border-[color:var(--line)] px-3 py-2 text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={addActivityFromInput}
-                    className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
-                  >
-                    {t.common.add}
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold text-[color:var(--muted)]">
-                    {p.pasteActivities}
-                  </p>
-                  <textarea
-                    rows={4}
-                    value={bulkActivities}
-                    onChange={(event) => setBulkActivities(event.target.value)}
-                    placeholder={p.pastePlaceholder}
-                    className="w-full border border-[color:var(--line)] px-3 py-2 text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={addActivitiesFromBulk}
-                    disabled={!bulkActivities.trim()}
-                    className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold disabled:opacity-50"
-                  >
-                    {p.addFromPaste}
-                  </button>
-                </div>
+                <p className="text-xs text-[color:var(--muted)]">{p.extraActivitiesHint}</p>
+                <input
+                  value={activityInput}
+                  onChange={(event) => setActivityInput(event.target.value)}
+                  placeholder={p.activityPlaceholder}
+                  className="w-full border border-[color:var(--line)] px-3 py-2 text-sm"
+                />
+                <textarea
+                  rows={4}
+                  value={bulkActivities}
+                  onChange={(event) => setBulkActivities(event.target.value)}
+                  placeholder={p.pastePlaceholder}
+                  className="w-full border border-[color:var(--line)] px-3 py-2 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={addExtraActivities}
+                  disabled={!canAddExtras}
+                  className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold disabled:opacity-50"
+                >
+                  {t.common.add}
+                </button>
               </div>
 
               {mergedActivities.length > 0 ? (
@@ -654,13 +635,51 @@ export function BillingAssistant({
           ) : null}
 
           {step === "done" ? (
-            <button
-              type="button"
-              onClick={onClose}
-              className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
-            >
-              {t.common.close}
-            </button>
+            <div className="space-y-3">
+              {receipt ? (
+                <div className="border border-emerald-200 bg-emerald-50/80 p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-900">
+                    {p.receiptTitle}
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-[color:var(--ink)]">
+                    {p.receiptMember.replace("{name}", receiptMemberName)}
+                  </p>
+                  <p className="mt-1 text-sm text-[color:var(--ink)]">
+                    <span className="font-semibold">{p.receiptPeriod}: </span>
+                    {formatDate(receipt.periodStart)} – {formatDate(receipt.periodEnd)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-[color:var(--muted)]">
+                    {p.submittedOn}{" "}
+                    {formatDate(receipt.submittedAt.slice(0, 10))}
+                  </p>
+                  <div className="mt-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-[color:var(--muted)]">
+                      {p.activitiesTitle}
+                    </p>
+                    <ol className="mt-1 list-decimal space-y-0.5 pl-5 text-sm text-[color:var(--ink)]">
+                      {receipt.activities.map((line, index) => (
+                        <li key={`${receipt.id}-${index}`}>{line}</li>
+                      ))}
+                    </ol>
+                  </div>
+                  <a
+                    href={receipt.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-block border border-[color:var(--line)] bg-white px-2 py-1 text-[10px] font-semibold"
+                  >
+                    {p.viewInvoice}
+                  </a>
+                </div>
+              ) : null}
+              <button
+                type="button"
+                onClick={onClose}
+                className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
+              >
+                {t.common.close}
+              </button>
+            </div>
           ) : null}
 
           <div ref={bottomRef} />

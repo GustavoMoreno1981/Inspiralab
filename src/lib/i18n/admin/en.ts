@@ -671,9 +671,17 @@ export const adminEn: AdminDictionary = {
     selectAllSuggested: "Select all",
     clearSuggested: "Clear selection",
     extraActivities: "Additional activities",
+    extraActivitiesHint:
+      "Write one activity, several lines, or both, then press Add once.",
     noActivitiesYet: "You have not added any activities yet.",
     finishButton: "Finish and submit",
     doneMessage: "Thank you for completing this. Your billing account has been recorded.",
+    receiptTitle: "Submission receipt",
+    receiptMember: "{name} submitted their billing account",
+    receiptPeriod: "Period",
+    submissionsRecord: "Submission log",
+    submissionsRecordHint:
+      "Record of submitted billing accounts: member, period, and activities completed.",
     complete: "Complete",
     stepLabel: "Step",
     stepOf: "of",

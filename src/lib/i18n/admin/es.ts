@@ -672,9 +672,17 @@ export const adminEs: AdminDictionary = {
     selectAllSuggested: "Seleccionar todas",
     clearSuggested: "Quitar selección",
     extraActivities: "Actividades adicionales",
+    extraActivitiesHint:
+      "Escribe una actividad, varias líneas o ambas, y pulsa Agregar una sola vez.",
     noActivitiesYet: "Aún no has agregado actividades.",
     finishButton: "Terminar y enviar",
     doneMessage: "Gracias por terminar. Tu cuenta de cobro quedó registrada.",
+    receiptTitle: "Comprobante de envío",
+    receiptMember: "{name} envió su cuenta de cobro",
+    receiptPeriod: "Periodo",
+    submissionsRecord: "Registro de envíos",
+    submissionsRecordHint:
+      "Soporte de las cuentas de cobro enviadas: integrante, periodo y actividades realizadas.",
     complete: "Completado",
     stepLabel: "Paso",
     stepOf: "de",
