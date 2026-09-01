@@ -698,6 +698,16 @@ export type AdminDictionary = {
     activitiesUpdated: string;
     updateActivitiesError: string;
     activityRequired: string;
+    shareWhatsAppTitle: string;
+    shareWhatsAppButton: string;
+    shareWhatsAppHint: string;
+    shareWhatsAppPreset: string;
+    shareWhatsAppCustomNumber: string;
+    shareWhatsAppCountryCode: string;
+    shareWhatsAppPhone: string;
+    shareWhatsAppPreview: string;
+    shareWhatsAppPhoneRequired: string;
+    shareWhatsAppReady: string;
     deleteConfirm: string;
     deleteError: string;
     deletedSuccess: string;

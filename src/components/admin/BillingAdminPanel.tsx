@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { MemberAvatar } from "@/components/admin/MemberAvatar";
 import { BillingActivitiesEditor } from "@/components/admin/BillingActivitiesEditor";
+import { BillingShareWhatsAppModal } from "@/components/admin/BillingShareWhatsAppModal";
 import { useToast } from "@/components/admin/AdminToast";
 import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 import type { BillingSubmission } from "@/lib/billing/types";
@@ -36,6 +37,7 @@ export function BillingAdminPanel({ onBack }: BillingAdminPanelProps) {
   const [submissions, setSubmissions] = useState<BillingSubmission[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [archivedMemberId, setArchivedMemberId] = useState<string | null>(null);
+  const [shareSubmission, setShareSubmission] = useState<BillingSubmission | null>(null);
 
   async function load() {
     setLoading(true);
@@ -207,14 +209,23 @@ export function BillingAdminPanel({ onBack }: BillingAdminPanelProps) {
             ) : null}
           </div>
           {submission.fileUrl ? (
-            <a
-              href={submission.fileUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="shrink-0 border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
-            >
-              {p.viewInvoice}
-            </a>
+            <div className="flex shrink-0 flex-col gap-1">
+              <a
+                href={submission.fileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
+              >
+                {p.viewInvoice}
+              </a>
+              <button
+                type="button"
+                onClick={() => setShareSubmission(submission)}
+                className="bg-[#25D366] px-2 py-1 text-[10px] font-semibold text-white"
+              >
+                {p.shareWhatsAppButton}
+              </button>
+            </div>
           ) : null}
         </div>
         <BillingActivitiesEditor
@@ -405,6 +416,21 @@ export function BillingAdminPanel({ onBack }: BillingAdminPanelProps) {
           </div>
         </div>
       ) : null}
+
+      <BillingShareWhatsAppModal
+        open={Boolean(shareSubmission)}
+        submission={shareSubmission}
+        memberName={
+          shareSubmission
+            ? membersById.get(shareSubmission.memberId)?.name || p.unknownMember
+            : ""
+        }
+        member={
+          shareSubmission ? membersById.get(shareSubmission.memberId) : undefined
+        }
+        members={members}
+        onClose={() => setShareSubmission(null)}
+      />
     </div>
   );
 }
