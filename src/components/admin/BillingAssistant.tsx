@@ -240,18 +240,14 @@ export function BillingAssistant({
   }
 
   function addExtraActivities() {
-    const lines = extraActivitiesInput
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-    if (!lines.length) return;
-    setDraft((prev) => {
-      const merged = [...prev.activities];
-      for (const line of lines) {
-        if (!merged.includes(line)) merged.push(line);
-      }
-      return { ...prev, activities: merged };
-    });
+    const line = extraActivitiesInput.trim();
+    if (!line) return;
+    setDraft((prev) => ({
+      ...prev,
+      activities: prev.activities.includes(line)
+        ? prev.activities
+        : [...prev.activities, line],
+    }));
     setExtraActivitiesInput("");
   }
 
@@ -571,10 +567,16 @@ export function BillingAssistant({
                 <p className="text-xs font-semibold text-[color:var(--muted)]">
                   {p.extraActivities}
                 </p>
-                <textarea
-                  rows={3}
+                <input
+                  type="text"
                   value={extraActivitiesInput}
                   onChange={(event) => setExtraActivitiesInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addExtraActivities();
+                    }
+                  }}
                   placeholder={p.activityPlaceholder}
                   className="w-full border border-[color:var(--line)] px-3 py-2 text-sm"
                 />
