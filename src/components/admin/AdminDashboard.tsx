@@ -67,6 +67,22 @@ function AccountingIcon() {
   );
 }
 
+function BillingIcon() {
+  return (
+    <svg viewBox="0 0 64 64" className="h-14 w-14" aria-hidden="true" fill="none">
+      <rect x="12" y="10" width="40" height="48" rx="3" stroke="currentColor" strokeWidth="3" />
+      <path d="M20 22h24M20 30h24M20 38h16" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+      <path
+        d="M40 42l6 6 10-12"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function WorkshopsIcon() {
   return (
     <svg viewBox="0 0 64 64" className="h-14 w-14" aria-hidden="true" fill="none">
@@ -153,6 +169,7 @@ export function AdminDashboard() {
     "tareas",
   ];
   const canAccounting = modules.includes("contabilidad");
+  const canBilling = modules.includes("cuentas-cobro");
   const canTalleres =
     modules.includes("talleres") || modules.includes("sitio");
   // Visible con el módulo propio o con talleres/sitio (mismo equipo operativo).
@@ -310,6 +327,25 @@ export function AdminDashboard() {
                 </h2>
                 <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)]">
                   {t.dashboard.tasksDesc}
+                </p>
+              </div>
+            </Link>
+          )}
+
+          {canBilling && (
+            <Link
+              href="/admin/cuentas-cobro"
+              className="group flex flex-col items-start gap-5 border border-[color:var(--line)] bg-white p-7 transition-all duration-300 hover:-translate-y-1 hover:border-[color:var(--accent)] hover:shadow-[0_18px_40px_-28px_rgba(224,13,69,0.45)]"
+            >
+              <span className="text-[color:var(--accent)] transition-transform duration-300 group-hover:scale-105">
+                <BillingIcon />
+              </span>
+              <div>
+                <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--ink)]">
+                  {t.dashboard.billing}
+                </h2>
+                <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)]">
+                  {t.dashboard.billingDesc}
                 </p>
               </div>
             </Link>

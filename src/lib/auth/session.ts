@@ -10,7 +10,8 @@ export type AdminModule =
   | "cronograma"
   | "seguimiento"
   | "tareas"
-  | "contabilidad";
+  | "contabilidad"
+  | "cuentas-cobro";
 
 export type SessionPayload = {
   role: SessionRole;
@@ -36,9 +37,10 @@ export function modulesForRole(role: SessionRole): AdminModule[] {
       "seguimiento",
       "tareas",
       "contabilidad",
+      "cuentas-cobro",
     ];
   }
-  return ["sitio", "talleres", "cronograma", "seguimiento", "tareas"];
+  return ["sitio", "talleres", "cronograma", "seguimiento", "tareas", "cuentas-cobro"];
 }
 
 export function canAccessModule(role: SessionRole, module: AdminModule) {
