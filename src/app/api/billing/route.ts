@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   archiveBillingSubmission,
   createBillingSubmission,
+  deleteBillingSubmission,
   readBillingBoard,
 } from "@/lib/billing/store";
 import type { CreateBillingSubmissionInput, BillingSubmission } from "@/lib/billing/types";
@@ -156,6 +157,29 @@ export async function PATCH(request: Request) {
     });
   } catch (error) {
     console.error("archiveBillingSubmission failed:", error);
+    return NextResponse.json(
+      { error: billingSaveErrorMessage(error) },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  const session = await requireAdmin();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const id = new URL(request.url).searchParams.get("id");
+  if (!id) {
+    return NextResponse.json({ error: "Missing id" }, { status: 400 });
+  }
+
+  try {
+    await deleteBillingSubmission(id);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("deleteBillingSubmission failed:", error);
     return NextResponse.json(
       { error: billingSaveErrorMessage(error) },
       { status: 500 },

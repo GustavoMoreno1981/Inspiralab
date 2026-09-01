@@ -146,7 +146,36 @@ export function BillingAdminPanel({ onBack }: BillingAdminPanelProps) {
     }
   }
 
-  function renderSubmissionCard(submission: BillingSubmission, showArchive: boolean) {
+  async function handleDelete(id: string) {
+    if (!window.confirm(p.deleteConfirm)) return;
+    const wasLastInModal =
+      archivedMemberId !== null &&
+      archivedModalSubmissions.length === 1 &&
+      archivedModalSubmissions[0]?.id === id;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/billing?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error || p.deleteError);
+      }
+      toast.success(p.deletedSuccess);
+      if (wasLastInModal) setArchivedMemberId(null);
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : p.deleteError);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function renderSubmissionCard(
+    submission: BillingSubmission,
+    options: { showArchive?: boolean; showDelete?: boolean } = {},
+  ) {
+    const { showArchive = false, showDelete = false } = options;
     const member = membersById.get(submission.memberId);
     return (
       <li
@@ -196,16 +225,28 @@ export function BillingAdminPanel({ onBack }: BillingAdminPanelProps) {
             ))}
           </ol>
         </div>
-        {showArchive ? (
-          <div className="mt-3">
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => void handleArchive(submission.id)}
-              className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold text-[color:var(--ink)] disabled:opacity-50"
-            >
-              {p.archiveButton}
-            </button>
+        {showArchive || showDelete ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {showArchive ? (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void handleArchive(submission.id)}
+                className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold text-[color:var(--ink)] disabled:opacity-50"
+              >
+                {p.archiveButton}
+              </button>
+            ) : null}
+            {showDelete ? (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void handleDelete(submission.id)}
+                className="border border-red-200 px-2 py-1 text-[10px] font-semibold text-red-700 disabled:opacity-50"
+              >
+                {t.common.delete}
+              </button>
+            ) : null}
           </div>
         ) : null}
       </li>
@@ -274,7 +315,7 @@ export function BillingAdminPanel({ onBack }: BillingAdminPanelProps) {
                 </div>
                 <ul className="mt-4 space-y-3">
                   {memberSubmissions.map((submission) =>
-                    renderSubmissionCard(submission, true),
+                    renderSubmissionCard(submission, { showArchive: true }),
                   )}
                 </ul>
               </section>
@@ -360,7 +401,7 @@ export function BillingAdminPanel({ onBack }: BillingAdminPanelProps) {
             </div>
             <ul className="space-y-3 overflow-y-auto p-5">
               {archivedModalSubmissions.map((submission) =>
-                renderSubmissionCard(submission, false),
+                renderSubmissionCard(submission, { showDelete: true }),
               )}
             </ul>
           </div>

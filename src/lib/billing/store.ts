@@ -168,3 +168,38 @@ export async function archiveBillingSubmission(id: string): Promise<BillingSubmi
   await writeLocal({ submissions });
   return archived;
 }
+
+export async function deleteBillingSubmission(id: string) {
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase
+      .from("billing_submissions")
+      .select("archived_at")
+      .eq("id", id)
+      .single();
+
+    if (error) throw error;
+    if (!data?.archived_at) {
+      throw new Error("Solo se pueden eliminar cuentas archivadas");
+    }
+
+    const { error: deleteError } = await supabase
+      .from("billing_submissions")
+      .delete()
+      .eq("id", id);
+    if (deleteError) throw deleteError;
+    return;
+  }
+
+  const board = await readLocal();
+  const target = board.submissions.find((item) => item.id === id);
+  if (!target) {
+    throw new Error("Cuenta de cobro no encontrada");
+  }
+  if (!target.archivedAt) {
+    throw new Error("Solo se pueden eliminar cuentas archivadas");
+  }
+  await writeLocal({
+    submissions: board.submissions.filter((item) => item.id !== id),
+  });
+}
