@@ -126,8 +126,7 @@ export function BillingAssistant({
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
-  const [activityInput, setActivityInput] = useState("");
-  const [bulkActivities, setBulkActivities] = useState("");
+  const [extraActivitiesInput, setExtraActivitiesInput] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
@@ -167,8 +166,7 @@ export function BillingAssistant({
     setDraft(initial);
     setPeriodStart(initial.periodStart);
     setPeriodEnd(initial.periodEnd);
-    setActivityInput("");
-    setBulkActivities("");
+    setExtraActivitiesInput("");
     setUploadError("");
     setSelectedTaskIds(new Set());
     setReceipt(null);
@@ -237,22 +235,15 @@ export function BillingAssistant({
     push("assistant", p.activitiesPrompt);
     setDraft((prev) => ({ ...prev, activities: [] }));
     setSelectedTaskIds(new Set());
-    setActivityInput("");
-    setBulkActivities("");
+    setExtraActivitiesInput("");
     setStep("activities");
   }
 
   function addExtraActivities() {
-    const lines: string[] = [];
-    if (activityInput.trim()) lines.push(activityInput.trim());
-    if (bulkActivities.trim()) {
-      lines.push(
-        ...bulkActivities
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-          .filter(Boolean),
-      );
-    }
+    const lines = extraActivitiesInput
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
     if (!lines.length) return;
     setDraft((prev) => {
       const merged = [...prev.activities];
@@ -261,11 +252,10 @@ export function BillingAssistant({
       }
       return { ...prev, activities: merged };
     });
-    setActivityInput("");
-    setBulkActivities("");
+    setExtraActivitiesInput("");
   }
 
-  const canAddExtras = Boolean(activityInput.trim() || bulkActivities.trim());
+  const canAddExtras = Boolean(extraActivitiesInput.trim());
 
   function removeActivity(line: string) {
     const linked = suggestedActivities.find(
@@ -581,18 +571,11 @@ export function BillingAssistant({
                 <p className="text-xs font-semibold text-[color:var(--muted)]">
                   {p.extraActivities}
                 </p>
-                <p className="text-xs text-[color:var(--muted)]">{p.extraActivitiesHint}</p>
-                <input
-                  value={activityInput}
-                  onChange={(event) => setActivityInput(event.target.value)}
-                  placeholder={p.activityPlaceholder}
-                  className="w-full border border-[color:var(--line)] px-3 py-2 text-sm"
-                />
                 <textarea
-                  rows={4}
-                  value={bulkActivities}
-                  onChange={(event) => setBulkActivities(event.target.value)}
-                  placeholder={p.pastePlaceholder}
+                  rows={3}
+                  value={extraActivitiesInput}
+                  onChange={(event) => setExtraActivitiesInput(event.target.value)}
+                  placeholder={p.activityPlaceholder}
                   className="w-full border border-[color:var(--line)] px-3 py-2 text-sm"
                 />
                 <button

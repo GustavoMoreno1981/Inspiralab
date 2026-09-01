@@ -673,7 +673,7 @@ export const adminEs: AdminDictionary = {
     clearSuggested: "Quitar selección",
     extraActivities: "Actividades adicionales",
     extraActivitiesHint:
-      "Escribe una actividad, varias líneas o ambas, y pulsa Agregar una sola vez.",
+      "Escribe una o varias actividades (una por línea) y pulsa Agregar.",
     noActivitiesYet: "Aún no has agregado actividades.",
     finishButton: "Terminar y enviar",
     doneMessage: "Gracias por terminar. Tu cuenta de cobro quedó registrada.",
