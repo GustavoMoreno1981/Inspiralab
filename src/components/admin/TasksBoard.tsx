@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -290,6 +290,8 @@ export function TasksBoard() {
   const taskStatuses = useMemo(() => getTaskStatuses(t), [t]);
   const statusColors = useMemo(() => getTaskStatusColors(t), [t]);
   const [board, setBoard] = useState<TasksBoard>(emptyBoard());
+  const pendingBoardRef = useRef<TasksBoard>(emptyBoard());
+  const persistQueueRef = useRef(Promise.resolve(true));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
@@ -391,25 +393,30 @@ export function TasksBoard() {
 
   function applyPrivateReveal(payload: PrivateUnlockPayload) {
     markUnlocked(payload.itemType, payload.itemId);
-    setBoard((prev) => {
-      if (payload.itemType === "activity" && payload.activity) {
-        return {
-          ...prev,
-          activities: prev.activities.map((activity) =>
-            activity.id === payload.itemId ? payload.activity! : activity,
-          ),
-        };
-      }
-      if (payload.itemType === "bank" && payload.bankItem) {
-        return {
-          ...prev,
-          bank: (prev.bank || []).map((item) =>
-            item.id === payload.itemId ? payload.bankItem! : item,
-          ),
-        };
-      }
-      return prev;
-    });
+    const prev = pendingBoardRef.current;
+    if (payload.itemType === "activity" && payload.activity) {
+      commitBoard({
+        ...prev,
+        activities: prev.activities.map((activity) =>
+          activity.id === payload.itemId ? payload.activity! : activity,
+        ),
+      });
+      return;
+    }
+    if (payload.itemType === "bank" && payload.bankItem) {
+      commitBoard({
+        ...prev,
+        bank: (prev.bank || []).map((item) =>
+          item.id === payload.itemId ? payload.bankItem! : item,
+        ),
+      });
+    }
+  }
+
+  function commitBoard(next: TasksBoard) {
+    pendingBoardRef.current = next;
+    setBoard(next);
+    return next;
   }
 
   const load = useCallback(async () => {
@@ -435,7 +442,7 @@ export function TasksBoard() {
     const tasksRes = await fetch(tasksUrl, { cache: "no-store" });
     if (tasksRes.ok) {
       const data = (await tasksRes.json()) as TasksBoardResponse;
-      setBoard({
+      const loaded: TasksBoard = {
         members: (data.members || []).map((member) => normalizeMember(member)),
         activities: (data.activities || []).map((activity) =>
           normalizeActivity({ ...activity, id: activity.id }),
@@ -447,7 +454,9 @@ export function TasksBoard() {
               createdById: item.createdById || item.ownerId || "",
             }))
           : [],
-      });
+      };
+      pendingBoardRef.current = loaded;
+      setBoard(loaded);
       setBankPendingCountByMemberOverride(data.bankPendingCountByMember || null);
     }
     setLoading(false);
@@ -524,7 +533,8 @@ export function TasksBoard() {
     return counts;
   }, [activeActivities]);
 
-  async function persist(next: TasksBoard, successMessage?: string) {
+  async function flushPersist(successMessage?: string) {
+    const next = pendingBoardRef.current;
     setSaving(true);
     setStatusMsg("");
     const res = await fetch("/api/tasks", {
@@ -548,6 +558,20 @@ export function TasksBoard() {
     setStatusMsg(errorMsg);
     toast.error(errorMsg);
     return false;
+  }
+
+  function schedulePersist(next: TasksBoard, successMessage?: string): Promise<boolean> {
+    commitBoard(next);
+    const queued = persistQueueRef.current.then(() => flushPersist(successMessage));
+    persistQueueRef.current = queued.then(
+      () => true,
+      () => false,
+    );
+    return queued;
+  }
+
+  async function persist(next: TasksBoard, successMessage?: string) {
+    return schedulePersist(next, successMessage);
   }
 
   async function logout() {
@@ -585,10 +609,13 @@ export function TasksBoard() {
       return;
     }
     const data = (await res.json()) as { url: string };
-    const members = board.members.map((member) =>
+    const members = pendingBoardRef.current.members.map((member) =>
       member.id === memberId ? { ...member, photo: data.url } : member,
     );
-    const ok = await persist({ ...board, members }, t.tasks.toast.memberPhotoUpdated);
+    const ok = await persist(
+      { ...pendingBoardRef.current, members },
+      t.tasks.toast.memberPhotoUpdated,
+    );
     if (ok && editingMemberId === memberId) {
       setMemberForm((prev) => ({ ...prev, photo: data.url }));
     }
@@ -606,7 +633,7 @@ export function TasksBoard() {
     }
 
     if (editingMemberId) {
-      const members = board.members.map((member) =>
+      const members = pendingBoardRef.current.members.map((member) =>
         member.id === editingMemberId
           ? {
               ...member,
@@ -620,7 +647,7 @@ export function TasksBoard() {
           : member,
       );
       const ok = await persist(
-        { ...board, members },
+        { ...pendingBoardRef.current, members },
         t.tasks.toast.memberUpdated,
       );
       if (ok) {
@@ -644,7 +671,7 @@ export function TasksBoard() {
       hasPassword: false,
     };
     const ok = await persist(
-      { ...board, members: [...board.members, member] },
+      { ...pendingBoardRef.current, members: [...pendingBoardRef.current.members, member] },
       t.tasks.toast.memberAdded,
     );
     if (ok) setMemberForm(emptyMemberForm);
@@ -672,12 +699,13 @@ export function TasksBoard() {
     const member = board.members.find((item) => item.id === id);
     const ok = await persist(
       {
-        members: board.members.filter((m) => m.id !== id),
-        activities: board.activities.map((activity) => ({
+        ...pendingBoardRef.current,
+        members: pendingBoardRef.current.members.filter((m) => m.id !== id),
+        activities: pendingBoardRef.current.activities.map((activity) => ({
           ...activity,
           assigneeIds: activity.assigneeIds.filter((assigneeId) => assigneeId !== id),
         })),
-        bank: (board.bank || [])
+        bank: (pendingBoardRef.current.bank || [])
           .filter((item) => item.ownerId !== id)
           .map((item) => ({
             ...item,
@@ -868,7 +896,7 @@ export function TasksBoard() {
 
     const nextBank =
       convertingBankId
-        ? (board.bank || []).map((item) =>
+        ? (pendingBoardRef.current.bank || []).map((item) =>
             item.id === convertingBankId
               ? {
                   ...item,
@@ -877,12 +905,12 @@ export function TasksBoard() {
                 }
               : item,
           )
-        : board.bank || [];
+        : pendingBoardRef.current.bank || [];
 
     const ok = await persist(
       {
-        ...board,
-        activities: [activity, ...board.activities],
+        ...pendingBoardRef.current,
+        activities: [activity, ...pendingBoardRef.current.activities],
         bank: nextBank,
       },
       convertingBankId
@@ -946,7 +974,7 @@ export function TasksBoard() {
       createdById: resolveCreatorId(ownerId),
     };
     const ok = await persist(
-      { ...board, bank: [item, ...(board.bank || [])] },
+      { ...pendingBoardRef.current, bank: [item, ...(pendingBoardRef.current.bank || [])] },
       t.tasks.toast.bankIdeaAdded,
     );
     if (ok) {
@@ -986,8 +1014,8 @@ export function TasksBoard() {
     const now = new Date().toISOString();
     const ok = await persist(
       {
-        ...board,
-        bank: (board.bank || []).map((item) =>
+        ...pendingBoardRef.current,
+        bank: (pendingBoardRef.current.bank || []).map((item) =>
           item.id === id
             ? {
                 ...item,
@@ -1006,7 +1034,10 @@ export function TasksBoard() {
   async function removeBankItem(id: string) {
     if (!window.confirm(t.tasks.confirmDeleteBank)) return;
     await persist(
-      { ...board, bank: (board.bank || []).filter((item) => item.id !== id) },
+      {
+        ...pendingBoardRef.current,
+        bank: (pendingBoardRef.current.bank || []).filter((item) => item.id !== id),
+      },
       t.tasks.toast.bankIdeaDeleted,
     );
   }
@@ -1039,17 +1070,17 @@ export function TasksBoard() {
     patch: Partial<Activity>,
     successMessage?: string,
   ) {
-    const nextBoard: TasksBoard = {
-      ...board,
-      activities: board.activities.map((activity) =>
-        activity.id === activityId
-          ? { ...activity, ...patch, updatedAt: new Date().toISOString() }
-          : activity,
-      ),
-    };
-    // Actualiza la UI de inmediato (progreso / estado) y luego persiste.
-    setBoard(nextBoard);
-    void persist(nextBoard, successMessage);
+    schedulePersist(
+      {
+        ...pendingBoardRef.current,
+        activities: pendingBoardRef.current.activities.map((activity) =>
+          activity.id === activityId
+            ? { ...activity, ...patch, updatedAt: new Date().toISOString() }
+            : activity,
+        ),
+      },
+      successMessage,
+    );
   }
 
   function requestFinishedDateChange(activityId: string, newDate: string) {
@@ -1106,11 +1137,10 @@ export function TasksBoard() {
 
   function removeActivity(activityId: string) {
     if (!window.confirm(t.tasks.confirmDeleteActivity)) return;
-    const activity = board.activities.find((item) => item.id === activityId);
-    void persist(
+    void schedulePersist(
       {
-        ...board,
-        activities: board.activities.filter((item) => item.id !== activityId),
+        ...pendingBoardRef.current,
+        activities: pendingBoardRef.current.activities.filter((item) => item.id !== activityId),
       },
       t.common.saved,
     );
@@ -1224,9 +1254,9 @@ export function TasksBoard() {
         subtasks: task.subtasks.map((sub) => ({ ...sub })),
       })),
     });
-    setBoard((prev) => ({
-      ...prev,
-      activities: prev.activities.map((item) =>
+    commitBoard({
+      ...pendingBoardRef.current,
+      activities: pendingBoardRef.current.activities.map((item) =>
         item.id === activity.id
           ? {
               ...item,
@@ -1236,7 +1266,7 @@ export function TasksBoard() {
             }
           : item,
       ),
-    }));
+    });
     toast.info("Confirma el aviso de revisión o cierra para cancelar");
     window.setTimeout(() => setReviewModalActivityId(activity.id), 0);
   }
@@ -1503,8 +1533,8 @@ export function TasksBoard() {
   ) {
     const ok = await persist(
       {
-        ...board,
-        activities: [activity, ...board.activities],
+        ...pendingBoardRef.current,
+        activities: [activity, ...pendingBoardRef.current.activities],
       },
       t.tasks.toast.activityCreated,
     );
@@ -1535,7 +1565,7 @@ export function TasksBoard() {
   ) {
     const sourceBankItem = (board.bank || []).find((item) => item.id === bankItemId);
     const now = new Date().toISOString();
-    const nextBank = (board.bank || []).map((item) =>
+    const nextBank = (pendingBoardRef.current.bank || []).map((item) =>
       item.id === bankItemId
         ? {
             ...item,
@@ -1546,8 +1576,8 @@ export function TasksBoard() {
     );
     const ok = await persist(
       {
-        ...board,
-        activities: [activity, ...board.activities],
+        ...pendingBoardRef.current,
+        activities: [activity, ...pendingBoardRef.current.activities],
         bank: nextBank,
       },
       t.tasks.toast.activityFromBank,
@@ -1604,8 +1634,8 @@ export function TasksBoard() {
     if (input.status === "pending_review" && activity.status !== "pending_review") {
       if (input.note.trim()) {
         const okNotes = await persist({
-          ...board,
-          activities: board.activities.map((item) =>
+          ...pendingBoardRef.current,
+          activities: pendingBoardRef.current.activities.map((item) =>
             item.id === activity.id
               ? {
                   ...item,
@@ -1630,8 +1660,8 @@ export function TasksBoard() {
       taskStatuses.find((item) => item.value === input.status)?.label || input.status;
     const ok = await persist(
       {
-        ...board,
-        activities: board.activities.map((item) =>
+        ...pendingBoardRef.current,
+        activities: pendingBoardRef.current.activities.map((item) =>
           item.id === activity.id
             ? {
                 ...item,
@@ -1664,9 +1694,9 @@ export function TasksBoard() {
       const previousLabel =
         taskStatuses.find((item) => item.value === reviewRevert.status)?.label ||
         reviewRevert.status;
-      setBoard((prev) => ({
-        ...prev,
-        activities: prev.activities.map((activity) =>
+      commitBoard({
+        ...pendingBoardRef.current,
+        activities: pendingBoardRef.current.activities.map((activity) =>
           activity.id === reviewRevert.activityId
             ? {
                 ...activity,
@@ -1676,7 +1706,7 @@ export function TasksBoard() {
               }
             : activity,
         ),
-      }));
+      });
       toast.info(`Revisión cancelada · vuelve a ${previousLabel}`);
     }
     setReviewRevert(null);
@@ -1684,13 +1714,15 @@ export function TasksBoard() {
   }
 
   function saveReviewMessage(activityId: string, message: ReviewMessage) {
-    const snapshot = board.activities.find((activity) => activity.id === activityId);
+    const snapshot = pendingBoardRef.current.activities.find(
+      (activity) => activity.id === activityId,
+    );
     setReviewRevert(null);
     setReviewModalActivityId(null);
-    setBoard((prev) => {
-      const next: TasksBoard = {
-        ...prev,
-        activities: prev.activities.map((activity) =>
+    schedulePersist(
+      {
+        ...pendingBoardRef.current,
+        activities: pendingBoardRef.current.activities.map((activity) =>
           activity.id === activityId
             ? {
                 ...activity,
@@ -1701,10 +1733,9 @@ export function TasksBoard() {
               }
             : activity,
         ),
-      };
-      void persist(next, t.tasks.toast.reviewSaved);
-      return next;
-    });
+      },
+      t.tasks.toast.reviewSaved,
+    );
     setReviewHistoryOpenId(activityId);
   }
 
@@ -1766,10 +1797,10 @@ export function TasksBoard() {
   function saveDeliveryUrls(urls: { processUrl: string; deliverableUrl: string }) {
     if (!completeActivityId) return;
     const activityId = completeActivityId;
-    void persist(
+    void schedulePersist(
       {
-        ...board,
-        activities: board.activities.map((activity) =>
+        ...pendingBoardRef.current,
+        activities: pendingBoardRef.current.activities.map((activity) =>
           activity.id === activityId
             ? {
                 ...activity,

@@ -811,10 +811,8 @@ async function writeTasksSupabaseRaw(board: StoredBoard) {
       "Tabla task_bank no disponible. Ejecuta supabase/add-task-bank.sql para persistir el banco.",
       deleteBankError.message,
     );
-    return;
-  }
+  } else if (board.bank.length) {
 
-  if (board.bank.length) {
     const bankRows = board.bank.map((item) => ({
       id: item.id,
       title: item.title,
@@ -920,11 +918,8 @@ export async function readTasksBoardUnfiltered(): Promise<TasksBoard> {
 export async function readTasksBoard(viewerMemberId?: string): Promise<TasksBoard> {
   const board = await readTasksBoardUnfiltered();
   if (!viewerMemberId) {
-    return {
-      ...board,
-      activities: board.activities.filter((activity) => !isPrivateItem(activity)),
-      bank: board.bank.filter((item) => !isPrivateItem(item)),
-    };
+    // Admin sin viewer: devuelve todo; la API redacta títulos privados.
+    return board;
   }
   return filterBoardForViewer(board, viewerMemberId);
 }
@@ -952,13 +947,26 @@ export async function writeTasksBoard(
     const existing = await readStoredBoard();
     const allowAuthEdit = Boolean(options?.allowAuthEdit);
 
-    const nextActivities = normalizeActivities(board.activities || []).map((activity) =>
+    const incomingActivities = normalizeActivities(board.activities || []);
+    const incomingActivityIds = new Set(incomingActivities.map((activity) => activity.id));
+    const preservedPrivateActivities = existing.activities.filter(
+      (activity) => isPrivateItem(activity) && !incomingActivityIds.has(activity.id),
+    );
+
+    const nextActivities = [...incomingActivities, ...preservedPrivateActivities].map((activity) =>
       preservePrivateActivityOnWrite(
         activity,
         existing.activities.find((item) => item.id === activity.id),
       ),
     );
-    const nextBank = normalizeBank(board.bank || []).map((item) =>
+
+    const incomingBank = normalizeBank(board.bank || []);
+    const incomingBankIds = new Set(incomingBank.map((item) => item.id));
+    const preservedPrivateBank = (existing.bank || []).filter(
+      (item) => isPrivateItem(item) && !incomingBankIds.has(item.id),
+    );
+
+    const nextBank = [...incomingBank, ...preservedPrivateBank].map((item) =>
       preservePrivateBankOnWrite(
         item,
         (existing.bank || []).find((entry) => entry.id === item.id),
