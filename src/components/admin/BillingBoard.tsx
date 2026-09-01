@@ -25,6 +25,7 @@ function formatPeriod(start: string, end: string) {
 type ApiResponse = {
   submissions: BillingSubmission[];
   members: TeamMember[];
+  taskActivities?: Activity[];
   isAdmin: boolean;
 };
 
@@ -44,29 +45,22 @@ export function BillingBoard() {
   async function load() {
     setLoading(true);
     try {
-      const [billingRes, tasksRes] = await Promise.all([
-        fetch("/api/billing", { cache: "no-store" }),
-        fetch("/api/tasks", { cache: "no-store" }),
-      ]);
-      if (billingRes.status === 401 || tasksRes.status === 401) {
+      const res = await fetch("/api/billing", { cache: "no-store" });
+      if (res.status === 401) {
         router.push("/login");
         return;
       }
-      if (!billingRes.ok) {
-        const data = (await billingRes.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(data?.error || p.loadError);
       }
-      const data = (await billingRes.json()) as ApiResponse;
+      const data = (await res.json()) as ApiResponse;
       setSubmissions(Array.isArray(data.submissions) ? data.submissions : []);
       setMembers(Array.isArray(data.members) ? data.members : []);
+      setTaskActivities(
+        Array.isArray(data.taskActivities) ? data.taskActivities : [],
+      );
       setIsAdmin(Boolean(data.isAdmin));
-
-      if (tasksRes.ok) {
-        const tasksData = (await tasksRes.json()) as { activities?: Activity[] };
-        setTaskActivities(Array.isArray(tasksData.activities) ? tasksData.activities : []);
-      } else {
-        setTaskActivities([]);
-      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : p.loadError);
     } finally {

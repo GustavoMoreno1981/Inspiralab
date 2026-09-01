@@ -667,7 +667,8 @@ export const adminEs: AdminDictionary = {
     addFromPaste: "Agregar desde el texto",
     suggestedActivities: "Actividades en seguimiento de tareas",
     suggestedActivitiesEmpty:
-      "No hay actividades de este integrante en el periodo seleccionado.",
+      "Este integrante no tiene actividades asignadas en el seguimiento de tareas.",
+    inPeriodBadge: "En este periodo",
     selectAllSuggested: "Seleccionar todas",
     clearSuggested: "Quitar selección",
     extraActivities: "Actividades adicionales",

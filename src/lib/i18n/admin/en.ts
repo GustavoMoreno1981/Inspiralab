@@ -666,7 +666,8 @@ export const adminEn: AdminDictionary = {
     addFromPaste: "Add from pasted text",
     suggestedActivities: "Activities from task tracking",
     suggestedActivitiesEmpty:
-      "There are no activities for this member in the selected period.",
+      "This member has no activities assigned in task tracking.",
+    inPeriodBadge: "In this period",
     selectAllSuggested: "Select all",
     clearSuggested: "Clear selection",
     extraActivities: "Additional activities",

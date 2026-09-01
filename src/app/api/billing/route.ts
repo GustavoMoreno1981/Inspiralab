@@ -5,7 +5,7 @@ import {
   readBillingBoard,
 } from "@/lib/billing/store";
 import type { CreateBillingSubmissionInput } from "@/lib/billing/types";
-import { getSession, requireAdmin, requireModule } from "@/lib/auth/server";
+import { requireAdmin, requireModule } from "@/lib/auth/server";
 import { readTasksBoardFull } from "@/lib/tasks/store";
 
 function billingSaveErrorMessage(error: unknown): string {
@@ -45,6 +45,7 @@ export async function GET() {
     return NextResponse.json({
       submissions: board.submissions,
       members: tasksBoard.members,
+      taskActivities: tasksBoard.activities,
       isAdmin: session.role === "admin",
     });
   } catch (error) {

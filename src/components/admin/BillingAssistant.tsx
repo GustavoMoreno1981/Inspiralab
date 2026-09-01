@@ -6,6 +6,7 @@ import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 import {
   activitiesForBilling,
   activityBillingLabel,
+  activityOverlapsPeriod,
 } from "@/lib/billing/task-suggestions";
 import { getTaskStatuses } from "@/lib/i18n/admin";
 import type { Activity, TeamMember } from "@/lib/tasks/types";
@@ -549,6 +550,15 @@ export function BillingAssistant({
                             <span className="min-w-0">
                               <span className="block font-semibold text-[color:var(--ink)]">
                                 {label}
+                                {activityOverlapsPeriod(
+                                  activity,
+                                  draft.periodStart,
+                                  draft.periodEnd,
+                                ) ? (
+                                  <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--accent)]">
+                                    · {p.inPeriodBadge}
+                                  </span>
+                                ) : null}
                               </span>
                               <span className="mt-0.5 block text-[10px] text-[color:var(--muted)]">
                                 {formatDate(activity.date)}

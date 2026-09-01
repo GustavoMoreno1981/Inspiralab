@@ -647,6 +647,7 @@ export type AdminDictionary = {
     addFromPaste: string;
     suggestedActivities: string;
     suggestedActivitiesEmpty: string;
+    inPeriodBadge: string;
     selectAllSuggested: string;
     clearSuggested: string;
     extraActivities: string;
