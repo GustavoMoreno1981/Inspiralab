@@ -672,6 +672,7 @@ export type AdminDictionary = {
     submissionPlural: string;
     submittedOn: string;
     viewInvoice: string;
+    invoiceSent: string;
     activitiesTitle: string;
     loading: string;
     loadError: string;

@@ -696,6 +696,7 @@ export const adminEs: AdminDictionary = {
     submissionPlural: "cuentas de cobro",
     submittedOn: "Enviada el",
     viewInvoice: "Ver cuenta de cobro",
+    invoiceSent: "Cuenta de cobro enviada",
     activitiesTitle: "Actividades realizadas",
     loading: "Cargando cuentas de cobro…",
     loadError: "No se pudieron cargar las cuentas de cobro",

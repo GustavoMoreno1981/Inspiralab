@@ -4,7 +4,7 @@ import {
   deleteBillingSubmission,
   readBillingBoard,
 } from "@/lib/billing/store";
-import type { CreateBillingSubmissionInput } from "@/lib/billing/types";
+import type { CreateBillingSubmissionInput, BillingSubmission } from "@/lib/billing/types";
 import { requireAdmin, requireModule } from "@/lib/auth/server";
 import { readTasksBoardFull } from "@/lib/tasks/store";
 
@@ -30,6 +30,18 @@ function billingSaveErrorMessage(error: unknown): string {
   return "No se pudo guardar la cuenta de cobro";
 }
 
+function sanitizeSubmissionForRole(
+  submission: BillingSubmission,
+  isAdmin: boolean,
+): BillingSubmission {
+  if (isAdmin) return submission;
+  return {
+    ...submission,
+    fileUrl: "",
+    fileName: "",
+  };
+}
+
 export async function GET() {
   const session = await requireModule("cuentas-cobro");
   if (!session) {
@@ -42,11 +54,15 @@ export async function GET() {
       readTasksBoardFull(),
     ]);
 
+    const isAdmin = session.role === "admin";
+
     return NextResponse.json({
-      submissions: board.submissions,
+      submissions: board.submissions.map((item) =>
+        sanitizeSubmissionForRole(item, isAdmin),
+      ),
       members: tasksBoard.members,
       taskActivities: tasksBoard.activities,
-      isAdmin: session.role === "admin",
+      isAdmin,
     });
   } catch (error) {
     console.error("readBillingBoard failed:", error);
@@ -98,7 +114,12 @@ export async function POST(request: Request) {
       notes: body.notes || "",
     });
 
-    return NextResponse.json({ ok: true, submission });
+    const isAdmin = session.role === "admin";
+
+    return NextResponse.json({
+      ok: true,
+      submission: sanitizeSubmissionForRole(submission, isAdmin),
+    });
   } catch (error) {
     console.error("createBillingSubmission failed:", error);
     return NextResponse.json(

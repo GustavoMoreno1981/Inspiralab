@@ -647,14 +647,20 @@ export function BillingAssistant({
                       ))}
                     </ol>
                   </div>
-                  <a
-                    href={receipt.fileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-3 inline-block border border-[color:var(--line)] bg-white px-2 py-1 text-[10px] font-semibold"
-                  >
-                    {p.viewInvoice}
-                  </a>
+                  {receipt.fileUrl ? (
+                    <a
+                      href={receipt.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 inline-block border border-[color:var(--line)] bg-white px-2 py-1 text-[10px] font-semibold"
+                    >
+                      {p.viewInvoice}
+                    </a>
+                  ) : (
+                    <p className="mt-3 text-xs font-semibold text-[color:var(--muted)]">
+                      {p.invoiceSent}
+                    </p>
+                  )}
                 </div>
               ) : null}
               <button

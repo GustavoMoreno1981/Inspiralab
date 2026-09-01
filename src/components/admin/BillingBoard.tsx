@@ -174,14 +174,20 @@ export function BillingBoard() {
               {p.submittedOn} {formatDate(submission.submittedAt.slice(0, 10))}
             </p>
           </div>
-          <a
-            href={submission.fileUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="shrink-0 border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
-          >
-            {p.viewInvoice}
-          </a>
+          {isAdmin && submission.fileUrl ? (
+            <a
+              href={submission.fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
+            >
+              {p.viewInvoice}
+            </a>
+          ) : (
+            <span className="shrink-0 border border-[color:var(--line)] bg-[color:var(--paper)] px-2 py-1 text-[10px] font-semibold text-[color:var(--muted)]">
+              {p.invoiceSent}
+            </span>
+          )}
         </div>
         <div className="mt-3">
           <p className="text-[10px] font-bold uppercase tracking-wide text-[color:var(--muted)]">

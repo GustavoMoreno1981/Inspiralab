@@ -694,6 +694,7 @@ export const adminEn: AdminDictionary = {
     submissionPlural: "billing accounts",
     submittedOn: "Submitted on",
     viewInvoice: "View billing account",
+    invoiceSent: "Billing account submitted",
     activitiesTitle: "Activities completed",
     loading: "Loading billing accounts…",
     loadError: "Could not load billing accounts",
