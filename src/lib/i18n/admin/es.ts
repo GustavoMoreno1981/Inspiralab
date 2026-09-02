@@ -685,6 +685,8 @@ export const adminEs: AdminDictionary = {
     submissionsRecord: "Registro de envíos",
     submissionsRecordHint:
       "Soporte de las cuentas de cobro enviadas: integrante, periodo y actividades realizadas. Puedes agregar, editar o eliminar actividades mientras la cuenta no esté archivada.",
+    groupedRecordHint:
+      "Organizado por integrante y mes. Abre cada carpeta para ver los envíos de esa quincena.",
     complete: "Completado",
     stepLabel: "Paso",
     stepOf: "de",

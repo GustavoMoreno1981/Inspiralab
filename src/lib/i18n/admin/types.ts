@@ -662,6 +662,7 @@ export type AdminDictionary = {
     receiptPeriod: string;
     submissionsRecord: string;
     submissionsRecordHint: string;
+    groupedRecordHint: string;
     complete: string;
     stepLabel: string;
     stepOf: string;

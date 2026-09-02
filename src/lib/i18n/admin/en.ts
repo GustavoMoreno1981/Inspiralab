@@ -683,6 +683,8 @@ export const adminEn: AdminDictionary = {
     submissionsRecord: "Submission log",
     submissionsRecordHint:
       "Record of submitted billing accounts: member, period, and activities completed. You can add, edit, or remove activities while the account is not archived.",
+    groupedRecordHint:
+      "Organized by team member and month. Open each folder to see submissions for that period.",
     complete: "Complete",
     stepLabel: "Step",
     stepOf: "of",

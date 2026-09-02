@@ -23,6 +23,75 @@ function formatPeriod(start: string, end: string) {
   return `${formatDate(start)} – ${formatDate(end)}`;
 }
 
+function monthKeyFromSubmission(submission: BillingSubmission): string {
+  const raw = submission.periodEnd || submission.periodStart || submission.submittedAt.slice(0, 10);
+  return raw.slice(0, 7);
+}
+
+function formatMonthLabel(monthKey: string, locale: "es" | "en"): string {
+  const [year, month] = monthKey.split("-").map(Number);
+  if (!year || !month) return monthKey;
+  return new Intl.DateTimeFormat(locale === "en" ? "en-US" : "es-CO", {
+    month: "long",
+    year: "numeric",
+  }).format(new Date(year, month - 1, 1));
+}
+
+type MemberMonthGroup = {
+  memberId: string;
+  months: Array<{ monthKey: string; submissions: BillingSubmission[] }>;
+  totalCount: number;
+};
+
+function groupSubmissionsByMemberAndMonth(
+  submissions: BillingSubmission[],
+  membersById: Map<string, TeamMember>,
+): MemberMonthGroup[] {
+  const byMember = new Map<string, Map<string, BillingSubmission[]>>();
+
+  for (const submission of submissions) {
+    const monthKey = monthKeyFromSubmission(submission);
+    if (!byMember.has(submission.memberId)) {
+      byMember.set(submission.memberId, new Map());
+    }
+    const monthMap = byMember.get(submission.memberId)!;
+    const list = monthMap.get(monthKey) || [];
+    list.push(submission);
+    monthMap.set(monthKey, list);
+  }
+
+  const groups: MemberMonthGroup[] = [];
+
+  for (const [memberId, monthMap] of byMember) {
+    const months = [...monthMap.entries()]
+      .map(([monthKey, items]) => ({
+        monthKey,
+        submissions: items.sort((a, b) => {
+          const byEnd = b.periodEnd.localeCompare(a.periodEnd);
+          if (byEnd !== 0) return byEnd;
+          return b.submittedAt.localeCompare(a.submittedAt);
+        }),
+      }))
+      .sort((a, b) => b.monthKey.localeCompare(a.monthKey));
+
+    groups.push({
+      memberId,
+      months,
+      totalCount: months.reduce((sum, month) => sum + month.submissions.length, 0),
+    });
+  }
+
+  return groups.sort((a, b) => {
+    const nameA = membersById.get(a.memberId)?.name || "";
+    const nameB = membersById.get(b.memberId)?.name || "";
+    return nameA.localeCompare(nameB, "es");
+  });
+}
+
+function monthFolderId(memberId: string, monthKey: string) {
+  return `${memberId}::${monthKey}`;
+}
+
 type ApiResponse = {
   submissions: BillingSubmission[];
   members: TeamMember[];
@@ -33,7 +102,7 @@ type ApiResponse = {
 export function BillingBoard() {
   const router = useRouter();
   const toast = useToast();
-  const { t } = useAdminLanguage();
+  const { t, locale } = useAdminLanguage();
   const p = t.billing;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -42,6 +111,8 @@ export function BillingBoard() {
   const [taskActivities, setTaskActivities] = useState<Activity[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [expandedMembers, setExpandedMembers] = useState<Set<string>>(new Set());
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
 
   async function load() {
     setLoading(true);
@@ -84,6 +155,43 @@ export function BillingBoard() {
     return map;
   }, [members]);
 
+  const groupedSubmissions = useMemo(
+    () => groupSubmissionsByMemberAndMonth(submissions, membersById),
+    [submissions, membersById],
+  );
+
+  useEffect(() => {
+    if (!groupedSubmissions.length) return;
+    setExpandedMembers(new Set(groupedSubmissions.map((group) => group.memberId)));
+    setExpandedMonths(
+      new Set(
+        groupedSubmissions.flatMap((group) => {
+          const latestMonth = group.months[0]?.monthKey;
+          return latestMonth ? [monthFolderId(group.memberId, latestMonth)] : [];
+        }),
+      ),
+    );
+  }, [groupedSubmissions]);
+
+  function toggleMember(memberId: string) {
+    setExpandedMembers((prev) => {
+      const next = new Set(prev);
+      if (next.has(memberId)) next.delete(memberId);
+      else next.add(memberId);
+      return next;
+    });
+  }
+
+  function toggleMonth(memberId: string, monthKey: string) {
+    const id = monthFolderId(memberId, monthKey);
+    setExpandedMonths((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   async function handleSubmit(input: {
     memberId: string;
     periodStart: string;
@@ -115,33 +223,44 @@ export function BillingBoard() {
     }
   }
 
-  function renderSubmissionCard(submission: BillingSubmission) {
+  function renderSubmissionCard(submission: BillingSubmission, compact = false) {
     const member = membersById.get(submission.memberId);
     return (
       <li
         key={submission.id}
-        className="border border-[color:var(--line)] bg-white px-3 py-3"
+        className="border border-[color:var(--line)] bg-[color:var(--paper)] px-3 py-3"
       >
         <div className="flex items-start gap-3 border-b border-[color:var(--line)]/60 pb-3">
-          <MemberAvatar
-            name={member?.name || p.unknownMember}
-            photo={member?.photo}
-            size="md"
-          />
+          {!compact ? (
+            <MemberAvatar
+              name={member?.name || p.unknownMember}
+              photo={member?.photo}
+              size="md"
+            />
+          ) : null}
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-[color:var(--ink)]">
-              {p.receiptMember.replace("{name}", member?.name || p.unknownMember)}
-            </p>
-            <p className="mt-1 text-sm font-bold text-[color:var(--ink)]">
+            {!compact ? (
+              <p className="text-sm font-semibold text-[color:var(--ink)]">
+                {p.receiptMember.replace("{name}", member?.name || p.unknownMember)}
+              </p>
+            ) : null}
+            <p className={`text-sm font-bold text-[color:var(--ink)] ${compact ? "" : "mt-1"}`}>
               {formatPeriod(submission.periodStart, submission.periodEnd)}
             </p>
             <p className="mt-0.5 text-xs text-[color:var(--muted)]">
               {p.submittedOn} {formatDate(submission.submittedAt.slice(0, 10))}
             </p>
           </div>
-          <span className="shrink-0 border border-[color:var(--line)] bg-[color:var(--paper)] px-2 py-1 text-[10px] font-semibold text-[color:var(--muted)]">
-            {p.invoiceSent}
-          </span>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <span className="border border-[color:var(--line)] bg-white px-2 py-1 text-[10px] font-semibold text-[color:var(--muted)]">
+              {p.invoiceSent}
+            </span>
+            {submission.paymentReceiptAt ? (
+              <span className="border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-800">
+                {p.paymentReceiptSent}
+              </span>
+            ) : null}
+          </div>
         </div>
         <BillingActivitiesEditor
           submissionId={submission.id}
@@ -221,11 +340,103 @@ export function BillingBoard() {
                   {p.submissionsRecord}
                 </h2>
                 <p className="mt-1 text-xs text-[color:var(--muted)]">
-                  {p.submissionsRecordHint}
+                  {p.groupedRecordHint}
                 </p>
-                <ul className="mt-4 space-y-3">
-                  {submissions.map((submission) => renderSubmissionCard(submission))}
-                </ul>
+                <div className="mt-4 space-y-3">
+                  {groupedSubmissions.map((group) => {
+                    const member = membersById.get(group.memberId);
+                    const memberOpen = expandedMembers.has(group.memberId);
+                    return (
+                      <section
+                        key={group.memberId}
+                        className="border border-[color:var(--line)] bg-[color:var(--paper)]"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => toggleMember(group.memberId)}
+                          className="flex w-full items-center gap-3 px-3 py-3 text-left"
+                        >
+                          <span
+                            className="text-xs text-[color:var(--muted)]"
+                            aria-hidden
+                          >
+                            {memberOpen ? "▾" : "▸"}
+                          </span>
+                          <MemberAvatar
+                            name={member?.name || p.unknownMember}
+                            photo={member?.photo}
+                            size="md"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-bold text-[color:var(--ink)]">
+                              {member?.name || p.unknownMember}
+                            </p>
+                            {member?.role ? (
+                              <p className="text-xs text-[color:var(--muted)]">{member.role}</p>
+                            ) : null}
+                            <p className="mt-0.5 text-[11px] text-[color:var(--muted)]">
+                              {group.totalCount}{" "}
+                              {group.totalCount === 1
+                                ? p.submissionSingular
+                                : p.submissionPlural}
+                            </p>
+                          </div>
+                        </button>
+
+                        {memberOpen ? (
+                          <div className="space-y-2 border-t border-[color:var(--line)] px-3 pb-3 pt-2">
+                            {group.months.map((monthGroup) => {
+                              const folderId = monthFolderId(group.memberId, monthGroup.monthKey);
+                              const monthOpen = expandedMonths.has(folderId);
+                              return (
+                                <div
+                                  key={folderId}
+                                  className="border border-[color:var(--line)] bg-white"
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      toggleMonth(group.memberId, monthGroup.monthKey)
+                                    }
+                                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+                                  >
+                                    <span
+                                      className="text-xs text-[color:var(--muted)]"
+                                      aria-hidden
+                                    >
+                                      {monthOpen ? "▾" : "▸"}
+                                    </span>
+                                    <span className="text-base" aria-hidden>
+                                      📁
+                                    </span>
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-sm font-semibold capitalize text-[color:var(--ink)]">
+                                        {formatMonthLabel(monthGroup.monthKey, locale)}
+                                      </p>
+                                      <p className="text-[11px] text-[color:var(--muted)]">
+                                        {monthGroup.submissions.length}{" "}
+                                        {monthGroup.submissions.length === 1
+                                          ? p.submissionSingular
+                                          : p.submissionPlural}
+                                      </p>
+                                    </div>
+                                  </button>
+                                  {monthOpen ? (
+                                    <ul className="space-y-2 border-t border-[color:var(--line)]/60 px-2 pb-2 pt-2">
+                                      {monthGroup.submissions.map((submission) =>
+                                        renderSubmissionCard(submission, true),
+                                      )}
+                                    </ul>
+                                  ) : null}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </section>
+                    );
+                  })}
+                </div>
               </section>
             ) : null}
           </div>
