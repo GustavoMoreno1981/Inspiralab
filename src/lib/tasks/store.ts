@@ -624,221 +624,275 @@ async function readLegacyTasksSupabaseRaw(): Promise<StoredBoard> {
   return { members, activities: normalizeActivities(activities), bank: [] };
 }
 
+function toSqlDate(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  return trimmed;
+}
+
+function isForeignKeyViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code: string }).code === "23503"
+  );
+}
+
+async function deleteOrphans(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  table: "team_members" | "activities" | "tasks" | "subtasks" | "task_bank",
+  payloadIds: Set<string>,
+  options?: { skipForeignKeyForMembers?: boolean },
+) {
+  const { data, error } = await supabase.from(table).select("id");
+  if (error) throw error;
+
+  for (const row of data || []) {
+    const id = String((row as { id: string }).id);
+    if (payloadIds.has(id)) continue;
+
+    const { error: deleteError } = await supabase.from(table).delete().eq("id", id);
+    if (!deleteError) continue;
+    if (options?.skipForeignKeyForMembers && isForeignKeyViolation(deleteError)) continue;
+    throw deleteError;
+  }
+}
+
+function buildMemberRows(members: StoredMember[]) {
+  return members.map((member) => ({
+    id: member.id,
+    name: member.name,
+    role: member.role || "",
+    email: member.email || "",
+    photo: member.photo || "",
+    phone_country_code: member.phoneCountryCode || "+57",
+    phone: member.phone || "",
+    access_role: member.accessRole === "admin" ? "admin" : "member",
+    can_login: Boolean(member.canLogin),
+    password_hash: member.passwordHash || "",
+    created_at: member.createdAt || new Date().toISOString(),
+  }));
+}
+
+async function upsertMemberRows(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  memberRows: ReturnType<typeof buildMemberRows>,
+) {
+  if (!memberRows.length) return;
+
+  let { error } = await supabase.from("team_members").upsert(memberRows, { onConflict: "id" });
+  if (error && (error.code === "PGRST204" || String(error.message || "").includes("phone"))) {
+    ({ error } = await supabase.from("team_members").upsert(
+      memberRows.map(({ phone_country_code: _c, phone: _p, ...rest }) => rest),
+      { onConflict: "id" },
+    ));
+  }
+  if (
+    error &&
+    (error.code === "PGRST204" ||
+      String(error.message || "").includes("password_hash") ||
+      String(error.message || "").includes("access_role") ||
+      String(error.message || "").includes("can_login"))
+  ) {
+    ({ error } = await supabase.from("team_members").upsert(
+      memberRows.map(({ access_role: _a, can_login: _c, password_hash: _p, ...rest }) => rest),
+      { onConflict: "id" },
+    ));
+  }
+  if (error) throw error;
+}
+
+function buildActivityRows(activities: Activity[]) {
+  return activities.map((activity) => ({
+    id: activity.id,
+    title: activity.title,
+    date: toSqlDate(activity.date) || new Date().toISOString().slice(0, 10),
+    finished_date: toSqlDate(activity.finishedDate),
+    process_url: activity.processUrl || "",
+    deliverable_url: activity.deliverableUrl || "",
+    status: activity.status,
+    assignee_ids: activity.assigneeIds || [],
+    notes: activity.notes || [],
+    review_messages: activity.reviewMessages || [],
+    date_extensions: activity.dateExtensions || [],
+    created_at: activity.createdAt || new Date().toISOString(),
+    updated_at: activity.updatedAt || new Date().toISOString(),
+    visibility: normalizeVisibility(activity.visibility),
+    created_by_id: activity.createdById || "",
+  }));
+}
+
+async function upsertActivityRows(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  activityRows: ReturnType<typeof buildActivityRows>,
+) {
+  if (!activityRows.length) return;
+
+  let { error: activitiesError } = await supabase
+    .from("activities")
+    .upsert(activityRows, { onConflict: "id" });
+  if (
+    activitiesError &&
+    (activitiesError.code === "PGRST204" ||
+      String(activitiesError.message || "").includes("review_messages"))
+  ) {
+    ({ error: activitiesError } = await supabase.from("activities").upsert(
+      activityRows.map(({ review_messages: _rm, ...rest }) => rest),
+      { onConflict: "id" },
+    ));
+  }
+  if (
+    activitiesError &&
+    (activitiesError.code === "PGRST204" ||
+      String(activitiesError.message || "").toLowerCase().includes("notes"))
+  ) {
+    ({ error: activitiesError } = await supabase.from("activities").upsert(
+      activityRows.map(({ notes: _n, review_messages: _rm, ...rest }) => rest),
+      { onConflict: "id" },
+    ));
+  }
+  if (
+    activitiesError &&
+    (activitiesError.code === "PGRST204" ||
+      String(activitiesError.message || "").includes("date_extensions"))
+  ) {
+    ({ error: activitiesError } = await supabase.from("activities").upsert(
+      activityRows.map(({ date_extensions: _de, ...rest }) => rest),
+      { onConflict: "id" },
+    ));
+  }
+  if (
+    activitiesError &&
+    (activitiesError.code === "PGRST204" ||
+      String(activitiesError.message || "").includes("visibility") ||
+      String(activitiesError.message || "").includes("created_by_id"))
+  ) {
+    ({ error: activitiesError } = await supabase.from("activities").upsert(
+      activityRows.map(
+        ({
+          visibility: _v,
+          created_by_id: _c,
+          notes: _n,
+          review_messages: _rm,
+          date_extensions: _de,
+          ...rest
+        }) => rest,
+      ),
+      { onConflict: "id" },
+    ));
+  }
+  if (activitiesError) throw activitiesError;
+}
+
 async function writeTasksSupabaseRaw(board: StoredBoard) {
   const supabase = getSupabaseAdmin();
 
-  const { error: deleteSubtasksError } = await supabase
-    .from("subtasks")
-    .delete()
-    .neq("id", "__never__");
-  if (deleteSubtasksError) throw deleteSubtasksError;
+  // Integrantes: upsert (no borrar masivo — billing_submissions referencia team_members).
+  await upsertMemberRows(supabase, buildMemberRows(board.members));
+  await deleteOrphans(
+    supabase,
+    "team_members",
+    new Set(board.members.map((member) => member.id)),
+    { skipForeignKeyForMembers: true },
+  );
 
-  const { error: deleteTasksError } = await supabase.from("tasks").delete().neq("id", "__never__");
-  if (deleteTasksError) throw deleteTasksError;
+  const activityRows = buildActivityRows(board.activities);
+  await upsertActivityRows(supabase, activityRows);
+  await deleteOrphans(
+    supabase,
+    "activities",
+    new Set(board.activities.map((activity) => activity.id)),
+  );
 
-  const { error: deleteActivitiesError } = await supabase
-    .from("activities")
-    .delete()
-    .neq("id", "__never__");
-  if (deleteActivitiesError) {
-    // Si no existe activities, el SQL de migración no se corrió.
-    throw new Error(
-      "Falta la tabla activities. Ejecuta supabase/migrate-activities-hierarchy.sql en Supabase.",
-    );
+  const taskRows = board.activities.flatMap((activity) =>
+    activity.tasks.map((task, index) => {
+      const status = normalizeItemStatus(task.status, task.done);
+      return {
+        id: task.id,
+        activity_id: activity.id,
+        title: task.title,
+        status,
+        done: status === "done",
+        url: task.url || "",
+        position: index,
+      };
+    }),
+  );
+
+  if (taskRows.length) {
+    const { error: tasksError } = await supabase
+      .from("tasks")
+      .upsert(taskRows, { onConflict: "id" });
+    if (tasksError) throw tasksError;
   }
+  await deleteOrphans(supabase, "tasks", new Set(taskRows.map((task) => task.id)));
 
-  const { error: deleteMembersError } = await supabase
-    .from("team_members")
-    .delete()
-    .neq("id", "__never__");
-  if (deleteMembersError) throw deleteMembersError;
-
-  if (board.members.length) {
-    const memberRows = board.members.map((member) => ({
-      id: member.id,
-      name: member.name,
-      role: member.role || "",
-      email: member.email || "",
-      photo: member.photo || "",
-      phone_country_code: member.phoneCountryCode || "+57",
-      phone: member.phone || "",
-      access_role: member.accessRole === "admin" ? "admin" : "member",
-      can_login: Boolean(member.canLogin),
-      password_hash: member.passwordHash || "",
-      created_at: member.createdAt || new Date().toISOString(),
-    }));
-
-    let { error } = await supabase.from("team_members").insert(memberRows);
-    if (error && (error.code === "PGRST204" || String(error.message || "").includes("phone"))) {
-      ({ error } = await supabase.from("team_members").insert(
-        memberRows.map(({ phone_country_code: _c, phone: _p, ...rest }) => rest),
-      ));
-    }
-    if (
-      error &&
-      (error.code === "PGRST204" ||
-        String(error.message || "").includes("password_hash") ||
-        String(error.message || "").includes("access_role") ||
-        String(error.message || "").includes("can_login"))
-    ) {
-      ({ error } = await supabase.from("team_members").insert(
-        memberRows.map(
-          ({ access_role: _a, can_login: _c, password_hash: _p, ...rest }) => rest,
-        ),
-      ));
-    }
-    if (error) throw error;
-  }
-
-  if (board.activities.length) {
-    const activityRows = board.activities.map((activity) => ({
-      id: activity.id,
-      title: activity.title,
-      date: toSqlDate(activity.date) || new Date().toISOString().slice(0, 10),
-      finished_date: toSqlDate(activity.finishedDate),
-      process_url: activity.processUrl || "",
-      deliverable_url: activity.deliverableUrl || "",
-      status: activity.status,
-      assignee_ids: activity.assigneeIds || [],
-      notes: activity.notes || [],
-      review_messages: activity.reviewMessages || [],
-      date_extensions: activity.dateExtensions || [],
-      created_at: activity.createdAt || new Date().toISOString(),
-      updated_at: activity.updatedAt || new Date().toISOString(),
-      visibility: normalizeVisibility(activity.visibility),
-      created_by_id: activity.createdById || "",
-    }));
-
-    let { error: activitiesError } = await supabase.from("activities").insert(activityRows);
-    if (
-      activitiesError &&
-      (activitiesError.code === "PGRST204" ||
-        String(activitiesError.message || "").includes("review_messages"))
-    ) {
-      ({ error: activitiesError } = await supabase.from("activities").insert(
-        activityRows.map(({ review_messages: _rm, ...rest }) => rest),
-      ));
-    }
-    if (
-      activitiesError &&
-      (activitiesError.code === "PGRST204" ||
-        String(activitiesError.message || "").toLowerCase().includes("notes"))
-    ) {
-      ({ error: activitiesError } = await supabase.from("activities").insert(
-        activityRows.map(({ notes: _n, review_messages: _rm, ...rest }) => rest),
-      ));
-    }
-    if (
-      activitiesError &&
-      (activitiesError.code === "PGRST204" ||
-        String(activitiesError.message || "").includes("date_extensions"))
-    ) {
-      ({ error: activitiesError } = await supabase.from("activities").insert(
-        activityRows.map(({ date_extensions: _de, ...rest }) => rest),
-      ));
-    }
-    if (
-      activitiesError &&
-      (activitiesError.code === "PGRST204" ||
-        String(activitiesError.message || "").includes("visibility") ||
-        String(activitiesError.message || "").includes("created_by_id"))
-    ) {
-      ({ error: activitiesError } = await supabase.from("activities").insert(
-        activityRows.map(
-          ({
-            visibility: _v,
-            created_by_id: _c,
-            notes: _n,
-            review_messages: _rm,
-            date_extensions: _de,
-            ...rest
-          }) => rest,
-        ),
-      ));
-    }
-    if (activitiesError) throw activitiesError;
-
-    const taskRows = board.activities.flatMap((activity) =>
-      activity.tasks.map((task, index) => {
-        const status = normalizeItemStatus(task.status, task.done);
+  const subtaskRows = board.activities.flatMap((activity) =>
+    activity.tasks.flatMap((task) =>
+      task.subtasks.map((subtask, index) => {
+        const status = normalizeItemStatus(subtask.status, subtask.done);
         return {
-          id: task.id,
-          activity_id: activity.id,
-          title: task.title,
+          id: subtask.id,
+          task_id: task.id,
+          title: subtask.title,
           status,
           done: status === "done",
-          url: task.url || "",
+          url: subtask.url || "",
           position: index,
         };
       }),
-    );
+    ),
+  );
 
-    if (taskRows.length) {
-      const { error: tasksError } = await supabase.from("tasks").insert(taskRows);
-      if (tasksError) throw tasksError;
-    }
-
-    const subtaskRows = board.activities.flatMap((activity) =>
-      activity.tasks.flatMap((task) =>
-        task.subtasks.map((subtask, index) => {
-          const status = normalizeItemStatus(subtask.status, subtask.done);
-          return {
-            id: subtask.id,
-            task_id: task.id,
-            title: subtask.title,
-            status,
-            done: status === "done",
-            url: subtask.url || "",
-            position: index,
-          };
-        }),
-      ),
-    );
-
-    if (subtaskRows.length) {
-      const { error: subtasksError } = await supabase.from("subtasks").insert(subtaskRows);
-      if (subtasksError) throw subtasksError;
-    }
+  if (subtaskRows.length) {
+    const { error: subtasksError } = await supabase
+      .from("subtasks")
+      .upsert(subtaskRows, { onConflict: "id" });
+    if (subtasksError) throw subtasksError;
   }
+  await deleteOrphans(supabase, "subtasks", new Set(subtaskRows.map((subtask) => subtask.id)));
 
-  // Banco de ideas (opcional hasta correr add-task-bank.sql).
-  const { error: deleteBankError } = await supabase
-    .from("task_bank")
-    .delete()
-    .neq("id", "__never__");
-  if (deleteBankError) {
-    console.warn(
-      "Tabla task_bank no disponible. Ejecuta supabase/add-task-bank.sql para persistir el banco.",
-      deleteBankError.message,
-    );
-  } else if (board.bank.length) {
+  const bankRows = board.bank.map((item) => ({
+    id: item.id,
+    title: item.title,
+    notes: item.notes || "",
+    owner_id: item.ownerId || "",
+    suggested_assignee_ids: item.suggestedAssigneeIds || [],
+    converted_activity_id: item.convertedActivityId || null,
+    created_at: item.createdAt || new Date().toISOString(),
+    updated_at: item.updatedAt || new Date().toISOString(),
+    visibility: normalizeVisibility(item.visibility),
+    created_by_id: item.createdById || item.ownerId || "",
+  }));
 
-    const bankRows = board.bank.map((item) => ({
-      id: item.id,
-      title: item.title,
-      notes: item.notes || "",
-      owner_id: item.ownerId || "",
-      suggested_assignee_ids: item.suggestedAssigneeIds || [],
-      converted_activity_id: item.convertedActivityId || null,
-      created_at: item.createdAt || new Date().toISOString(),
-      updated_at: item.updatedAt || new Date().toISOString(),
-      visibility: normalizeVisibility(item.visibility),
-      created_by_id: item.createdById || item.ownerId || "",
-    }));
-    const { error: bankError } = await supabase.from("task_bank").insert(bankRows);
+  if (bankRows.length) {
+    let { error: bankError } = await supabase
+      .from("task_bank")
+      .upsert(bankRows, { onConflict: "id" });
     if (
       bankError &&
       (bankError.code === "PGRST204" ||
         String(bankError.message || "").includes("visibility") ||
         String(bankError.message || "").includes("created_by_id"))
     ) {
-      const { error: retryError } = await supabase.from("task_bank").insert(
+      ({ error: bankError } = await supabase.from("task_bank").upsert(
         bankRows.map(({ visibility: _v, created_by_id: _c, ...rest }) => rest),
-      );
-      if (retryError) throw retryError;
-    } else if (bankError) {
-      throw bankError;
+        { onConflict: "id" },
+      ));
     }
+    if (bankError) throw bankError;
+  }
+
+  try {
+    await deleteOrphans(supabase, "task_bank", new Set(board.bank.map((item) => item.id)));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(
+      "Tabla task_bank no disponible. Ejecuta supabase/add-task-bank.sql para persistir el banco.",
+      message,
+    );
   }
 }
 
@@ -902,13 +956,6 @@ function preservePrivateBankOnWrite(
     title: existing.title,
     notes: existing.notes,
   };
-}
-
-function toSqlDate(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
-  return trimmed;
 }
 
 export async function readTasksBoardUnfiltered(): Promise<TasksBoard> {

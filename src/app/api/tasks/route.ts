@@ -48,7 +48,11 @@ export async function PUT(request: Request) {
     return NextResponse.json({ ok: true });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "No se pudo guardar en Supabase";
+      error instanceof Error
+        ? error.message
+        : error && typeof error === "object" && "message" in error
+          ? String((error as { message?: string }).message || "No se pudo guardar en Supabase")
+          : "No se pudo guardar en Supabase";
     console.error("writeTasksBoard failed:", error);
     return NextResponse.json({ error: message }, { status: 500 });
   }
