@@ -7,6 +7,9 @@ export type BillingSubmission = {
   periodEnd: string;
   fileUrl: string;
   fileName: string;
+  paymentReceiptUrl: string;
+  paymentReceiptName: string;
+  paymentReceiptAt: string | null;
   activities: string[];
   notes: string;
   status: BillingSubmissionStatus;
@@ -50,6 +53,12 @@ export function normalizeSubmission(item: Partial<BillingSubmission>): BillingSu
     periodEnd: String(item.periodEnd || ""),
     fileUrl: String(item.fileUrl || ""),
     fileName: String(item.fileName || ""),
+    paymentReceiptUrl: String(item.paymentReceiptUrl || ""),
+    paymentReceiptName: String(item.paymentReceiptName || ""),
+    paymentReceiptAt:
+      typeof item.paymentReceiptAt === "string" && item.paymentReceiptAt
+        ? item.paymentReceiptAt
+        : null,
     activities: Array.isArray(item.activities)
       ? item.activities.map((line) => String(line).trim()).filter(Boolean)
       : [],
@@ -62,6 +71,11 @@ export function normalizeSubmission(item: Partial<BillingSubmission>): BillingSu
     updatedAt: String(item.updatedAt || now),
   };
 }
+
+export type UpdateBillingPaymentReceiptInput = {
+  paymentReceiptUrl: string;
+  paymentReceiptName: string;
+};
 
 export type CreateBillingSubmissionInput = {
   memberId: string;

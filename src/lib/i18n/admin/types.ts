@@ -711,5 +711,16 @@ export type AdminDictionary = {
     deleteConfirm: string;
     deleteError: string;
     deletedSuccess: string;
+    paymentReceiptTitle: string;
+    paymentReceiptHint: string;
+    paymentReceiptUpload: string;
+    paymentReceiptReplace: string;
+    paymentReceiptUploading: string;
+    paymentReceiptSent: string;
+    paymentReceiptSaved: string;
+    paymentReceiptUpdated: string;
+    paymentReceiptSaveError: string;
+    viewPaymentReceipt: string;
+    paymentReceiptPending: string;
   };
 };

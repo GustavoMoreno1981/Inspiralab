@@ -736,5 +736,17 @@ export const adminEn: AdminDictionary = {
     deleteConfirm: "Delete this billing account and its activities?",
     deleteError: "Could not delete",
     deletedSuccess: "Billing account deleted",
+    paymentReceiptTitle: "Payment receipt",
+    paymentReceiptHint:
+      "When you receive payment for this period, upload your proof here (transfer, deposit, etc.).",
+    paymentReceiptUpload: "Upload payment receipt",
+    paymentReceiptReplace: "Replace receipt",
+    paymentReceiptUploading: "Uploading…",
+    paymentReceiptSent: "Receipt submitted",
+    paymentReceiptSaved: "Payment receipt saved",
+    paymentReceiptUpdated: "Payment receipt updated",
+    paymentReceiptSaveError: "Could not save payment receipt",
+    viewPaymentReceipt: "View payment receipt",
+    paymentReceiptPending: "No receipt",
   },
 };

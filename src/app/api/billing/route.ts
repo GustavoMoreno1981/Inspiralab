@@ -5,6 +5,7 @@ import {
   deleteBillingSubmission,
   readBillingBoard,
   updateBillingSubmissionActivities,
+  updateBillingPaymentReceipt,
 } from "@/lib/billing/store";
 import type { CreateBillingSubmissionInput, BillingSubmission } from "@/lib/billing/types";
 import { requireAdmin, requireModule } from "@/lib/auth/server";
@@ -41,6 +42,8 @@ function sanitizeSubmissionForRole(
     ...submission,
     fileUrl: "",
     fileName: "",
+    paymentReceiptUrl: "",
+    paymentReceiptName: "",
   };
 }
 
@@ -143,7 +146,38 @@ export async function PATCH(request: Request) {
   const body = (await request.json().catch(() => null)) as {
     action?: string;
     activities?: string[];
+    paymentReceiptUrl?: string;
+    paymentReceiptName?: string;
   } | null;
+
+  if (body?.action === "uploadPaymentReceipt") {
+    const session = await requireModule("cuentas-cobro");
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (!body.paymentReceiptUrl?.trim()) {
+      return NextResponse.json({ error: "Falta el archivo del recibo de pago" }, { status: 400 });
+    }
+
+    try {
+      const submission = await updateBillingPaymentReceipt(id, {
+        paymentReceiptUrl: body.paymentReceiptUrl.trim(),
+        paymentReceiptName: body.paymentReceiptName?.trim() || "recibo-de-pago",
+      });
+      const isAdmin = session.role === "admin";
+      return NextResponse.json({
+        ok: true,
+        submission: sanitizeSubmissionForRole(submission, isAdmin),
+      });
+    } catch (error) {
+      console.error("updateBillingPaymentReceipt failed:", error);
+      return NextResponse.json(
+        { error: billingSaveErrorMessage(error) },
+        { status: 500 },
+      );
+    }
+  }
 
   if (body?.action === "archive") {
     const session = await requireAdmin();

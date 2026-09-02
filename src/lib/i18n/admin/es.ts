@@ -738,5 +738,17 @@ export const adminEs: AdminDictionary = {
     deleteConfirm: "¿Eliminar esta cuenta de cobro y sus actividades?",
     deleteError: "No se pudo eliminar",
     deletedSuccess: "Cuenta de cobro eliminada",
+    paymentReceiptTitle: "Recibo de pago",
+    paymentReceiptHint:
+      "Cuando recibas el pago de esta quincena, sube aquí el comprobante (transferencia, consignación, etc.).",
+    paymentReceiptUpload: "Subir recibo de pago",
+    paymentReceiptReplace: "Cambiar recibo",
+    paymentReceiptUploading: "Subiendo…",
+    paymentReceiptSent: "Recibo enviado",
+    paymentReceiptSaved: "Recibo de pago registrado",
+    paymentReceiptUpdated: "Recibo de pago actualizado",
+    paymentReceiptSaveError: "No se pudo guardar el recibo de pago",
+    viewPaymentReceipt: "Ver recibo de pago",
+    paymentReceiptPending: "Sin recibo",
   },
 };

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BillingAssistant } from "@/components/admin/BillingAssistant";
 import { BillingActivitiesEditor } from "@/components/admin/BillingActivitiesEditor";
+import { BillingPaymentReceiptUpload } from "@/components/admin/BillingPaymentReceiptUpload";
 import { AdminFooter } from "@/components/admin/AdminFooter";
 import { AdminLanguageSwitcher } from "@/components/admin/AdminLanguageSwitcher";
 import { MemberAvatar } from "@/components/admin/MemberAvatar";
@@ -148,6 +149,13 @@ export function BillingBoard() {
           editable={!submission.archivedAt}
           onUpdated={load}
         />
+        {!submission.archivedAt ? (
+          <BillingPaymentReceiptUpload
+            submissionId={submission.id}
+            hasReceipt={Boolean(submission.paymentReceiptAt)}
+            onUploaded={load}
+          />
+        ) : null}
       </li>
     );
   }

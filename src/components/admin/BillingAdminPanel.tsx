@@ -208,23 +208,41 @@ export function BillingAdminPanel({ onBack }: BillingAdminPanelProps) {
               </p>
             ) : null}
           </div>
-          {submission.fileUrl ? (
+          {submission.fileUrl || submission.paymentReceiptUrl ? (
             <div className="flex shrink-0 flex-col gap-1">
-              <a
-                href={submission.fileUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
-              >
-                {p.viewInvoice}
-              </a>
-              <button
-                type="button"
-                onClick={() => setShareSubmission(submission)}
-                className="bg-[#25D366] px-2 py-1 text-[10px] font-semibold text-white"
-              >
-                {p.shareWhatsAppButton}
-              </button>
+              {submission.fileUrl ? (
+                <a
+                  href={submission.fileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="border border-[color:var(--line)] px-2 py-1 text-[10px] font-semibold"
+                >
+                  {p.viewInvoice}
+                </a>
+              ) : null}
+              {submission.paymentReceiptUrl ? (
+                <a
+                  href={submission.paymentReceiptUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-800"
+                >
+                  {p.viewPaymentReceipt}
+                </a>
+              ) : (
+                <span className="border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-800">
+                  {p.paymentReceiptPending}
+                </span>
+              )}
+              {submission.fileUrl ? (
+                <button
+                  type="button"
+                  onClick={() => setShareSubmission(submission)}
+                  className="bg-[#25D366] px-2 py-1 text-[10px] font-semibold text-white"
+                >
+                  {p.shareWhatsAppButton}
+                </button>
+              ) : null}
             </div>
           ) : null}
         </div>

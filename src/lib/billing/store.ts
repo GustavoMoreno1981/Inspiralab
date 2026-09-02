@@ -9,6 +9,7 @@ import {
   type BillingBoard,
   type BillingSubmission,
   type CreateBillingSubmissionInput,
+  type UpdateBillingPaymentReceiptInput,
 } from "./types";
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -21,6 +22,9 @@ type SubmissionRow = {
   period_end: string;
   file_url: string;
   file_name: string;
+  payment_receipt_url?: string | null;
+  payment_receipt_name?: string | null;
+  payment_receipt_at?: string | null;
   activities: string[] | null;
   notes: string | null;
   status: string | null;
@@ -56,6 +60,9 @@ function rowToSubmission(row: SubmissionRow): BillingSubmission {
     periodEnd: row.period_end,
     fileUrl: row.file_url,
     fileName: row.file_name,
+    paymentReceiptUrl: row.payment_receipt_url || "",
+    paymentReceiptName: row.payment_receipt_name || "",
+    paymentReceiptAt: row.payment_receipt_at || null,
     activities: Array.isArray(row.activities) ? row.activities : [],
     notes: row.notes || "",
     status:
@@ -75,6 +82,9 @@ function submissionToRow(item: BillingSubmission): SubmissionRow {
     period_end: item.periodEnd,
     file_url: item.fileUrl,
     file_name: item.fileName,
+    payment_receipt_url: item.paymentReceiptUrl,
+    payment_receipt_name: item.paymentReceiptName,
+    payment_receipt_at: item.paymentReceiptAt,
     activities: item.activities,
     notes: item.notes,
     status: item.status,
@@ -128,7 +138,21 @@ export async function createBillingSubmission(
 
   if (isSupabaseConfigured()) {
     const supabase = getSupabaseAdmin();
-    const { error } = await supabase.from("billing_submissions").insert(submissionToRow(submission));
+    let { error } = await supabase.from("billing_submissions").insert(submissionToRow(submission));
+    if (
+      error &&
+      (error.code === "PGRST204" ||
+        String(error.message || "").includes("payment_receipt"))
+    ) {
+      const row = submissionToRow(submission);
+      const {
+        payment_receipt_url: _u,
+        payment_receipt_name: _n,
+        payment_receipt_at: _a,
+        ...legacyRow
+      } = row;
+      ({ error } = await supabase.from("billing_submissions").insert(legacyRow));
+    }
     if (error) throw error;
     return submission;
   }
@@ -213,6 +237,82 @@ export async function updateBillingSubmissionActivities(
       throw new Error("No se pueden editar cuentas archivadas");
     }
     updated = { ...item, activities: normalized, updatedAt: now };
+    return updated;
+  });
+  if (!updated) {
+    throw new Error("Cuenta de cobro no encontrada");
+  }
+  await writeLocal({ submissions });
+  return updated;
+}
+
+export async function updateBillingPaymentReceipt(
+  id: string,
+  input: UpdateBillingPaymentReceiptInput,
+): Promise<BillingSubmission> {
+  const paymentReceiptUrl = String(input.paymentReceiptUrl || "").trim();
+  const paymentReceiptName = String(input.paymentReceiptName || "").trim() || "recibo-de-pago";
+  if (!paymentReceiptUrl) {
+    throw new Error("Falta el archivo del recibo de pago");
+  }
+
+  const now = new Date().toISOString();
+
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabaseAdmin();
+    const { data: existing, error: readError } = await supabase
+      .from("billing_submissions")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (readError) throw readError;
+    if (!existing) throw new Error("Cuenta de cobro no encontrada");
+    if (existing.archived_at) {
+      throw new Error("No se puede subir recibo en cuentas archivadas");
+    }
+
+    let { data, error } = await supabase
+      .from("billing_submissions")
+      .update({
+        payment_receipt_url: paymentReceiptUrl,
+        payment_receipt_name: paymentReceiptName,
+        payment_receipt_at: now,
+        status: "paid",
+        updated_at: now,
+      })
+      .eq("id", id)
+      .select("*")
+      .single();
+
+    if (
+      error &&
+      (error.code === "PGRST204" ||
+        String(error.message || "").includes("payment_receipt"))
+    ) {
+      throw new Error(
+        "Supabase aún no tiene columnas de recibo de pago. Ejecuta supabase/add-billing-payment-receipt.sql.",
+      );
+    }
+    if (error) throw error;
+    return rowToSubmission(data as SubmissionRow);
+  }
+
+  const board = await readLocal();
+  let updated: BillingSubmission | null = null;
+  const submissions = board.submissions.map((item) => {
+    if (item.id !== id) return item;
+    if (item.archivedAt) {
+      throw new Error("No se puede subir recibo en cuentas archivadas");
+    }
+    updated = {
+      ...item,
+      paymentReceiptUrl,
+      paymentReceiptName,
+      paymentReceiptAt: now,
+      status: "paid",
+      updatedAt: now,
+    };
     return updated;
   });
   if (!updated) {
