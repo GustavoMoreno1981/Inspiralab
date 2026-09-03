@@ -110,6 +110,7 @@ function normalizeSubtask(subtask: Partial<Subtask> & { id: string }): Subtask {
   return {
     id: subtask.id,
     title: subtask.title || "",
+    objective: subtask.objective || "",
     status,
     done: status === "done",
     url: subtask.url || "",
@@ -125,6 +126,7 @@ function normalizeTask(
     id: task.id,
     activityId: task.activityId || activityId,
     title: task.title || "",
+    objective: task.objective || "",
     status,
     done: status === "done",
     url: task.url || "",
@@ -361,11 +363,13 @@ export function TasksBoard() {
   const [newFirstTaskUrl, setNewFirstTaskUrl] = useState("");
   const [newFirstSubtask, setNewFirstSubtask] = useState("");
   const [newFirstSubtaskUrl, setNewFirstSubtaskUrl] = useState("");
-  const [newTaskDraft, setNewTaskDraft] = useState<Record<string, { title: string; url: string }>>(
+  const [newTaskDraft, setNewTaskDraft] = useState<
+    Record<string, { title: string; objective: string; url: string }>
+  >(
     {},
   );
   const [newSubtaskDraft, setNewSubtaskDraft] = useState<
-    Record<string, { title: string; url: string }>
+    Record<string, { title: string; objective: string; url: string }>
   >({});
   const [newVisibility, setNewVisibility] = useState<ItemVisibility>("public");
   const [newPrivateSetup, setNewPrivateSetup] = useState(() => createEmptyPrivateSetup());
@@ -870,6 +874,7 @@ export function TasksBoard() {
             {
               id: createId("sub"),
               title: newFirstSubtask.trim(),
+              objective: "",
               status: "waiting",
               done: false,
               url: newFirstSubtaskUrl.trim(),
@@ -880,6 +885,7 @@ export function TasksBoard() {
         id: taskId,
         activityId,
         title: newFirstTask.trim(),
+        objective: "",
         status: "waiting",
         done: false,
         url: newFirstTaskUrl.trim(),
@@ -1192,7 +1198,7 @@ export function TasksBoard() {
   }
 
   function addTask(activityId: string) {
-    const draft = newTaskDraft[activityId] || { title: "", url: "" };
+    const draft = newTaskDraft[activityId] || { title: "", objective: "", url: "" };
     const title = draft.title.trim();
     if (!title) {
       toast.error(t.tasks.toast.taskTitleRequired);
@@ -1209,6 +1215,7 @@ export function TasksBoard() {
             id: createId("task"),
             activityId,
             title,
+            objective: draft.objective.trim(),
             status: "waiting",
             done: false,
             url: draft.url.trim(),
@@ -1218,7 +1225,10 @@ export function TasksBoard() {
       },
       t.tasks.toast.taskAdded,
     );
-    setNewTaskDraft((prev) => ({ ...prev, [activityId]: { title: "", url: "" } }));
+    setNewTaskDraft((prev) => ({
+      ...prev,
+      [activityId]: { title: "", objective: "", url: "" },
+    }));
     setExpandedActivityId(activityId);
   }
 
@@ -1436,7 +1446,7 @@ export function TasksBoard() {
   }
 
   function addSubtask(activityId: string, taskId: string) {
-    const draft = newSubtaskDraft[taskId] || { title: "", url: "" };
+    const draft = newSubtaskDraft[taskId] || { title: "", objective: "", url: "" };
     const title = draft.title.trim();
     if (!title) {
       toast.error(t.tasks.toast.subtaskTitleRequired);
@@ -1456,6 +1466,7 @@ export function TasksBoard() {
           {
             id: createId("sub"),
             title,
+            objective: draft.objective.trim(),
             status: "waiting",
             done: false,
             url: draft.url.trim(),
@@ -1464,7 +1475,10 @@ export function TasksBoard() {
       },
       t.tasks.toast.subtaskAdded,
     );
-    setNewSubtaskDraft((prev) => ({ ...prev, [taskId]: { title: "", url: "" } }));
+    setNewSubtaskDraft((prev) => ({
+      ...prev,
+      [taskId]: { title: "", objective: "", url: "" },
+    }));
     setExpandedTaskId(taskId);
   }
 
@@ -2521,7 +2535,7 @@ export function TasksBoard() {
                                             <input
                                               aria-label="Título de la tarea"
                                               defaultValue={str(task.title)}
-                                              key={`task-title-${task.id}-${task.status}-${task.url}`}
+                                              key={`task-title-${task.id}-${task.status}-${task.url}-${task.objective}`}
                                               onBlur={(e) => {
                                                 const title = e.target.value.trim();
                                                 if (!title) {
@@ -2603,6 +2617,18 @@ export function TasksBoard() {
                                               })
                                             }
                                             className="w-full border border-[color:var(--line)] bg-white px-2 py-1.5 text-xs"
+                                          />
+                                          <textarea
+                                            aria-label={t.tasks.taskObjective}
+                                            placeholder={t.tasks.taskObjectivePlaceholder}
+                                            value={str(task.objective)}
+                                            onChange={(e) =>
+                                              updateTaskFields(activity.id, task.id, {
+                                                objective: e.target.value,
+                                              })
+                                            }
+                                            rows={2}
+                                            className="w-full resize-y border border-[color:var(--line)] bg-white px-2 py-1.5 text-xs"
                                           />
                                           {task.url ? (
                                             <a
@@ -2690,7 +2716,7 @@ export function TasksBoard() {
                                                     <input
                                                       aria-label="Título de la subtarea"
                                                       defaultValue={str(subtask.title)}
-                                                      key={`sub-title-${subtask.id}-${subtask.status}-${subtask.url}`}
+                                                      key={`sub-title-${subtask.id}-${subtask.status}-${subtask.url}-${subtask.objective}`}
                                                       onBlur={(e) => {
                                                         const title = e.target.value.trim();
                                                         if (!title) {
@@ -2775,6 +2801,21 @@ export function TasksBoard() {
                                                     }
                                                     className="w-full border border-[color:var(--line)] px-2 py-1.5 text-xs"
                                                   />
+                                                  <textarea
+                                                    aria-label={t.tasks.subtaskObjective}
+                                                    placeholder={t.tasks.subtaskObjectivePlaceholder}
+                                                    value={str(subtask.objective)}
+                                                    onChange={(e) =>
+                                                      updateSubtask(
+                                                        activity.id,
+                                                        task.id,
+                                                        subtask.id,
+                                                        { objective: e.target.value },
+                                                      )
+                                                    }
+                                                    rows={2}
+                                                    className="w-full resize-y border border-[color:var(--line)] px-2 py-1.5 text-xs"
+                                                  />
                                                   {subtask.url ? (
                                                     <a
                                                       href={subtask.url}
@@ -2789,7 +2830,7 @@ export function TasksBoard() {
                                               );
                                               })}
                                             </ul>
-                                            <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                                            <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
                                               <input
                                                 value={str(newSubtaskDraft[task.id]?.title)}
                                                 onChange={(e) =>
@@ -2797,6 +2838,7 @@ export function TasksBoard() {
                                                     ...prev,
                                                     [task.id]: {
                                                       title: e.target.value,
+                                                      objective: prev[task.id]?.objective || "",
                                                       url: prev[task.id]?.url || "",
                                                     },
                                                   }))
@@ -2811,6 +2853,21 @@ export function TasksBoard() {
                                                 }}
                                               />
                                               <input
+                                                value={str(newSubtaskDraft[task.id]?.objective)}
+                                                onChange={(e) =>
+                                                  setNewSubtaskDraft((prev) => ({
+                                                    ...prev,
+                                                    [task.id]: {
+                                                      title: prev[task.id]?.title || "",
+                                                      objective: e.target.value,
+                                                      url: prev[task.id]?.url || "",
+                                                    },
+                                                  }))
+                                                }
+                                                placeholder={t.tasks.subtaskObjectivePlaceholder}
+                                                className="border border-[color:var(--line)] px-3 py-2 text-sm"
+                                              />
+                                              <input
                                                 type="url"
                                                 value={str(newSubtaskDraft[task.id]?.url)}
                                                 onChange={(e) =>
@@ -2818,6 +2875,7 @@ export function TasksBoard() {
                                                     ...prev,
                                                     [task.id]: {
                                                       title: prev[task.id]?.title || "",
+                                                      objective: prev[task.id]?.objective || "",
                                                       url: e.target.value,
                                                     },
                                                   }))
@@ -2847,7 +2905,7 @@ export function TasksBoard() {
                                     );
                                   })}
                                 </ul>
-                                <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                                <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
                                   <input
                                     value={str(newTaskDraft[activity.id]?.title)}
                                     onChange={(e) =>
@@ -2855,6 +2913,7 @@ export function TasksBoard() {
                                         ...prev,
                                         [activity.id]: {
                                           title: e.target.value,
+                                          objective: prev[activity.id]?.objective || "",
                                           url: prev[activity.id]?.url || "",
                                         },
                                       }))
@@ -2869,6 +2928,21 @@ export function TasksBoard() {
                                     }}
                                   />
                                   <input
+                                    value={str(newTaskDraft[activity.id]?.objective)}
+                                    onChange={(e) =>
+                                      setNewTaskDraft((prev) => ({
+                                        ...prev,
+                                        [activity.id]: {
+                                          title: prev[activity.id]?.title || "",
+                                          objective: e.target.value,
+                                          url: prev[activity.id]?.url || "",
+                                        },
+                                      }))
+                                    }
+                                    placeholder={t.tasks.taskObjectivePlaceholder}
+                                    className="border border-[color:var(--line)] px-3 py-2 text-sm"
+                                  />
+                                  <input
                                     type="url"
                                     value={str(newTaskDraft[activity.id]?.url)}
                                     onChange={(e) =>
@@ -2876,6 +2950,7 @@ export function TasksBoard() {
                                         ...prev,
                                         [activity.id]: {
                                           title: prev[activity.id]?.title || "",
+                                          objective: prev[activity.id]?.objective || "",
                                           url: e.target.value,
                                         },
                                       }))

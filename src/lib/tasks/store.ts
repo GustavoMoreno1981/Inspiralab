@@ -48,6 +48,7 @@ type TaskRow = {
   id: string;
   activity_id: string;
   title: string;
+  objective?: string | null;
   status?: string | null;
   done: boolean;
   url?: string | null;
@@ -58,6 +59,7 @@ type SubtaskRow = {
   id: string;
   task_id: string;
   title: string;
+  objective?: string | null;
   done: boolean;
   status?: string | null;
   url?: string | null;
@@ -226,6 +228,7 @@ function normalizeSubtask(subtask: Partial<Subtask> & { id: string }): Subtask {
   return {
     id: subtask.id,
     title: subtask.title || "",
+    objective: subtask.objective || "",
     status,
     done: status === "done",
     url: subtask.url || "",
@@ -238,6 +241,7 @@ function normalizeTask(task: Partial<Task> & { id: string; activityId: string })
     id: task.id,
     activityId: task.activityId,
     title: task.title || "",
+    objective: task.objective || "",
     status,
     done: status === "done",
     url: task.url || "",
@@ -463,6 +467,7 @@ async function readTasksSupabaseRaw(): Promise<StoredBoard> {
       normalizeSubtask({
         id: row.id,
         title: row.title,
+        objective: row.objective || "",
         status: normalizeItemStatus(row.status, row.done),
         done: row.done,
         url: row.url || "",
@@ -481,6 +486,7 @@ async function readTasksSupabaseRaw(): Promise<StoredBoard> {
         id: row.id,
         activityId: row.activity_id,
         title: row.title,
+        objective: row.objective || "",
         status: normalizeItemStatus(row.status, row.done),
         done: row.done,
         url: row.url || "",
@@ -564,6 +570,7 @@ async function readLegacyTasksSupabaseRaw(): Promise<StoredBoard> {
     id: string;
     task_id: string;
     title: string;
+    objective?: string | null;
     done: boolean;
     status?: string | null;
     url?: string | null;
@@ -587,6 +594,7 @@ async function readLegacyTasksSupabaseRaw(): Promise<StoredBoard> {
               id: sub.id,
               activityId: row.id,
               title: sub.title,
+              objective: sub.objective || "",
               status: normalizeItemStatus(sub.status, sub.done),
               done: sub.done,
               url: sub.url || "",
@@ -829,6 +837,7 @@ async function writeTasksSupabaseRaw(board: StoredBoard) {
         id: task.id,
         activity_id: activity.id,
         title: task.title,
+        objective: task.objective || "",
         status,
         done: status === "done",
         url: task.url || "",
@@ -838,9 +847,18 @@ async function writeTasksSupabaseRaw(board: StoredBoard) {
   );
 
   if (taskRows.length) {
-    const { error: tasksError } = await supabase
+    let { error: tasksError } = await supabase
       .from("tasks")
       .upsert(taskRows, { onConflict: "id" });
+    if (
+      tasksError &&
+      (tasksError.code === "PGRST204" || String(tasksError.message || "").includes("objective"))
+    ) {
+      ({ error: tasksError } = await supabase.from("tasks").upsert(
+        taskRows.map(({ objective: _o, ...rest }) => rest),
+        { onConflict: "id" },
+      ));
+    }
     if (tasksError) throw tasksError;
   }
   await deleteOrphans(supabase, "tasks", new Set(taskRows.map((task) => task.id)));
@@ -853,6 +871,7 @@ async function writeTasksSupabaseRaw(board: StoredBoard) {
           id: subtask.id,
           task_id: task.id,
           title: subtask.title,
+          objective: subtask.objective || "",
           status,
           done: status === "done",
           url: subtask.url || "",
@@ -863,9 +882,19 @@ async function writeTasksSupabaseRaw(board: StoredBoard) {
   );
 
   if (subtaskRows.length) {
-    const { error: subtasksError } = await supabase
+    let { error: subtasksError } = await supabase
       .from("subtasks")
       .upsert(subtaskRows, { onConflict: "id" });
+    if (
+      subtasksError &&
+      (subtasksError.code === "PGRST204" ||
+        String(subtasksError.message || "").includes("objective"))
+    ) {
+      ({ error: subtasksError } = await supabase.from("subtasks").upsert(
+        subtaskRows.map(({ objective: _o, ...rest }) => rest),
+        { onConflict: "id" },
+      ));
+    }
     if (subtasksError) throw subtasksError;
   }
   await deleteOrphans(supabase, "subtasks", new Set(subtaskRows.map((subtask) => subtask.id)));

@@ -575,6 +575,7 @@ export function TasksAssistant({
             {
               id: createId("sub"),
               title: createDraft.firstSubtask.trim(),
+              objective: "",
               status: "waiting",
               done: false,
               url: createDraft.firstSubtaskUrl.trim(),
@@ -585,6 +586,7 @@ export function TasksAssistant({
         id: taskId,
         activityId,
         title: createDraft.firstTask.trim(),
+        objective: "",
         status: "waiting",
         done: false,
         url: createDraft.firstTaskUrl.trim(),

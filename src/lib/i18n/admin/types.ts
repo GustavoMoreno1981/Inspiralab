@@ -131,6 +131,10 @@ export type AdminDictionary = {
     newSubtask: string;
     taskUrl: string;
     subtaskUrl: string;
+    taskObjective: string;
+    taskObjectivePlaceholder: string;
+    subtaskObjective: string;
+    subtaskObjectivePlaceholder: string;
     reorderHint: string;
     deliveryUrls: string;
     notes: string;

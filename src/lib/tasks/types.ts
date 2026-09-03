@@ -68,6 +68,8 @@ export function formatMemberPhone(member: Pick<TeamMember, "phoneCountryCode" | 
 export type Subtask = {
   id: string;
   title: string;
+  /** Objetivo/descripción breve de la subtarea (opcional). */
+  objective: string;
   /** Sincronizado con status === "done". */
   done: boolean;
   status: TaskStatus;
@@ -79,6 +81,8 @@ export type Task = {
   id: string;
   activityId: string;
   title: string;
+  /** Objetivo/descripción breve de la tarea (opcional). */
+  objective: string;
   status: TaskStatus;
   done: boolean;
   url: string;
@@ -395,10 +399,12 @@ export function redactPrivateActivity(activity: Activity): Activity {
     tasks: (activity.tasks || []).map((task) => ({
       ...task,
       title: "",
+      objective: "",
       url: "",
       subtasks: (task.subtasks || []).map((subtask) => ({
         ...subtask,
         title: "",
+        objective: "",
         url: "",
       })),
     })),
