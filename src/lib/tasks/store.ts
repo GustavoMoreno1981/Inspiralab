@@ -988,16 +988,25 @@ export async function readTasksBoardFull(): Promise<TasksBoard> {
 
 export async function writeTasksBoard(
   board: TasksBoard,
-  options?: { allowAuthEdit?: boolean },
+  options?: {
+    allowAuthEdit?: boolean;
+    deletedActivityIds?: string[];
+    deletedBankIds?: string[];
+  },
 ) {
   await enqueueWrite(async () => {
     const existing = await readStoredBoard();
     const allowAuthEdit = Boolean(options?.allowAuthEdit);
+    const explicitlyDeletedActivities = new Set(options?.deletedActivityIds || []);
+    const explicitlyDeletedBank = new Set(options?.deletedBankIds || []);
 
     const incomingActivities = normalizeActivities(board.activities || []);
     const incomingActivityIds = new Set(incomingActivities.map((activity) => activity.id));
     const preservedPrivateActivities = existing.activities.filter(
-      (activity) => isPrivateItem(activity) && !incomingActivityIds.has(activity.id),
+      (activity) =>
+        isPrivateItem(activity) &&
+        !incomingActivityIds.has(activity.id) &&
+        !explicitlyDeletedActivities.has(activity.id),
     );
 
     const nextActivities = [...incomingActivities, ...preservedPrivateActivities].map((activity) =>
@@ -1010,7 +1019,10 @@ export async function writeTasksBoard(
     const incomingBank = normalizeBank(board.bank || []);
     const incomingBankIds = new Set(incomingBank.map((item) => item.id));
     const preservedPrivateBank = (existing.bank || []).filter(
-      (item) => isPrivateItem(item) && !incomingBankIds.has(item.id),
+      (item) =>
+        isPrivateItem(item) &&
+        !incomingBankIds.has(item.id) &&
+        !explicitlyDeletedBank.has(item.id),
     );
 
     const nextBank = [...incomingBank, ...preservedPrivateBank].map((item) =>

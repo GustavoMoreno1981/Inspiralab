@@ -32,10 +32,16 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => null)) as TasksBoard | null;
+  const body = (await request.json().catch(() => null)) as (TasksBoard & {
+    _deletedActivityIds?: string[];
+    _deletedBankIds?: string[];
+  }) | null;
   if (!body || !Array.isArray(body.members) || !Array.isArray(body.activities)) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
+
+  const deletedActivityIds = Array.isArray(body._deletedActivityIds) ? body._deletedActivityIds : [];
+  const deletedBankIds = Array.isArray(body._deletedBankIds) ? body._deletedBankIds : [];
 
   const payload: TasksBoard = {
     members: body.members,
@@ -44,7 +50,11 @@ export async function PUT(request: Request) {
   };
 
   try {
-    await writeTasksBoard(payload, { allowAuthEdit: session.role === "admin" });
+    await writeTasksBoard(payload, {
+      allowAuthEdit: session.role === "admin",
+      deletedActivityIds,
+      deletedBankIds,
+    });
     return NextResponse.json({ ok: true });
   } catch (error) {
     const message =

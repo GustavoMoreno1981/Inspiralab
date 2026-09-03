@@ -292,6 +292,7 @@ export function TasksBoard() {
   const [board, setBoard] = useState<TasksBoard>(emptyBoard());
   const pendingBoardRef = useRef<TasksBoard>(emptyBoard());
   const persistQueueRef = useRef(Promise.resolve(true));
+  const deletedIdsRef = useRef<{ activities: string[]; bank: string[] }>({ activities: [], bank: [] });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
@@ -535,12 +536,18 @@ export function TasksBoard() {
 
   async function flushPersist(successMessage?: string) {
     const next = pendingBoardRef.current;
+    const deleted = { ...deletedIdsRef.current };
+    deletedIdsRef.current = { activities: [], bank: [] };
     setSaving(true);
     setStatusMsg("");
     const res = await fetch("/api/tasks", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(next),
+      body: JSON.stringify({
+        ...next,
+        _deletedActivityIds: deleted.activities,
+        _deletedBankIds: deleted.bank,
+      }),
     });
     setSaving(false);
     if (res.ok) {
@@ -1033,6 +1040,7 @@ export function TasksBoard() {
 
   async function removeBankItem(id: string) {
     if (!window.confirm(t.tasks.confirmDeleteBank)) return;
+    deletedIdsRef.current.bank.push(id);
     await persist(
       {
         ...pendingBoardRef.current,
@@ -1137,6 +1145,7 @@ export function TasksBoard() {
 
   function removeActivity(activityId: string) {
     if (!window.confirm(t.tasks.confirmDeleteActivity)) return;
+    deletedIdsRef.current.activities.push(activityId);
     void schedulePersist(
       {
         ...pendingBoardRef.current,
