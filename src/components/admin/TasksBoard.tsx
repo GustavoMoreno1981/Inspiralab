@@ -150,6 +150,7 @@ function normalizeActivity(activity: Partial<Activity> & { id: string }): Activi
   return {
     id: activity.id,
     title: activity.title || "",
+    objective: activity.objective || "",
     date: activity.date || "",
     finishedDate: activity.finishedDate || "",
     processUrl: activity.processUrl || "",
@@ -348,6 +349,7 @@ export function TasksBoard() {
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [newTitle, setNewTitle] = useState("");
+  const [newObjective, setNewObjective] = useState("");
   const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10));
   const [newEndDate, setNewEndDate] = useState(() => {
     const d = new Date();
@@ -356,6 +358,7 @@ export function TasksBoard() {
   });
   const [newAssigneeIds, setNewAssigneeIds] = useState<string[]>([]);
   const [newFirstTask, setNewFirstTask] = useState("");
+  const [newFirstTaskUrl, setNewFirstTaskUrl] = useState("");
   const [newFirstSubtask, setNewFirstSubtask] = useState("");
   const [newFirstSubtaskUrl, setNewFirstSubtaskUrl] = useState("");
   const [newTaskDraft, setNewTaskDraft] = useState<Record<string, { title: string; url: string }>>(
@@ -738,9 +741,11 @@ export function TasksBoard() {
     setConvertingBankId(null);
     setNewAssigneeIds(defaultAssignee ? [defaultAssignee] : []);
     setNewTitle("");
+    setNewObjective("");
     setNewDate(start);
     setNewEndDate(end.toISOString().slice(0, 10));
     setNewFirstTask("");
+    setNewFirstTaskUrl("");
     setNewFirstSubtask("");
     setNewFirstSubtaskUrl("");
     resetNewPrivateForm();
@@ -877,7 +882,7 @@ export function TasksBoard() {
         title: newFirstTask.trim(),
         status: "waiting",
         done: false,
-        url: "",
+        url: newFirstTaskUrl.trim(),
         subtasks,
       });
     }
@@ -885,6 +890,7 @@ export function TasksBoard() {
     const activity: Activity = {
       id: activityId,
       title: newTitle.trim(),
+      objective: newObjective.trim(),
       date: newDate,
       finishedDate: newEndDate,
       processUrl: "",
@@ -1056,6 +1062,7 @@ export function TasksBoard() {
     end.setDate(end.getDate() + 7);
     setConvertingBankId(item.id);
     setNewTitle(item.title);
+    setNewObjective(item.notes || "");
     setNewAssigneeIds(
       item.suggestedAssigneeIds.length
         ? item.suggestedAssigneeIds
@@ -1066,6 +1073,7 @@ export function TasksBoard() {
     setNewDate(start);
     setNewEndDate(end.toISOString().slice(0, 10));
     setNewFirstTask("");
+    setNewFirstTaskUrl("");
     setNewFirstSubtask("");
     setNewFirstSubtaskUrl("");
     setNewVisibility(item.visibility === "private" ? "private" : "public");
@@ -1846,6 +1854,10 @@ export function TasksBoard() {
       "",
     ];
 
+    if (activity.objective?.trim()) {
+      lines.push(`🎯 Objetivo:`, activity.objective.trim(), "");
+    }
+
     if (activity.processUrl) {
       lines.push(`🔗 URL del proceso:`, activity.processUrl, "");
     }
@@ -1871,7 +1883,7 @@ export function TasksBoard() {
                           !isPrivateContentVisible(
                             "activity",
                             activity.id,
-                            Boolean(activity.title.trim()),
+                            Boolean(activity.title.trim() || activity.objective?.trim()),
                           )
                         ) {
                           return (
@@ -1967,6 +1979,25 @@ export function TasksBoard() {
                                       </div>
                                     ) : null}
                                   </div>
+
+                                  <textarea
+                                    aria-label={t.tasks.activityObjective}
+                                    defaultValue={str(activity.objective)}
+                                    key={`activity-objective-${activity.id}-${activity.updatedAt}`}
+                                    rows={2}
+                                    onBlur={(e) => {
+                                      const objective = e.target.value.trim();
+                                      if (objective !== (activity.objective || "")) {
+                                        updateActivity(
+                                          activity.id,
+                                          { objective },
+                                          t.common.saved,
+                                        );
+                                      }
+                                    }}
+                                    placeholder={t.tasks.activityObjectivePlaceholder}
+                                    className="w-full resize-y border border-transparent bg-transparent px-1 text-sm text-[color:var(--muted)] outline-none hover:border-[color:var(--line)] focus:border-[color:var(--accent)]"
+                                  />
 
                                   <div className="flex flex-wrap gap-4">
                                     <label className="space-y-1 text-sm text-[color:var(--muted)]">
@@ -2241,7 +2272,7 @@ export function TasksBoard() {
                                   isPrivateContentVisible(
                                     "activity",
                                     activity.id,
-                                    Boolean(activity.title.trim()),
+                                    Boolean(activity.title.trim() || activity.objective?.trim()),
                                   ) ? (
                                     <PrivateLockButton
                                       locked={false}
@@ -3800,6 +3831,20 @@ export function TasksBoard() {
               />
             </label>
 
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
+                {t.tasks.activityObjective}
+              </span>
+              <p className="text-xs text-[color:var(--muted)]">{t.tasks.activityObjectiveHint}</p>
+              <textarea
+                value={newObjective}
+                onChange={(e) => setNewObjective(e.target.value)}
+                placeholder={t.tasks.activityObjectivePlaceholder}
+                rows={3}
+                className="w-full resize-y border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)]"
+              />
+            </label>
+
             <div className="space-y-2">
               <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
                 {t.common.visibility}
@@ -3922,6 +3967,18 @@ export function TasksBoard() {
 
             {newFirstTask.trim() ? (
               <>
+                <label className="block space-y-1">
+                  <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
+                    {t.tasks.taskUrl}
+                  </span>
+                  <input
+                    type="url"
+                    value={newFirstTaskUrl}
+                    onChange={(e) => setNewFirstTaskUrl(e.target.value)}
+                    placeholder="https://..."
+                    className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm"
+                  />
+                </label>
                 <label className="block space-y-1">
                   <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
                     {t.tasks.firstSubtask}

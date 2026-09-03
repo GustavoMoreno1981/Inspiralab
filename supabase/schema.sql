@@ -25,6 +25,7 @@ create table if not exists public.team_members (
 create table if not exists public.activities (
   id text primary key,
   title text not null,
+  objective text not null default '',
   date date not null,
   finished_date date,
   process_url text not null default '',

@@ -123,6 +123,8 @@ export type ReviewMessage = {
 export type Activity = {
   id: string;
   title: string;
+  /** Descripción del objetivo en texto libre (opcional). */
+  objective: string;
   date: string;
   finishedDate: string;
   processUrl: string;
@@ -385,6 +387,7 @@ export function redactPrivateActivity(activity: Activity): Activity {
   return {
     ...activity,
     title: "",
+    objective: "",
     processUrl: "",
     deliverableUrl: "",
     notes: [],

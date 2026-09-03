@@ -143,6 +143,9 @@ export type AdminDictionary = {
     activityEnd: string;
     activityGoal: string;
     activityGoalPlaceholder: string;
+    activityObjective: string;
+    activityObjectivePlaceholder: string;
+    activityObjectiveHint: string;
     newActivityTitle: string;
     newActivityFromBank: string;
     newActivityFromBankDesc: string;
@@ -230,6 +233,9 @@ export type AdminDictionary = {
     privateSetup: string;
     privateSetupDone: string;
     titleQuestion: string;
+    objectiveQuestion: string;
+    noObjective: string;
+    objectivePlaceholder: string;
     datesQuestion: string;
     datesInvalid: string;
     assigneesQuestion: string;

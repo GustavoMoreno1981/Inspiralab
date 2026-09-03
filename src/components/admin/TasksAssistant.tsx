@@ -29,6 +29,7 @@ type Step =
   | "visibility"
   | "privateSetup"
   | "title"
+  | "objective"
   | "dates"
   | "assignees"
   | "firstTask"
@@ -48,10 +49,12 @@ type ChatMessage = {
 
 type CreateDraft = {
   title: string;
+  objective: string;
   date: string;
   finishedDate: string;
   assigneeIds: string[];
   firstTask: string;
+  firstTaskUrl: string;
   firstSubtask: string;
   firstSubtaskUrl: string;
   visibility: ItemVisibility;
@@ -121,10 +124,12 @@ function emptyCreateDraft(defaultAssigneeId?: string): CreateDraft {
   const date = todayIso();
   return {
     title: "",
+    objective: "",
     date,
     finishedDate: weekLaterIso(date),
     assigneeIds: defaultAssigneeId ? [defaultAssigneeId] : [],
     firstTask: "",
+    firstTaskUrl: "",
     firstSubtask: "",
     firstSubtaskUrl: "",
     visibility: "public",
@@ -134,7 +139,7 @@ function emptyCreateDraft(defaultAssigneeId?: string): CreateDraft {
 function createFlowSteps(visibility: ItemVisibility): Step[] {
   const steps: Step[] = ["visibility"];
   if (visibility === "private") steps.push("privateSetup");
-  return [...steps, "title", "dates", "assignees", "firstTask", "firstSubtask", "confirm"];
+  return [...steps, "title", "objective", "dates", "assignees", "firstTask", "firstSubtask", "confirm"];
 }
 
 function bankFlowSteps(bankItem: TaskBankItem | null, visibility: ItemVisibility): Step[] {
@@ -165,8 +170,8 @@ function memberNames(ids: string[], members: TeamMember[]) {
     .join(", ");
 }
 
-const CREATE_STEPS_PUBLIC = 8;
-const CREATE_STEPS_PRIVATE = 9;
+const CREATE_STEPS_PUBLIC = 9;
+const CREATE_STEPS_PRIVATE = 10;
 const UPDATE_STEPS = 6;
 const BANK_STEPS_INHERITED_PRIVATE = 5;
 const BANK_STEPS_PUBLIC = 6;
@@ -360,6 +365,7 @@ export function TasksAssistant({
     setBankItemId(item.id);
     setCreateDraft({
       title: item.title,
+      objective: item.notes || "",
       date: start,
       finishedDate: end,
       assigneeIds: item.suggestedAssigneeIds.length
@@ -370,6 +376,7 @@ export function TasksAssistant({
             ? [defaultAssigneeId]
             : [],
       firstTask: "",
+      firstTaskUrl: "",
       firstSubtask: "",
       firstSubtaskUrl: "",
       visibility: inheritsPrivate ? "private" : "public",
@@ -391,6 +398,15 @@ export function TasksAssistant({
     if (!title) return;
     setCreateDraft((prev) => ({ ...prev, title }));
     push("user", title);
+    setTextInput("");
+    setStep("objective");
+    push("assistant", a.objectiveQuestion);
+  }
+
+  function submitObjective(skip = false) {
+    const value = skip ? "" : textInput.trim();
+    setCreateDraft((prev) => ({ ...prev, objective: value }));
+    push("user", skip ? a.noObjective : value || a.noObjective);
     setTextInput("");
     setStep("dates");
     push("assistant", a.datesQuestion);
@@ -571,7 +587,7 @@ export function TasksAssistant({
         title: createDraft.firstTask.trim(),
         status: "waiting",
         done: false,
-        url: "",
+        url: createDraft.firstTaskUrl.trim(),
         subtasks,
       });
     }
@@ -579,6 +595,7 @@ export function TasksAssistant({
     return {
       id: activityId,
       title: createDraft.title.trim(),
+      objective: createDraft.objective.trim(),
       date: createDraft.date,
       finishedDate: createDraft.finishedDate,
       processUrl: "",
@@ -692,6 +709,11 @@ export function TasksAssistant({
                 </p>
               ) : null}
               <p className="font-semibold text-[color:var(--ink)]">{createDraft.title}</p>
+              {createDraft.objective ? (
+                <p className="mt-1 whitespace-pre-wrap text-xs text-[color:var(--muted)]">
+                  {createDraft.objective}
+                </p>
+              ) : null}
               <p className="mt-1 text-xs text-[color:var(--muted)]">
                 {a.visibilityLabel}:{" "}
                 {createDraft.visibility === "private" ? a.private : a.public}
@@ -977,6 +999,34 @@ export function TasksAssistant({
             </div>
           ) : null}
 
+          {step === "objective" ? (
+            <div className="space-y-2">
+              <textarea
+                value={textInput}
+                onChange={(event) => setTextInput(event.target.value)}
+                placeholder={a.objectivePlaceholder}
+                rows={3}
+                className="w-full resize-y border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => submitObjective(true)}
+                  className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
+                >
+                  {a.skip}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => submitObjective(false)}
+                  className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white"
+                >
+                  {a.next}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           {step === "dates" ? (
             <div className="space-y-2">
               <div className="grid grid-cols-2 gap-2">
@@ -1054,7 +1104,7 @@ export function TasksAssistant({
           ) : null}
 
           {step === "firstTask" ? (
-            <div className="flex flex-wrap gap-2">
+            <div className="space-y-2">
               <input
                 value={textInput}
                 onChange={(event) => setTextInput(event.target.value)}
@@ -1065,23 +1115,38 @@ export function TasksAssistant({
                   }
                 }}
                 placeholder={a.firstTaskPlaceholder}
-                className="min-w-[12rem] flex-1 border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
+                className="w-full border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
               />
-              <button
-                type="button"
-                onClick={() => submitFirstTask(true)}
-                className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
-              >
-                {a.skip}
-              </button>
-              <button
-                type="button"
-                onClick={() => submitFirstTask(false)}
-                disabled={!textInput.trim()}
-                className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-              >
-                {a.next}
-              </button>
+              {textInput.trim() ? (
+                <input
+                  value={createDraft.firstTaskUrl}
+                  onChange={(event) =>
+                    setCreateDraft((prev) => ({
+                      ...prev,
+                      firstTaskUrl: event.target.value,
+                    }))
+                  }
+                  placeholder={t.common.urlOptional}
+                  className="w-full border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
+                />
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => submitFirstTask(true)}
+                  className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold"
+                >
+                  {a.skip}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => submitFirstTask(false)}
+                  disabled={!textInput.trim()}
+                  className="bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                >
+                  {a.next}
+                </button>
+              </div>
             </div>
           ) : null}
 

@@ -28,6 +28,7 @@ const TASKS_PATH = path.join(DATA_DIR, "tasks.json");
 type ActivityRow = {
   id: string;
   title: string;
+  objective?: string | null;
   date: string;
   finished_date: string | null;
   process_url: string;
@@ -280,6 +281,7 @@ function normalizeBank(items: unknown): TaskBankItem[] {
 function normalizeActivities(activities: Activity[]): Activity[] {
   return (activities || []).map((activity) => ({
     ...activity,
+    objective: activity.objective || "",
     finishedDate: activity.finishedDate || "",
     processUrl: activity.processUrl || "",
     deliverableUrl: activity.deliverableUrl || "",
@@ -357,6 +359,7 @@ function migrateLegacyBoard(data: Record<string, unknown>): StoredBoard {
     return {
       id: activityId,
       title: String(legacy.title || ""),
+      objective: String(legacy.objective || ""),
       date: String(legacy.date || ""),
       finishedDate: String(legacy.finishedDate || ""),
       processUrl: String(legacy.processUrl || ""),
@@ -490,6 +493,7 @@ async function readTasksSupabaseRaw(): Promise<StoredBoard> {
   const activities: Activity[] = ((activitiesRes.data || []) as ActivityRow[]).map((row) => ({
     id: row.id,
     title: row.title,
+    objective: row.objective || "",
     date: row.date,
     finishedDate: row.finished_date || "",
     processUrl: row.process_url || "",
@@ -604,6 +608,7 @@ async function readLegacyTasksSupabaseRaw(): Promise<StoredBoard> {
     return {
       id: row.id,
       title: row.title,
+      objective: row.objective || "",
       date: row.date,
       finishedDate: row.finished_date || "",
       processUrl: row.process_url || "",
@@ -708,6 +713,7 @@ function buildActivityRows(activities: Activity[]) {
   return activities.map((activity) => ({
     id: activity.id,
     title: activity.title,
+    objective: activity.objective || "",
     date: toSqlDate(activity.date) || new Date().toISOString().slice(0, 10),
     finished_date: toSqlDate(activity.finishedDate),
     process_url: activity.processUrl || "",
@@ -750,6 +756,16 @@ async function upsertActivityRows(
   ) {
     ({ error: activitiesError } = await supabase.from("activities").upsert(
       activityRows.map(({ notes: _n, review_messages: _rm, ...rest }) => rest),
+      { onConflict: "id" },
+    ));
+  }
+  if (
+    activitiesError &&
+    (activitiesError.code === "PGRST204" ||
+      String(activitiesError.message || "").includes("objective"))
+  ) {
+    ({ error: activitiesError } = await supabase.from("activities").upsert(
+      activityRows.map(({ objective: _o, ...rest }) => rest),
       { onConflict: "id" },
     ));
   }
@@ -937,6 +953,7 @@ function preservePrivateActivityOnWrite(
   return {
     ...incoming,
     title: existing.title,
+    objective: existing.objective,
     processUrl: existing.processUrl,
     deliverableUrl: existing.deliverableUrl,
     notes: existing.notes,
