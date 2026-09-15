@@ -295,6 +295,8 @@ export function TasksBoard() {
   const [board, setBoard] = useState<TasksBoard>(emptyBoard());
   const pendingBoardRef = useRef<TasksBoard>(emptyBoard());
   const persistQueueRef = useRef(Promise.resolve(true));
+  /** Sube en cada commit local; evita que load() tras un PUT pise ediciones más nuevas. */
+  const boardEpochRef = useRef(0);
   const deletedIdsRef = useRef<{ activities: string[]; bank: string[] }>({ activities: [], bank: [] });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -422,12 +424,19 @@ export function TasksBoard() {
   }
 
   function commitBoard(next: TasksBoard) {
+    boardEpochRef.current += 1;
     pendingBoardRef.current = next;
     setBoard(next);
     return next;
   }
 
-  const load = useCallback(async () => {
+  /** Siempre leer mutaciones desde el ref (el state de React puede ir atrasado). */
+  function getPendingActivity(activityId: string) {
+    return pendingBoardRef.current.activities.find((item) => item.id === activityId);
+  }
+
+  const load = useCallback(async (options?: { force?: boolean }) => {
+    const epochAtStart = boardEpochRef.current;
     const meRes = await fetch("/api/auth/me", { cache: "no-store" });
     let viewer = "";
     if (meRes.ok) {
@@ -449,6 +458,11 @@ export function TasksBoard() {
       : "/api/tasks";
     const tasksRes = await fetch(tasksUrl, { cache: "no-store" });
     if (tasksRes.ok) {
+      // Evitar que una recarga pise commits locales hechos mientras el GET viajaba.
+      if (!options?.force && boardEpochRef.current !== epochAtStart) {
+        setLoading(false);
+        return;
+      }
       const data = (await tasksRes.json()) as TasksBoardResponse;
       const loaded: TasksBoard = {
         members: (data.members || []).map((member) => normalizeMember(member)),
@@ -471,7 +485,7 @@ export function TasksBoard() {
   }, [selectedMemberId]);
 
   useEffect(() => {
-    void load();
+    void load({ force: true });
   }, [load]);
 
   const completedActivities = useMemo(
@@ -543,6 +557,7 @@ export function TasksBoard() {
 
   async function flushPersist(successMessage?: string) {
     const next = pendingBoardRef.current;
+    const epochAtStart = boardEpochRef.current;
     const deleted = { ...deletedIdsRef.current };
     deletedIdsRef.current = { activities: [], bank: [] };
     setSaving(true);
@@ -558,7 +573,11 @@ export function TasksBoard() {
     });
     setSaving(false);
     if (res.ok) {
-      await load();
+      // Si hubo commits locales durante el PUT, no recargar: load() borraría esos cambios
+      // del ref y el siguiente flush podría reescribir Supabase sin la tarea nueva.
+      if (boardEpochRef.current === epochAtStart) {
+        await load();
+      }
       if (successMessage) {
         toast.success(successMessage);
       } else {
@@ -765,7 +784,7 @@ export function TasksBoard() {
   }
 
   function toggleActivityAssignee(activityId: string, memberId: string) {
-    const activity = board.activities.find((item) => item.id === activityId);
+    const activity = getPendingActivity(activityId);
     if (!activity) return;
     const current = activity.assigneeIds || [];
     const next = current.includes(memberId)
@@ -1106,7 +1125,7 @@ export function TasksBoard() {
   }
 
   function requestFinishedDateChange(activityId: string, newDate: string) {
-    const activity = board.activities.find((item) => item.id === activityId);
+    const activity = getPendingActivity(activityId);
     if (!activity) return;
 
     const previousDate = activity.finishedDate || "";
@@ -1135,7 +1154,7 @@ export function TasksBoard() {
       return;
     }
 
-    const activity = board.activities.find((item) => item.id === dateExtensionModal.activityId);
+    const activity = getPendingActivity(dateExtensionModal.activityId);
     if (!activity) return;
 
     const extension: ActivityDateExtension = {
@@ -1180,7 +1199,7 @@ export function TasksBoard() {
       text,
       createdAt: new Date().toISOString(),
     };
-    const activity = board.activities.find((item) => item.id === activityId);
+    const activity = getPendingActivity(activityId);
     if (!activity) return;
     updateActivity(activityId, { notes: [note, ...(activity.notes || [])] }, t.tasks.toast.noteAdded);
     setNoteDrafts((prev) => ({ ...prev, [activityId]: "" }));
@@ -1188,7 +1207,7 @@ export function TasksBoard() {
   }
 
   function removeNote(activityId: string, noteId: string) {
-    const activity = board.activities.find((item) => item.id === activityId);
+    const activity = getPendingActivity(activityId);
     if (!activity) return;
     updateActivity(
       activityId,
@@ -1204,7 +1223,7 @@ export function TasksBoard() {
       toast.error(t.tasks.toast.taskTitleRequired);
       return;
     }
-    const activity = board.activities.find((item) => item.id === activityId);
+    const activity = getPendingActivity(activityId);
     if (!activity) return;
     updateActivity(
       activityId,
@@ -1233,7 +1252,7 @@ export function TasksBoard() {
   }
 
   function removeTask(activityId: string, taskId: string) {
-    const activity = board.activities.find((item) => item.id === activityId);
+    const activity = getPendingActivity(activityId);
     if (!activity) return;
     const nextTasks = activity.tasks.filter((item) => item.id !== taskId);
     const derived = deriveActivityStatusFromTasks(nextTasks);
@@ -1254,7 +1273,7 @@ export function TasksBoard() {
     patch: Partial<Task>,
     successMessage?: string,
   ) {
-    const activity = board.activities.find((item) => item.id === activityId);
+    const activity = getPendingActivity(activityId);
     if (!activity) return;
     const nextTasks = activity.tasks.map((task) => {
       if (task.id !== taskId) return task;
@@ -1308,7 +1327,7 @@ export function TasksBoard() {
   }
 
   function setTaskStatus(activityId: string, taskId: string, status: TaskStatus) {
-    const activity = board.activities.find((item) => item.id === activityId);
+    const activity = getPendingActivity(activityId);
     if (!activity) return;
     const task = activity.tasks.find((item) => item.id === taskId);
     if (!task) return;
@@ -1367,7 +1386,7 @@ export function TasksBoard() {
     patch: Partial<Subtask>,
     successMessage?: string,
   ) {
-    const activity = board.activities.find((item) => item.id === activityId);
+    const activity = getPendingActivity(activityId);
     if (!activity) return;
     const task = activity.tasks.find((item) => item.id === taskId);
     if (!task) return;
@@ -1452,7 +1471,7 @@ export function TasksBoard() {
       toast.error(t.tasks.toast.subtaskTitleRequired);
       return;
     }
-    const activity = board.activities.find((item) => item.id === activityId);
+    const activity = getPendingActivity(activityId);
     if (!activity) return;
     const task = activity.tasks.find((item) => item.id === taskId);
     if (!task) return;
@@ -1483,7 +1502,7 @@ export function TasksBoard() {
   }
 
   function removeSubtask(activityId: string, taskId: string, subtaskId: string) {
-    const activity = board.activities.find((item) => item.id === activityId);
+    const activity = getPendingActivity(activityId);
     if (!activity) return;
     const task = activity.tasks.find((item) => item.id === taskId);
     if (!task) return;
@@ -1513,7 +1532,7 @@ export function TasksBoard() {
   }
 
   function reorderTasks(activityId: string, fromTaskId: string, toTaskId: string) {
-    const activity = board.activities.find((item) => item.id === activityId);
+    const activity = getPendingActivity(activityId);
     if (!activity) return;
     const tasks = moveItemById(activity.tasks, fromTaskId, toTaskId);
     if (tasks.every((task, index) => task.id === activity.tasks[index]?.id)) return;
@@ -1526,7 +1545,7 @@ export function TasksBoard() {
     fromSubtaskId: string,
     toSubtaskId: string,
   ) {
-    const activity = board.activities.find((item) => item.id === activityId);
+    const activity = getPendingActivity(activityId);
     if (!activity) return;
     const task = activity.tasks.find((item) => item.id === taskId);
     if (!task) return;
@@ -1539,7 +1558,7 @@ export function TasksBoard() {
   }
 
   function setActivityStatus(activityId: string, status: TaskStatus) {
-    const activity = board.activities.find((item) => item.id === activityId);
+    const activity = getPendingActivity(activityId);
     if (!activity) return;
     const label = taskStatuses.find((item) => item.value === status)?.label || status;
 
@@ -1643,7 +1662,7 @@ export function TasksBoard() {
     note: string;
     tasks: Task[];
   }) {
-    const activity = board.activities.find((item) => item.id === input.activityId);
+    const activity = getPendingActivity(input.activityId);
     if (!activity) return false;
 
     const normalizedTasks = input.tasks.map((task) =>
@@ -1771,7 +1790,7 @@ export function TasksBoard() {
   }
 
   function recordReviewResponse(activityId: string, value: ReviewResponseValue) {
-    const activity = board.activities.find((item) => item.id === activityId);
+    const activity = getPendingActivity(activityId);
     if (!activity) return;
 
     const respondedBy = sessionName.trim() || "Equipo";
@@ -2610,23 +2629,29 @@ export function TasksBoard() {
                                           <input
                                             type="url"
                                             placeholder={t.tasks.taskUrl}
-                                            value={str(task.url)}
-                                            onChange={(e) =>
-                                              updateTaskFields(activity.id, task.id, {
-                                                url: e.target.value,
-                                              })
-                                            }
+                                            defaultValue={str(task.url)}
+                                            key={`task-url-${task.id}-${task.url}`}
+                                            onBlur={(e) => {
+                                              const url = e.target.value.trim();
+                                              if (url !== (task.url || "")) {
+                                                updateTaskFields(activity.id, task.id, { url });
+                                              }
+                                            }}
                                             className="w-full border border-[color:var(--line)] bg-white px-2 py-1.5 text-xs"
                                           />
                                           <textarea
                                             aria-label={t.tasks.taskObjective}
                                             placeholder={t.tasks.taskObjectivePlaceholder}
-                                            value={str(task.objective)}
-                                            onChange={(e) =>
-                                              updateTaskFields(activity.id, task.id, {
-                                                objective: e.target.value,
-                                              })
-                                            }
+                                            defaultValue={str(task.objective)}
+                                            key={`task-objective-${task.id}-${task.objective}`}
+                                            onBlur={(e) => {
+                                              const objective = e.target.value.trim();
+                                              if (objective !== (task.objective || "")) {
+                                                updateTaskFields(activity.id, task.id, {
+                                                  objective,
+                                                });
+                                              }
+                                            }}
                                             rows={2}
                                             className="w-full resize-y border border-[color:var(--line)] bg-white px-2 py-1.5 text-xs"
                                           />
@@ -2790,29 +2815,37 @@ export function TasksBoard() {
                                                   <input
                                                     type="url"
                                                     placeholder={t.tasks.subtaskUrl}
-                                                    value={str(subtask.url)}
-                                                    onChange={(e) =>
-                                                      updateSubtask(
-                                                        activity.id,
-                                                        task.id,
-                                                        subtask.id,
-                                                        { url: e.target.value },
-                                                      )
-                                                    }
+                                                    defaultValue={str(subtask.url)}
+                                                    key={`sub-url-${subtask.id}-${subtask.url}`}
+                                                    onBlur={(e) => {
+                                                      const url = e.target.value.trim();
+                                                      if (url !== (subtask.url || "")) {
+                                                        updateSubtask(
+                                                          activity.id,
+                                                          task.id,
+                                                          subtask.id,
+                                                          { url },
+                                                        );
+                                                      }
+                                                    }}
                                                     className="w-full border border-[color:var(--line)] px-2 py-1.5 text-xs"
                                                   />
                                                   <textarea
                                                     aria-label={t.tasks.subtaskObjective}
                                                     placeholder={t.tasks.subtaskObjectivePlaceholder}
-                                                    value={str(subtask.objective)}
-                                                    onChange={(e) =>
-                                                      updateSubtask(
-                                                        activity.id,
-                                                        task.id,
-                                                        subtask.id,
-                                                        { objective: e.target.value },
-                                                      )
-                                                    }
+                                                    defaultValue={str(subtask.objective)}
+                                                    key={`sub-objective-${subtask.id}-${subtask.objective}`}
+                                                    onBlur={(e) => {
+                                                      const objective = e.target.value.trim();
+                                                      if (objective !== (subtask.objective || "")) {
+                                                        updateSubtask(
+                                                          activity.id,
+                                                          task.id,
+                                                          subtask.id,
+                                                          { objective },
+                                                        );
+                                                      }
+                                                    }}
                                                     rows={2}
                                                     className="w-full resize-y border border-[color:var(--line)] px-2 py-1.5 text-xs"
                                                   />
