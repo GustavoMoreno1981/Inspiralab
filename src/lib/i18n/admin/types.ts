@@ -9,6 +9,14 @@ export type AdminDictionary = {
     logout: string;
     panel: string;
     viewSite: string;
+    bitacora: string;
+    bitacoraUrl: string;
+    bitacoraUrlHint: string;
+    bitacoraUrlPlaceholder: string;
+    bitacoraSaved: string;
+    bitacoraMissing: string;
+    settingsTitle: string;
+    settingsDesc: string;
     loading: string;
     saving: string;
     add: string;

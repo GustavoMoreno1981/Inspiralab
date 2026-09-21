@@ -147,6 +147,7 @@ export function AdminDashboard() {
   const { t } = useAdminLanguage();
   const [me, setMe] = useState<MeResponse | null>(null);
   const [passwordsOpen, setPasswordsOpen] = useState(false);
+  const [bitacoraUrl, setBitacoraUrl] = useState("");
 
   useEffect(() => {
     void fetch("/api/auth/me", { cache: "no-store" })
@@ -155,10 +156,36 @@ export function AdminDashboard() {
       .catch(() => setMe({ authenticated: false }));
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/admin/settings", { cache: "no-store" })
+      .then(async (res) => {
+        if (!res.ok) return null;
+        return res.json() as Promise<{ bitacoraUrl?: string }>;
+      })
+      .then((data) => {
+        if (!cancelled && typeof data?.bitacoraUrl === "string") {
+          setBitacoraUrl(data.bitacoraUrl);
+        }
+      })
+      .catch(() => {
+        /* ignore */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [passwordsOpen]);
+
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
     router.refresh();
+  }
+
+  function openBitacora() {
+    const url = bitacoraUrl.trim();
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
   }
 
   const modules = me?.modules || [
@@ -206,13 +233,31 @@ export function AdminDashboard() {
             >
               {t.common.viewSite}
             </Link>
+            {bitacoraUrl.trim() ? (
+              <button
+                type="button"
+                onClick={openBitacora}
+                className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold text-[color:var(--ink)] hover:border-[color:var(--accent)] hover:text-[color:var(--accent)]"
+              >
+                {t.common.bitacora}
+              </button>
+            ) : isAdmin ? (
+              <button
+                type="button"
+                onClick={() => setPasswordsOpen(true)}
+                className="border border-dashed border-[color:var(--line)] px-3 py-2 text-xs font-semibold text-[color:var(--muted)] hover:border-[color:var(--accent)] hover:text-[color:var(--accent)]"
+                title={t.common.bitacoraMissing}
+              >
+                {t.common.bitacora}
+              </button>
+            ) : null}
             {isAdmin && (
               <button
                 type="button"
                 onClick={() => setPasswordsOpen(true)}
                 className="inline-flex items-center justify-center border border-[color:var(--line)] px-2.5 py-2 text-[color:var(--ink)] hover:border-[color:var(--accent)] hover:text-[color:var(--accent)]"
-                aria-label={t.common.configurePasswords}
-                title={t.common.configurePasswords}
+                aria-label={t.common.settingsTitle}
+                title={t.common.settingsTitle}
               >
                 <SettingsIcon />
               </button>
