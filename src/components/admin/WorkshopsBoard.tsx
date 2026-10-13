@@ -260,8 +260,7 @@ function exportWorkshopDocument({
 export function WorkshopsBoard() {
   const router = useRouter();
   const toast = useToast();
-  const { t } = useAdminLanguage();
-  const [locale, setLocale] = useState<Locale>("en");
+  const { t, locale } = useAdminLanguage();
   const [content, setContent] = useState<SiteContent | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
@@ -847,22 +846,6 @@ export function WorkshopsBoard() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex border border-[color:var(--line)] p-1 text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => setLocale("es")}
-                className={`px-3 py-1.5 ${locale === "es" ? "bg-[color:var(--accent)] text-white" : ""}`}
-              >
-                ES
-              </button>
-              <button
-                type="button"
-                onClick={() => setLocale("en")}
-                className={`px-3 py-1.5 ${locale === "en" ? "bg-[color:var(--accent)] text-white" : ""}`}
-              >
-                EN
-              </button>
-            </div>
             <AdminLanguageSwitcher />
             <button
               type="button"
