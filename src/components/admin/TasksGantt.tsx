@@ -30,9 +30,10 @@ const DAY = 86400000;
 type Props = {
   members: TeamMember[];
   activities: Activity[];
+  onOpenActivity?: (activityId: string) => void;
 };
 
-export function TasksGantt({ members, activities }: Props) {
+export function TasksGantt({ members, activities, onOpenActivity }: Props) {
   const timeline = (() => {
     const starts = activities.map((t) => parseDay(t.date)).filter((v): v is number => v != null);
     const ends = activities
@@ -174,8 +175,10 @@ export function TasksGantt({ members, activities }: Props) {
 
                 return (
                   <div key={activity.id} className="relative h-11">
-                    <div
-                      className="absolute top-0 flex h-11 flex-col justify-center overflow-hidden border border-[color:var(--accent)]/30 bg-[#fff1f4]"
+                    <button
+                      type="button"
+                      onClick={() => onOpenActivity?.(activity.id)}
+                      className="absolute top-0 flex h-11 cursor-pointer flex-col justify-center overflow-hidden border border-[color:var(--accent)]/30 bg-[#fff1f4] text-left"
                       style={{ left: `${left}%`, width: `${width}%` }}
                       title={`${activity.title} · ${progress}% · ${statusLabel}`}
                     >
@@ -190,7 +193,7 @@ export function TasksGantt({ members, activities }: Props) {
                         {activity.date}
                         {activity.finishedDate ? ` → ${activity.finishedDate}` : ""} · {progress}%
                       </div>
-                    </div>
+                    </button>
                   </div>
                 );
               })}

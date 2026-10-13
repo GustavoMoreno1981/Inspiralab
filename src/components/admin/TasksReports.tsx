@@ -4,9 +4,14 @@ import { useMemo, useState } from "react";
 import {
   TASK_STATUSES,
   getActivityProgress,
+  ideaBelongsToMemberBank,
+  normalizeBankPriority,
+  sortBankItems,
   type Activity,
+  type TaskBankItem,
   type TeamMember,
 } from "@/lib/tasks/types";
+import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
 import { TasksGantt } from "@/components/admin/TasksGantt";
 
 function todayIso() {
@@ -173,11 +178,15 @@ function buildGanttHtml(members: TeamMember[], activities: Activity[]) {
 type Props = {
   members: TeamMember[];
   activities: Activity[];
+  bank?: TaskBankItem[];
+  onOpenActivity?: (activityId: string) => void;
+  onOpenBankItem?: (bankId: string) => void;
 };
 
 type Scope = "all" | string;
 
 type ReportLine = {
+  activityId: string;
   memberName: string;
   title: string;
   startDate: string;
@@ -188,6 +197,7 @@ type ReportLine = {
 };
 
 type ExtensionReportRow = {
+  activityId: string;
   activityTitle: string;
   memberNames: string;
   extensionCount: number;
@@ -229,7 +239,24 @@ function buildDateExtensionsHtml(rows: ExtensionReportRow[]) {
   return `<p style="font-size:12px;color:#555;margin:0 0 10px;">Total de prórrogas registradas: <strong>${total}</strong></p>${body}`;
 }
 
-export function TasksReports({ members, activities }: Props) {
+function bankPriorityLabel(
+  priority: TaskBankItem["priority"],
+  labels: { urgent: string; medium: string; low: string },
+) {
+  const value = normalizeBankPriority(priority);
+  if (value === "urgent") return labels.urgent;
+  if (value === "low") return labels.low;
+  return labels.medium;
+}
+
+export function TasksReports({
+  members,
+  activities,
+  bank = [],
+  onOpenActivity,
+  onOpenBankItem,
+}: Props) {
+  const { t } = useAdminLanguage();
   const [scope, setScope] = useState<Scope>("all");
   const [reportDay, setReportDay] = useState(todayIso);
   const [recipient, setRecipient] = useState("Saul");
@@ -256,6 +283,7 @@ export function TasksReports({ members, activities }: Props) {
 
       for (const activity of memberActivities) {
         out.push({
+          activityId: activity.id,
           memberName: member.name,
           title: activity.title,
           startDate: activity.date,
@@ -283,6 +311,7 @@ export function TasksReports({ members, activities }: Props) {
         .join(", ");
 
       out.push({
+        activityId: activity.id,
         activityTitle: activity.title,
         memberNames: memberNames || "—",
         extensionCount: extensions.length,
@@ -297,6 +326,17 @@ export function TasksReports({ members, activities }: Props) {
 
     return out.sort((a, b) => b.extensionCount - a.extensionCount);
   }, [scopedActivities, members]);
+
+  const bankLines = useMemo(() => {
+    return sortBankItems(
+      bank
+        .filter((item) => !item.convertedActivityId)
+        .filter((item) => scope === "all" || ideaBelongsToMemberBank(item, scope)),
+    ).map((item) => {
+        const owner = members.find((member) => member.id === item.ownerId);
+        return { item, ownerName: owner?.name || "" };
+      });
+  }, [bank, members, scope]);
 
   const totalExtensions = useMemo(
     () => extensionRows.reduce((sum, row) => sum + row.extensionCount, 0),
@@ -502,7 +542,15 @@ export function TasksReports({ members, activities }: Props) {
                 lines.map((line, index) => (
                   <tr key={`${line.memberName}-${line.title}-${index}`} className="align-top">
                     <td className="px-3 py-3 font-semibold">{line.memberName}</td>
-                    <td className="px-3 py-3">{line.title}</td>
+                    <td className="px-3 py-3">
+                      <button
+                        type="button"
+                        onClick={() => onOpenActivity?.(line.activityId)}
+                        className="text-left font-semibold text-[color:var(--accent)] underline-offset-2 hover:underline"
+                      >
+                        {line.title}
+                      </button>
+                    </td>
                     <td className="whitespace-nowrap px-3 py-3">{formatShort(line.startDate)}</td>
                     <td className="whitespace-nowrap px-3 py-3">
                       {line.endDate ? formatShort(line.endDate) : "—"}
@@ -559,12 +607,18 @@ export function TasksReports({ members, activities }: Props) {
               </p>
               {extensionRows.map((row) => (
                 <div
-                  key={row.activityTitle}
+                  key={row.activityId}
                   className="border border-[color:var(--line)] bg-[color:var(--mist)]/20 p-4"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
-                      <p className="font-semibold text-[color:var(--ink)]">{row.activityTitle}</p>
+                      <button
+                        type="button"
+                        onClick={() => onOpenActivity?.(row.activityId)}
+                        className="text-left font-semibold text-[color:var(--accent)] underline-offset-2 hover:underline"
+                      >
+                        {row.activityTitle}
+                      </button>
                       <p className="text-xs text-[color:var(--muted)]">{row.memberNames}</p>
                     </div>
                     <span className="rounded-full bg-[#fff1f4] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--accent)]">
@@ -590,11 +644,44 @@ export function TasksReports({ members, activities }: Props) {
           )}
         </div>
 
+        {bankLines.length > 0 ? (
+          <div>
+            <h2 className="mb-3 font-[family-name:var(--font-display)] text-lg font-bold">
+              {t.tasks.bankTitle}
+            </h2>
+            <ul className="divide-y divide-[color:var(--line)] border border-[color:var(--line)]">
+              {bankLines.map(({ item, ownerName }) => (
+                <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-3">
+                  <button
+                    type="button"
+                    onClick={() => onOpenBankItem?.(item.id)}
+                    className="text-left text-sm font-semibold text-[color:var(--accent)] underline-offset-2 hover:underline"
+                  >
+                    {item.title || t.tasks.privateIdea}
+                  </button>
+                  <span className="text-xs text-[color:var(--muted)]">
+                    {bankPriorityLabel(item.priority, {
+                      urgent: t.tasks.bankPriorityUrgent,
+                      medium: t.tasks.bankPriorityMedium,
+                      low: t.tasks.bankPriorityLow,
+                    })}
+                    {ownerName ? ` · ${t.tasks.bankFor}: ${ownerName}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         <div>
           <h2 className="mb-3 font-[family-name:var(--font-display)] text-lg font-bold">
             Gantt — cómo van las actividades
           </h2>
-          <TasksGantt members={reportMembers} activities={scopedActivities} />
+          <TasksGantt
+            members={reportMembers}
+            activities={scopedActivities}
+            onOpenActivity={onOpenActivity}
+          />
         </div>
       </article>
     </div>

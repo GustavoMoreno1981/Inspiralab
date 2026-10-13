@@ -343,7 +343,25 @@ export function TasksBoard() {
   const persistQueueRef = useRef(Promise.resolve(true));
   /** Sube en cada commit local; evita que load() tras un PUT pise ediciones más nuevas. */
   const boardEpochRef = useRef(0);
+  /** Una recarga más nueva invalida la respuesta anterior. */
+  const loadRequestRef = useRef(0);
+  const bankDraftRef = useRef<{ notes: string; priority: BankPriority }>({
+    notes: "",
+    priority: "medium",
+  });
+  const editingBankDraftRef = useRef<{
+    title: string;
+    notes: string;
+    priority: BankPriority;
+    collaboratorIds: string[];
+  }>({
+    title: "",
+    notes: "",
+    priority: "medium",
+    collaboratorIds: [],
+  });
   const deletedIdsRef = useRef<{ activities: string[]; bank: string[] }>({ activities: [], bank: [] });
+  const focusTargetRef = useRef<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
@@ -359,6 +377,7 @@ export function TasksBoard() {
   >("list");
   const [selectedMemberId, setSelectedMemberId] = useState<string | "all">("all");
   const [selectedStatus, setSelectedStatus] = useState<TaskStatus | "all">("all");
+  const [bankPriorityFilter, setBankPriorityFilter] = useState<BankPriority | "all">("all");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [bankTitle, setBankTitle] = useState("");
@@ -371,6 +390,13 @@ export function TasksBoard() {
   const [editingBankNotes, setEditingBankNotes] = useState("");
   const [editingBankPriority, setEditingBankPriority] = useState<BankPriority>("medium");
   const [editingBankCollaboratorIds, setEditingBankCollaboratorIds] = useState<string[]>([]);
+  bankDraftRef.current = { notes: bankNotes, priority: bankPriority };
+  editingBankDraftRef.current = {
+    title: editingBankTitle,
+    notes: editingBankNotes,
+    priority: editingBankPriority,
+    collaboratorIds: editingBankCollaboratorIds,
+  };
   const [viewingBankId, setViewingBankId] = useState<string | null>(null);
   const [convertingBankId, setConvertingBankId] = useState<string | null>(null);
   const [expandedActivityId, setExpandedActivityId] = useState<string | null>(null);
@@ -485,7 +511,8 @@ export function TasksBoard() {
     return pendingBoardRef.current.activities.find((item) => item.id === activityId);
   }
 
-  const load = useCallback(async (options?: { force?: boolean }) => {
+  const load = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
     const epochAtStart = boardEpochRef.current;
     const meRes = await fetch("/api/auth/me", { cache: "no-store" });
     let viewer = "";
@@ -508,26 +535,51 @@ export function TasksBoard() {
       : "/api/tasks";
     const tasksRes = await fetch(tasksUrl, { cache: "no-store" });
     if (tasksRes.ok) {
-      // Evitar que una recarga pise commits locales hechos mientras el GET viajaba.
-      if (!options?.force && boardEpochRef.current !== epochAtStart) {
+      // Una recarga que empezó antes de un guardado, o que ya fue reemplazada, no pisa el tablero.
+      if (requestId !== loadRequestRef.current || boardEpochRef.current !== epochAtStart) {
         setLoading(false);
         return;
       }
       const data = (await tasksRes.json()) as TasksBoardResponse;
+      const remoteBank = Array.isArray(data.bank)
+        ? data.bank.map((item) => ({
+            ...item,
+            notes: typeof item.notes === "string" ? item.notes : "",
+            visibility: normalizeVisibility(item.visibility),
+            priority: normalizeBankPriority(item.priority),
+            createdById: item.createdById || item.ownerId || "",
+          }))
+        : [];
+      const localBank = pendingBoardRef.current.bank || [];
       const loaded: TasksBoard = {
         members: (data.members || []).map((member) => normalizeMember(member)),
         activities: (data.activities || []).map((activity) =>
           normalizeActivity({ ...activity, id: activity.id }),
         ),
-        bank: Array.isArray(data.bank)
-          ? data.bank.map((item) => ({
+        bank: remoteBank.map((item) => {
+          const prev = localBank.find((entry) => entry.id === item.id);
+          if (!prev) return item;
+          const redacted =
+            item.visibility === "private" && !item.title.trim() && !item.notes.trim();
+          if (redacted) return item;
+          const localTime = Date.parse(prev.updatedAt || "") || 0;
+          const remoteTime = Date.parse(item.updatedAt || "") || 0;
+          if (localTime > remoteTime) {
+            return {
               ...item,
-              visibility: normalizeVisibility(item.visibility),
-              priority: normalizeBankPriority(item.priority),
-              createdById: item.createdById || item.ownerId || "",
-            }))
-          : [],
+              title: prev.title || item.title,
+              notes: prev.notes || "",
+              priority: normalizeBankPriority(prev.priority),
+              updatedAt: prev.updatedAt,
+            };
+          }
+          return item;
+        }),
       };
+      if (requestId !== loadRequestRef.current || boardEpochRef.current !== epochAtStart) {
+        setLoading(false);
+        return;
+      }
       pendingBoardRef.current = loaded;
       setBoard(loaded);
       setBankPendingCountByMemberOverride(data.bankPendingCountByMember || null);
@@ -536,8 +588,17 @@ export function TasksBoard() {
   }, [selectedMemberId]);
 
   useEffect(() => {
-    void load({ force: true });
+    void load();
   }, [load]);
+
+  useEffect(() => {
+    const targetId = focusTargetRef.current;
+    if (!targetId) return;
+    const node = document.getElementById(targetId);
+    if (!node) return;
+    focusTargetRef.current = null;
+    node.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [viewMode, expandedActivityId, viewingBankId, selectedMemberId]);
 
   const completedActivities = useMemo(
     () => board.activities.filter((activity) => isActivityFullyComplete(activity)),
@@ -577,14 +638,40 @@ export function TasksBoard() {
     return items.filter((item) => ideaBelongsToMemberBank(item, selectedMemberId));
   }, [board.bank, selectedMemberId]);
 
-  const pendingBank = useMemo(
+  const pendingBankAll = useMemo(
     () => sortBankItems(filteredBank.filter((item) => !item.convertedActivityId)),
     [filteredBank],
   );
-  const convertedBank = useMemo(
+  const convertedBankAll = useMemo(
     () => sortBankItems(filteredBank.filter((item) => Boolean(item.convertedActivityId))),
     [filteredBank],
   );
+  const matchesBankPriority = useCallback(
+    (item: TaskBankItem) =>
+      bankPriorityFilter === "all" ||
+      normalizeBankPriority(item.priority) === bankPriorityFilter,
+    [bankPriorityFilter],
+  );
+  const pendingBank = useMemo(
+    () => pendingBankAll.filter(matchesBankPriority),
+    [pendingBankAll, matchesBankPriority],
+  );
+  const convertedBank = useMemo(
+    () => convertedBankAll.filter(matchesBankPriority),
+    [convertedBankAll, matchesBankPriority],
+  );
+  const bankPriorityCounts = useMemo(() => {
+    const counts: Record<BankPriority | "all", number> = {
+      all: pendingBankAll.length,
+      urgent: 0,
+      medium: 0,
+      low: 0,
+    };
+    for (const item of pendingBankAll) {
+      counts[normalizeBankPriority(item.priority)] += 1;
+    }
+    return counts;
+  }, [pendingBankAll]);
   /** Ideas pendientes del banco por integrante (para las tarjetas). */
   const pendingBankCountByMember = useMemo(() => {
     if (bankPendingCountByMemberOverride) return bankPendingCountByMemberOverride;
@@ -1063,13 +1150,14 @@ export function TasksBoard() {
       }
     }
     const now = new Date().toISOString();
+    const draft = bankDraftRef.current;
     const item: TaskBankItem = {
       id: createId("bank"),
       title: bankTitle.trim(),
-      notes: bankNotes.trim(),
+      notes: draft.notes.trim(),
       ownerId,
       suggestedAssigneeIds: audienceIds(ownerId, bankCollaboratorIds),
-      priority: bankPriority,
+      priority: draft.priority,
       convertedActivityId: null,
       createdAt: now,
       updatedAt: now,
@@ -1099,14 +1187,21 @@ export function TasksBoard() {
   }
 
   function startEditBankItem(item: TaskBankItem) {
+    const collaboratorIds = (item.suggestedAssigneeIds || []).filter(
+      (id) => id && id !== item.ownerId,
+    );
+    editingBankDraftRef.current = {
+      title: item.title,
+      notes: item.notes || "",
+      priority: normalizeBankPriority(item.priority),
+      collaboratorIds,
+    };
     setViewingBankId(null);
     setEditingBankId(item.id);
     setEditingBankTitle(item.title);
-    setEditingBankNotes(item.notes);
+    setEditingBankNotes(item.notes || "");
     setEditingBankPriority(normalizeBankPriority(item.priority));
-    setEditingBankCollaboratorIds(
-      (item.suggestedAssigneeIds || []).filter((id) => id && id !== item.ownerId),
-    );
+    setEditingBankCollaboratorIds(collaboratorIds);
   }
 
   function cancelEditBankItem() {
@@ -1118,7 +1213,8 @@ export function TasksBoard() {
   }
 
   async function saveBankItemEdit(id: string) {
-    if (!editingBankTitle.trim()) {
+    const draft = editingBankDraftRef.current;
+    if (!draft.title.trim()) {
       toast.error(t.tasks.toast.bankTitleRequiredEdit);
       return;
     }
@@ -1130,10 +1226,10 @@ export function TasksBoard() {
           item.id === id
             ? {
                 ...item,
-                title: editingBankTitle.trim(),
-                notes: editingBankNotes.trim(),
-                priority: editingBankPriority,
-                suggestedAssigneeIds: audienceIds(item.ownerId, editingBankCollaboratorIds),
+                title: draft.title.trim(),
+                notes: draft.notes.trim(),
+                priority: draft.priority,
+                suggestedAssigneeIds: audienceIds(item.ownerId, draft.collaboratorIds),
                 updatedAt: now,
               }
             : item,
@@ -1984,6 +2080,27 @@ export function TasksBoard() {
     toast.success(t.tasks.toast.whatsappReady);
   }
 
+  function openActivityFromReport(activityId: string) {
+    const activity = pendingBoardRef.current.activities.find((item) => item.id === activityId);
+    setTab("tasks");
+    setViewMode("list");
+    setSelectedMemberId(
+      activity && activity.assigneeIds.length === 1 ? activity.assigneeIds[0] : "all",
+    );
+    setExpandedActivityId(activityId);
+    focusTargetRef.current = `activity-${activityId}`;
+  }
+
+  function openBankItemFromReport(bankId: string) {
+    const item = (pendingBoardRef.current.bank || []).find((entry) => entry.id === bankId);
+    setTab("tasks");
+    setViewMode("bank");
+    setEditingBankId(null);
+    setViewingBankId(bankId);
+    if (item?.ownerId) setSelectedMemberId(item.ownerId);
+    focusTargetRef.current = `bank-item-${bankId}`;
+  }
+
   function renderActivityCards(activities: Activity[]) {
     return activities.map((activity) => {
                         if (
@@ -1995,16 +2112,17 @@ export function TasksBoard() {
                           )
                         ) {
                           return (
-                            <PrivateLockedCard
-                              key={activity.id}
-                              kind="actividad"
-                              onUnlock={() =>
-                                setUnlockTarget({
-                                  itemType: "activity",
-                                  itemId: activity.id,
-                                })
-                              }
-                            />
+                            <div id={`activity-${activity.id}`} key={activity.id}>
+                              <PrivateLockedCard
+                                kind="actividad"
+                                onUnlock={() =>
+                                  setUnlockTarget({
+                                    itemType: "activity",
+                                    itemId: activity.id,
+                                  })
+                                }
+                              />
+                            </div>
                           );
                         }
 
@@ -2020,6 +2138,7 @@ export function TasksBoard() {
 
                         return (
                           <article
+                            id={`activity-${activity.id}`}
                             key={activity.id}
                             className="border border-[color:var(--line)] bg-white"
                           >
@@ -3417,7 +3536,13 @@ export function TasksBoard() {
                 </button>
               </div>
             ) : viewMode === "reports" ? (
-              <TasksReports members={board.members} activities={activeActivities} />
+              <TasksReports
+                members={board.members}
+                activities={activeActivities}
+                bank={board.bank || []}
+                onOpenActivity={openActivityFromReport}
+                onOpenBankItem={openBankItemFromReport}
+              />
             ) : viewMode === "history" ? (
               <TasksHistory
                 members={board.members}
@@ -3591,7 +3716,13 @@ export function TasksBoard() {
                           </span>
                           <textarea
                             value={bankNotes}
-                            onChange={(e) => setBankNotes(e.target.value)}
+                            onChange={(e) => {
+                              bankDraftRef.current = {
+                                ...bankDraftRef.current,
+                                notes: e.target.value,
+                              };
+                              setBankNotes(e.target.value);
+                            }}
                             rows={3}
                             placeholder="Qué implica, materiales, dependencias…"
                             className="w-full border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)]"
@@ -3612,7 +3743,13 @@ export function TasksBoard() {
                               <button
                                 key={value}
                                 type="button"
-                                onClick={() => setBankPriority(value)}
+                                onClick={() => {
+                                  bankDraftRef.current = {
+                                    ...bankDraftRef.current,
+                                    priority: value,
+                                  };
+                                  setBankPriority(value);
+                                }}
                                 className={`border px-3 py-2 text-xs font-semibold ${
                                   bankPriority === value
                                     ? "border-[color:var(--accent)] bg-[#fff1f4] text-[color:var(--accent)]"
@@ -3684,13 +3821,60 @@ export function TasksBoard() {
                     </div>
 
                     <div className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+                          {t.tasks.bankPriority}
+                        </span>
+                        {(
+                          [
+                            ["all", t.tasks.bankPriorityAll],
+                            ["urgent", t.tasks.bankPriorityUrgent],
+                            ["medium", t.tasks.bankPriorityMedium],
+                            ["low", t.tasks.bankPriorityLow],
+                          ] as const
+                        ).map(([value, label]) => {
+                          const active = bankPriorityFilter === value;
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => setBankPriorityFilter(value)}
+                              className={`border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                active
+                                  ? value === "urgent"
+                                    ? "border-transparent bg-[color:var(--accent)] text-white"
+                                    : value === "low"
+                                      ? "border-[color:var(--line)] bg-[color:var(--mist)] text-[color:var(--ink)]"
+                                      : "border-[color:var(--accent)] bg-[#fff1f4] text-[color:var(--accent)]"
+                                  : "border-[color:var(--line)] bg-white text-[color:var(--ink)]"
+                              }`}
+                            >
+                              {label}
+                              <span
+                                className={`ml-1.5 ${active ? "opacity-80" : "text-[color:var(--muted)]"}`}
+                              >
+                                ({bankPriorityCounts[value]})
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
                       <h3 className="text-sm font-bold text-[color:var(--ink)]">
                         {t.tasks.bankPending} ({pendingBank.length})
                       </h3>
                       {pendingBank.length === 0 ? (
                         <div className="border border-dashed border-[color:var(--line)] bg-white p-6 text-sm text-[color:var(--muted)]">
-                          {t.tasks.bankEmpty}
-                          {selectedMember ? ` ${t.tasks.bankEmptyFor} ${selectedMember.name}` : ""}.
+                          {pendingBankAll.length === 0 ? (
+                            <>
+                              {t.tasks.bankEmpty}
+                              {selectedMember
+                                ? ` ${t.tasks.bankEmptyFor} ${selectedMember.name}`
+                                : ""}
+                              .
+                            </>
+                          ) : (
+                            t.tasks.bankFilterEmpty
+                          )}
                         </div>
                       ) : (
                         pendingBank.map((item) => {
@@ -3703,16 +3887,17 @@ export function TasksBoard() {
                             )
                           ) {
                             return (
-                              <PrivateLockedCard
-                                key={item.id}
-                                kind="idea"
-                                onUnlock={() =>
-                                  setUnlockTarget({
-                                    itemType: "bank",
-                                    itemId: item.id,
-                                  })
-                                }
-                              />
+                              <div id={`bank-item-${item.id}`} key={item.id}>
+                                <PrivateLockedCard
+                                  kind="idea"
+                                  onUnlock={() =>
+                                    setUnlockTarget({
+                                      itemType: "bank",
+                                      itemId: item.id,
+                                    })
+                                  }
+                                />
+                              </div>
                             );
                           }
 
@@ -3728,6 +3913,7 @@ export function TasksBoard() {
                           const isViewing = viewingBankId === item.id;
                           return (
                             <article
+                              id={`bank-item-${item.id}`}
                               key={item.id}
                               className="border border-[color:var(--line)] bg-white p-4 md:p-5"
                             >
@@ -3739,7 +3925,13 @@ export function TasksBoard() {
                                     </span>
                                     <input
                                       value={editingBankTitle}
-                                      onChange={(e) => setEditingBankTitle(e.target.value)}
+                                      onChange={(e) => {
+                                        editingBankDraftRef.current = {
+                                          ...editingBankDraftRef.current,
+                                          title: e.target.value,
+                                        };
+                                        setEditingBankTitle(e.target.value);
+                                      }}
                                       className="w-full border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
                                     />
                                   </label>
@@ -3749,7 +3941,13 @@ export function TasksBoard() {
                                     </span>
                                     <textarea
                                       value={editingBankNotes}
-                                      onChange={(e) => setEditingBankNotes(e.target.value)}
+                                      onChange={(e) => {
+                                        editingBankDraftRef.current = {
+                                          ...editingBankDraftRef.current,
+                                          notes: e.target.value,
+                                        };
+                                        setEditingBankNotes(e.target.value);
+                                      }}
                                       rows={3}
                                       className="w-full border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
                                     />
@@ -3769,7 +3967,13 @@ export function TasksBoard() {
                                         <button
                                           key={value}
                                           type="button"
-                                          onClick={() => setEditingBankPriority(value)}
+                                          onClick={() => {
+                                            editingBankDraftRef.current = {
+                                              ...editingBankDraftRef.current,
+                                              priority: value,
+                                            };
+                                            setEditingBankPriority(value);
+                                          }}
                                           className={`border px-3 py-2 text-xs font-semibold ${
                                             editingBankPriority === value
                                               ? "border-[color:var(--accent)] bg-[#fff1f4] text-[color:var(--accent)]"
@@ -3787,9 +3991,14 @@ export function TasksBoard() {
                                     )}
                                     selectedIds={editingBankCollaboratorIds}
                                     onToggle={(memberId) =>
-                                      setEditingBankCollaboratorIds((prev) =>
-                                        toggleId(prev, memberId),
-                                      )
+                                      setEditingBankCollaboratorIds((prev) => {
+                                        const next = toggleId(prev, memberId);
+                                        editingBankDraftRef.current = {
+                                          ...editingBankDraftRef.current,
+                                          collaboratorIds: next,
+                                        };
+                                        return next;
+                                      })
                                     }
                                     label={t.tasks.bankCollaborators}
                                     hint={t.tasks.bankCollaboratorsHint}
@@ -4018,6 +4227,7 @@ export function TasksBoard() {
                         : board.members.filter((m) => m.id === selectedMemberId)
                     }
                     activities={filteredActivities}
+                    onOpenActivity={openActivityFromReport}
                   />
                 ) : (
                   <div className="grid gap-3">

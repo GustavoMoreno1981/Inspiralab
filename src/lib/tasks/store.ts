@@ -920,24 +920,15 @@ async function writeTasksSupabaseRaw(board: StoredBoard) {
     let { error: bankError } = await supabase
       .from("task_bank")
       .upsert(bankRows, { onConflict: "id" });
-    if (
-      bankError &&
-      String(bankError.message || "").includes("priority")
-    ) {
+    if (isMissingColumn(bankError, "priority")) {
       ({ error: bankError } = await supabase.from("task_bank").upsert(
         bankRows.map(({ priority: _priority, ...rest }) => rest),
         { onConflict: "id" },
       ));
     }
-    if (
-      bankError &&
-      (bankError.code === "PGRST204" ||
-        String(bankError.message || "").includes("visibility") ||
-        String(bankError.message || "").includes("created_by_id") ||
-        String(bankError.message || "").includes("priority"))
-    ) {
+    if (isMissingColumn(bankError, "visibility") || isMissingColumn(bankError, "created_by_id")) {
       ({ error: bankError } = await supabase.from("task_bank").upsert(
-        bankRows.map(({ visibility: _v, created_by_id: _c, priority: _priority, ...rest }) => rest),
+        bankRows.map(({ visibility: _v, created_by_id: _c, ...rest }) => rest),
         { onConflict: "id" },
       ));
     }
@@ -1015,7 +1006,38 @@ function preservePrivateBankOnWrite(
     ...incoming,
     title: existing.title,
     notes: existing.notes,
+    priority: normalizeBankPriority(existing.priority || incoming.priority),
   };
+}
+
+function bankWriteTime(value: string | undefined) {
+  const time = Date.parse(value || "");
+  return Number.isFinite(time) ? time : 0;
+}
+
+/**
+ * Un tablero viejo (recarga a medias o sesión filtrada) no debe borrar notas
+ * ni devolver la prioridad a intermedio. Solo una edición más reciente pisa esos campos.
+ */
+function mergeBankItemOnWrite(
+  incoming: TaskBankItem,
+  existing: TaskBankItem | undefined,
+): TaskBankItem {
+  if (!existing) return incoming;
+  if (bankWriteTime(incoming.updatedAt) > bankWriteTime(existing.updatedAt)) {
+    return preservePrivateBankOnWrite(incoming, existing);
+  }
+  return existing;
+}
+
+function isMissingColumn(
+  error: { code?: string; message?: string } | null,
+  column: string,
+) {
+  if (!error) return false;
+  const message = String(error.message || "");
+  if (!message.includes(column)) return false;
+  return error.code === "PGRST204" || /schema cache|could not find/i.test(message);
 }
 
 export async function readTasksBoardUnfiltered(): Promise<TasksBoard> {
@@ -1086,7 +1108,7 @@ export async function writeTasksBoard(
     );
 
     const nextBank = [...incomingBank, ...preservedPrivateBank].map((item) =>
-      preservePrivateBankOnWrite(
+      mergeBankItemOnWrite(
         item,
         (existing.bank || []).find((entry) => entry.id === item.id),
       ),

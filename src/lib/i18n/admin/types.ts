@@ -128,9 +128,11 @@ export type AdminDictionary = {
     bankFor: string;
     bankNoOwner: string;
     bankPriority: string;
+    bankPriorityAll: string;
     bankPriorityUrgent: string;
     bankPriorityMedium: string;
     bankPriorityLow: string;
+    bankFilterEmpty: string;
     bankCollaborators: string;
     bankCollaboratorsHint: string;
     bankAlsoWith: string;
