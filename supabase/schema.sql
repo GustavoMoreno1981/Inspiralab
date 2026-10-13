@@ -33,6 +33,7 @@ create table if not exists public.activities (
   status text not null check (
     status in ('waiting', 'in_progress', 'paused', 'pending_review', 'done')
   ),
+  priority text not null default 'medium' check (priority in ('urgent', 'medium', 'low')),
   assignee_ids text[] not null default '{}',
   notes jsonb not null default '[]'::jsonb,
   review_messages jsonb not null default '[]'::jsonb,

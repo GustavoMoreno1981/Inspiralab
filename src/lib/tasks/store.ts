@@ -35,6 +35,7 @@ type ActivityRow = {
   process_url: string;
   deliverable_url: string;
   status: Activity["status"];
+  priority?: string | null;
   assignee_ids: string[] | null;
   notes?: unknown;
   review_messages?: unknown;
@@ -292,6 +293,7 @@ function normalizeActivities(activities: Activity[]): Activity[] {
     processUrl: activity.processUrl || "",
     deliverableUrl: activity.deliverableUrl || "",
     assigneeIds: activity.assigneeIds || [],
+    priority: normalizeBankPriority(activity.priority),
     notes: normalizeNotes(activity.notes),
     reviewMessages: normalizeReviewMessages(activity.reviewMessages),
     dateExtensions: normalizeDateExtensions(activity.dateExtensions),
@@ -371,6 +373,7 @@ function migrateLegacyBoard(data: Record<string, unknown>): StoredBoard {
       processUrl: String(legacy.processUrl || ""),
       deliverableUrl: String(legacy.deliverableUrl || ""),
       status,
+      priority: normalizeBankPriority(legacy.priority),
       assigneeIds: Array.isArray(legacy.assigneeIds)
         ? legacy.assigneeIds.map(String)
         : [],
@@ -507,6 +510,7 @@ async function readTasksSupabaseRaw(): Promise<StoredBoard> {
     processUrl: row.process_url || "",
     deliverableUrl: row.deliverable_url || "",
     status: row.status,
+    priority: normalizeBankPriority(row.priority),
     assigneeIds: row.assignee_ids || [],
     notes: normalizeNotes(row.notes),
     reviewMessages: normalizeReviewMessages(row.review_messages),
@@ -625,6 +629,7 @@ async function readLegacyTasksSupabaseRaw(): Promise<StoredBoard> {
       processUrl: row.process_url || "",
       deliverableUrl: row.deliverable_url || "",
       status,
+      priority: normalizeBankPriority(row.priority),
       assigneeIds: row.assignee_ids || [],
       notes: normalizeNotes(row.notes),
       reviewMessages: normalizeReviewMessages(row.review_messages),
@@ -730,6 +735,7 @@ function buildActivityRows(activities: Activity[]) {
     process_url: activity.processUrl || "",
     deliverable_url: activity.deliverableUrl || "",
     status: activity.status,
+    priority: normalizeBankPriority(activity.priority),
     assignee_ids: activity.assigneeIds || [],
     notes: activity.notes || [],
     review_messages: activity.reviewMessages || [],
@@ -750,6 +756,12 @@ async function upsertActivityRows(
   let { error: activitiesError } = await supabase
     .from("activities")
     .upsert(activityRows, { onConflict: "id" });
+  if (isMissingColumn(activitiesError, "priority")) {
+    ({ error: activitiesError } = await supabase.from("activities").upsert(
+      activityRows.map(({ priority: _priority, ...rest }) => rest),
+      { onConflict: "id" },
+    ));
+  }
   if (
     activitiesError &&
     (activitiesError.code === "PGRST204" ||
@@ -993,7 +1005,17 @@ function preservePrivateActivityOnWrite(
     notes: existing.notes,
     reviewMessages: existing.reviewMessages,
     tasks: existing.tasks,
+    priority: normalizeBankPriority(existing.priority || incoming.priority),
   };
+}
+
+/** Una copia vieja del tablero no debe devolver la prioridad a intermedio. */
+function mergeActivityOnWrite(incoming: Activity, existing: Activity | undefined): Activity {
+  if (!existing) return incoming;
+  if (bankWriteTime(incoming.updatedAt) > bankWriteTime(existing.updatedAt)) {
+    return preservePrivateActivityOnWrite(incoming, existing);
+  }
+  return existing;
 }
 
 function preservePrivateBankOnWrite(
@@ -1092,7 +1114,7 @@ export async function writeTasksBoard(
     );
 
     const nextActivities = [...incomingActivities, ...preservedPrivateActivities].map((activity) =>
-      preservePrivateActivityOnWrite(
+      mergeActivityOnWrite(
         activity,
         existing.activities.find((item) => item.id === activity.id),
       ),

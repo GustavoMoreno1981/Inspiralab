@@ -133,6 +133,7 @@ export const adminEn: AdminDictionary = {
     bankPriorityMedium: "Medium",
     bankPriorityLow: "Low",
     bankFilterEmpty: "No ideas with this priority",
+    activityFilterEmpty: "No activities with this priority",
     bankPrint: "Print",
     bankPrintReady: "Ready to print",
     bankPrintBlocked: "Allow pop-ups to print",
@@ -259,6 +260,7 @@ export const adminEn: AdminDictionary = {
       "Set up your 4-digit PIN and answer 1 security question (chosen at random).",
     privateSetupDone: "PIN and questions configured",
     titleQuestion: "What is the activity title?",
+    priorityQuestion: "What priority does it have? Urgent comes first, then medium, then low.",
     objectiveQuestion:
       "Would you like to describe the objective in more detail? You can write it or skip this step.",
     noObjective: "No objective description",

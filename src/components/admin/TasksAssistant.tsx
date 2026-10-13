@@ -8,6 +8,7 @@ import {
   getActivityProgress,
   normalizeBankPriority,
   type Activity,
+  type BankPriority,
   type ItemVisibility,
   type Subtask,
   type Task,
@@ -32,6 +33,7 @@ type Step =
   | "privateSetup"
   | "title"
   | "objective"
+  | "priority"
   | "dates"
   | "assignees"
   | "firstTask"
@@ -60,6 +62,7 @@ type CreateDraft = {
   firstSubtask: string;
   firstSubtaskUrl: string;
   visibility: ItemVisibility;
+  priority: BankPriority;
 };
 
 type UpdateDraft = {
@@ -135,13 +138,14 @@ function emptyCreateDraft(defaultAssigneeId?: string): CreateDraft {
     firstSubtask: "",
     firstSubtaskUrl: "",
     visibility: "public",
+    priority: "medium",
   };
 }
 
 function createFlowSteps(visibility: ItemVisibility): Step[] {
   const steps: Step[] = ["visibility"];
   if (visibility === "private") steps.push("privateSetup");
-  return [...steps, "title", "objective", "dates", "assignees", "firstTask", "firstSubtask", "confirm"];
+  return [...steps, "title", "objective", "priority", "dates", "assignees", "firstTask", "firstSubtask", "confirm"];
 }
 
 function bankFlowSteps(bankItem: TaskBankItem | null, visibility: ItemVisibility): Step[] {
@@ -151,7 +155,7 @@ function bankFlowSteps(bankItem: TaskBankItem | null, visibility: ItemVisibility
     steps.push("visibility");
     if (visibility === "private") steps.push("privateSetup");
   }
-  return [...steps, "dates", "assignees", "confirm"];
+  return [...steps, "dates", "assignees", "priority", "confirm"];
 }
 
 function emptyUpdateDraft(): UpdateDraft {
@@ -172,12 +176,12 @@ function memberNames(ids: string[], members: TeamMember[]) {
     .join(", ");
 }
 
-const CREATE_STEPS_PUBLIC = 9;
-const CREATE_STEPS_PRIVATE = 10;
+const CREATE_STEPS_PUBLIC = 10;
+const CREATE_STEPS_PRIVATE = 11;
 const UPDATE_STEPS = 6;
-const BANK_STEPS_INHERITED_PRIVATE = 5;
-const BANK_STEPS_PUBLIC = 6;
-const BANK_STEPS_PRIVATE = 7;
+const BANK_STEPS_INHERITED_PRIVATE = 6;
+const BANK_STEPS_PUBLIC = 7;
+const BANK_STEPS_PRIVATE = 8;
 
 export function TasksAssistant({
   open,
@@ -390,6 +394,7 @@ export function TasksAssistant({
       firstSubtask: "",
       firstSubtaskUrl: "",
       visibility: inheritsPrivate ? "private" : "public",
+      priority: normalizeBankPriority(item.priority),
     });
     setDateStart(start);
     setDateEnd(end);
@@ -418,6 +423,24 @@ export function TasksAssistant({
     setCreateDraft((prev) => ({ ...prev, objective: value }));
     push("user", skip ? a.noObjective : value || a.noObjective);
     setTextInput("");
+    setStep("priority");
+    push("assistant", a.priorityQuestion);
+  }
+
+  function choosePriority(priority: BankPriority) {
+    setCreateDraft((prev) => ({ ...prev, priority }));
+    const label =
+      priority === "urgent"
+        ? t.tasks.bankPriorityUrgent
+        : priority === "low"
+          ? t.tasks.bankPriorityLow
+          : t.tasks.bankPriorityMedium;
+    push("user", label);
+    if (intent === "bank") {
+      setStep("confirm");
+      push("assistant", a.confirmConvert);
+      return;
+    }
     setStep("dates");
     push("assistant", a.datesQuestion);
   }
@@ -455,8 +478,8 @@ export function TasksAssistant({
     const names = memberNames(createDraft.assigneeIds, members) || "—";
     push("user", names);
     if (intent === "bank") {
-      setStep("confirm");
-      push("assistant", a.confirmConvert);
+      setStep("priority");
+      push("assistant", a.priorityQuestion);
       return;
     }
     setStep("firstTask");
@@ -613,6 +636,7 @@ export function TasksAssistant({
       processUrl: "",
       deliverableUrl: "",
       status: "waiting",
+      priority: normalizeBankPriority(createDraft.priority),
       assigneeIds: [...createDraft.assigneeIds],
       tasks,
       notes: [],
@@ -726,6 +750,14 @@ export function TasksAssistant({
                   {createDraft.objective}
                 </p>
               ) : null}
+              <p className="mt-1 text-xs text-[color:var(--muted)]">
+                {t.tasks.bankPriority}:{" "}
+                {createDraft.priority === "urgent"
+                  ? t.tasks.bankPriorityUrgent
+                  : createDraft.priority === "low"
+                    ? t.tasks.bankPriorityLow
+                    : t.tasks.bankPriorityMedium}
+              </p>
               <p className="mt-1 text-xs text-[color:var(--muted)]">
                 {a.visibilityLabel}:{" "}
                 {createDraft.visibility === "private" ? a.private : a.public}
@@ -999,6 +1031,33 @@ export function TasksAssistant({
               >
                 {a.next}
               </button>
+            </div>
+          ) : null}
+
+          {step === "priority" ? (
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  ["urgent", t.tasks.bankPriorityUrgent],
+                  ["medium", t.tasks.bankPriorityMedium],
+                  ["low", t.tasks.bankPriorityLow],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => choosePriority(value)}
+                  className={`border px-3 py-2 text-xs font-semibold ${
+                    value === "urgent"
+                      ? "border-[#dc2626] bg-[#dc2626] text-white"
+                      : value === "low"
+                        ? "border-[#16a34a] bg-[#16a34a] text-white"
+                        : "border-[#ca8a04] bg-[#facc15] text-[#1c1917]"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           ) : null}
 

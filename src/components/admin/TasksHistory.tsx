@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   TASK_STATUS_COLORS,
+  compareBankPriority,
   getActivityCompletionDate,
   getActivityProgress,
+  normalizeBankPriority,
   type Activity,
   type TeamMember,
 } from "@/lib/tasks/types";
@@ -163,6 +165,11 @@ export function TasksHistory({
         return true;
       })
       .sort((a, b) => {
+        const byPriority = compareBankPriority(
+          normalizeBankPriority(a.priority),
+          normalizeBankPriority(b.priority),
+        );
+        if (byPriority !== 0) return byPriority;
         const da = getActivityCompletionDate(a);
         const db = getActivityCompletionDate(b);
         return db.localeCompare(da);

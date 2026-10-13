@@ -133,6 +133,7 @@ export type AdminDictionary = {
     bankPriorityMedium: string;
     bankPriorityLow: string;
     bankFilterEmpty: string;
+    activityFilterEmpty: string;
     bankPrint: string;
     bankPrintReady: string;
     bankPrintBlocked: string;
@@ -259,6 +260,7 @@ export type AdminDictionary = {
     privateSetupDone: string;
     titleQuestion: string;
     objectiveQuestion: string;
+    priorityQuestion: string;
     noObjective: string;
     objectivePlaceholder: string;
     datesQuestion: string;

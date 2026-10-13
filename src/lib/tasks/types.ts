@@ -134,6 +134,8 @@ export type Activity = {
   processUrl: string;
   deliverableUrl: string;
   status: TaskStatus;
+  /** Urgente primero, luego intermedio y al final bajo. */
+  priority: BankPriority;
   assigneeIds: string[];
   tasks: Task[];
   notes: TaskNote[];
@@ -191,6 +193,11 @@ export function normalizeBankPriority(value: unknown): BankPriority {
 
 export function compareBankPriority(a: BankPriority, b: BankPriority): number {
   return BANK_PRIORITY_RANK[normalizeBankPriority(a)] - BANK_PRIORITY_RANK[normalizeBankPriority(b)];
+}
+
+/** Urgente primero, luego intermedio y al final bajo. El orden relativo dentro de cada grupo se conserva. */
+export function sortActivitiesByPriority<T extends { priority?: BankPriority }>(items: T[]): T[] {
+  return items.slice().sort((a, b) => compareBankPriority(a.priority ?? "medium", b.priority ?? "medium"));
 }
 
 /** Dueño y colaboradores que deben ver la idea en su banco. */

@@ -133,6 +133,7 @@ export const adminEs: AdminDictionary = {
     bankPriorityMedium: "Intermedio",
     bankPriorityLow: "Bajo",
     bankFilterEmpty: "No hay ideas con esta prioridad",
+    activityFilterEmpty: "No hay actividades con esta prioridad",
     bankPrint: "Imprimir",
     bankPrintReady: "Listo para imprimir",
     bankPrintBlocked: "Permite ventanas emergentes para imprimir",
@@ -261,6 +262,7 @@ export const adminEs: AdminDictionary = {
     titleQuestion: "¿Cuál es el título de la actividad?",
     objectiveQuestion:
       "¿Quieres describir el objetivo con más detalle? Puedes escribirlo o saltar este paso.",
+    priorityQuestion: "¿Qué prioridad tiene? Urgente va primero, luego intermedio y al final bajo.",
     noObjective: "Sin descripción del objetivo",
     objectivePlaceholder: "Objetivo en texto (opcional)",
     datesQuestion: "Indica la fecha de inicio y la fecha de fin de la actividad.",

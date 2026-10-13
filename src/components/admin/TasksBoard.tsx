@@ -32,6 +32,7 @@ import {
   ideaBelongsToMemberBank,
   normalizeBankPriority,
   resolveBankItemOwnerId,
+  sortActivitiesByPriority,
   sortBankItems,
 } from "@/lib/tasks/types";
 import {
@@ -162,6 +163,7 @@ function normalizeActivity(activity: Partial<Activity> & { id: string }): Activi
     processUrl: activity.processUrl || "",
     deliverableUrl: activity.deliverableUrl || "",
     status,
+    priority: normalizeBankPriority(activity.priority),
     assigneeIds: activity.assigneeIds || [],
     tasks: (activity.tasks || []).map((task) =>
       normalizeTask({ ...task, id: task.id || createId("task") }, activity.id),
@@ -394,6 +396,7 @@ export function TasksBoard() {
   const [selectedMemberId, setSelectedMemberId] = useState<string | "all">("all");
   const [selectedStatus, setSelectedStatus] = useState<TaskStatus | "all">("all");
   const [bankPriorityFilter, setBankPriorityFilter] = useState<BankPriority | "all">("all");
+  const [activityPriorityFilter, setActivityPriorityFilter] = useState<BankPriority | "all">("all");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [bankTitle, setBankTitle] = useState("");
@@ -446,6 +449,7 @@ export function TasksBoard() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newObjective, setNewObjective] = useState("");
+  const [newPriority, setNewPriority] = useState<BankPriority>("medium");
   const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10));
   const [newEndDate, setNewEndDate] = useState(() => {
     const d = new Date();
@@ -567,11 +571,33 @@ export function TasksBoard() {
           }))
         : [];
       const localBank = pendingBoardRef.current.bank || [];
+      const localActivities = pendingBoardRef.current.activities || [];
+      const remoteActivities = (data.activities || []).map((activity) =>
+        normalizeActivity({ ...activity, id: activity.id }),
+      );
       const loaded: TasksBoard = {
         members: (data.members || []).map((member) => normalizeMember(member)),
-        activities: (data.activities || []).map((activity) =>
-          normalizeActivity({ ...activity, id: activity.id }),
-        ),
+        activities: remoteActivities.map((activity) => {
+          const prev = localActivities.find((entry) => entry.id === activity.id);
+          if (!prev) return activity;
+          const redacted = activity.visibility === "private" && !activity.title.trim();
+          const localTime = Date.parse(prev.updatedAt || "") || 0;
+          const remoteTime = Date.parse(activity.updatedAt || "") || 0;
+          if (localTime > remoteTime) {
+            return {
+              ...activity,
+              priority: normalizeBankPriority(prev.priority),
+              updatedAt: prev.updatedAt,
+              ...(redacted
+                ? {}
+                : {
+                    title: prev.title || activity.title,
+                    objective: prev.objective || activity.objective,
+                  }),
+            };
+          }
+          return activity;
+        }),
         bank: remoteBank.map((item) => {
           const prev = localBank.find((entry) => entry.id === item.id);
           if (!prev) return item;
@@ -626,7 +652,7 @@ export function TasksBoard() {
     [board.activities],
   );
 
-  const filteredActivities = useMemo(() => {
+  const activityPriorityBase = useMemo(() => {
     return activeActivities.filter((activity) => {
       const matchesMember =
         selectedMemberId === "all" ||
@@ -636,6 +662,27 @@ export function TasksBoard() {
       return matchesMember && matchesStatus;
     });
   }, [activeActivities, selectedMemberId, selectedStatus]);
+  const activityPriorityCounts = useMemo(() => {
+    const counts: Record<BankPriority | "all", number> = {
+      all: activityPriorityBase.length,
+      urgent: 0,
+      medium: 0,
+      low: 0,
+    };
+    for (const activity of activityPriorityBase) {
+      counts[normalizeBankPriority(activity.priority)] += 1;
+    }
+    return counts;
+  }, [activityPriorityBase]);
+  const filteredActivities = useMemo(() => {
+    const items =
+      activityPriorityFilter === "all"
+        ? activityPriorityBase
+        : activityPriorityBase.filter(
+            (activity) => normalizeBankPriority(activity.priority) === activityPriorityFilter,
+          );
+    return sortActivitiesByPriority(items);
+  }, [activityPriorityBase, activityPriorityFilter]);
 
   const selectedMember =
     selectedMemberId === "all"
@@ -918,6 +965,7 @@ export function TasksBoard() {
     setNewAssigneeIds(defaultAssignee ? [defaultAssignee] : []);
     setNewTitle("");
     setNewObjective("");
+    setNewPriority("medium");
     setNewDate(start);
     setNewEndDate(end.toISOString().slice(0, 10));
     setNewFirstTask("");
@@ -1211,6 +1259,7 @@ export function TasksBoard() {
       processUrl: "",
       deliverableUrl: "",
       status: "waiting",
+      priority: newPriority,
       assigneeIds: [...newAssigneeIds],
       tasks,
       notes: [],
@@ -1398,6 +1447,7 @@ export function TasksBoard() {
     setConvertingBankId(item.id);
     setNewTitle(item.title);
     setNewObjective(item.notes || "");
+    setNewPriority(normalizeBankPriority(item.priority));
     setNewAssigneeIds(
       item.suggestedAssigneeIds.length
         ? item.suggestedAssigneeIds
@@ -2316,6 +2366,11 @@ export function TasksBoard() {
                                     >
                                       {statusColor.label}
                                     </span>
+                                    <span
+                                      className={`border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${bankPriorityClass(normalizeBankPriority(activity.priority), true)}`}
+                                    >
+                                      {bankPriorityLabel(normalizeBankPriority(activity.priority))}
+                                    </span>
                                     {activity.visibility === "private" ? (
                                       <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-[#1e293b] text-white">
                                         {t.common.private}
@@ -2344,6 +2399,31 @@ export function TasksBoard() {
                                         ) : null}
                                       </div>
                                     ) : null}
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {(
+                                      [
+                                        ["urgent", t.tasks.bankPriorityUrgent],
+                                        ["medium", t.tasks.bankPriorityMedium],
+                                        ["low", t.tasks.bankPriorityLow],
+                                      ] as const
+                                    ).map(([value, label]) => (
+                                      <button
+                                        key={value}
+                                        type="button"
+                                        onClick={() => {
+                                          if (normalizeBankPriority(activity.priority) === value) return;
+                                          updateActivity(
+                                            activity.id,
+                                            { priority: value },
+                                            t.common.saved,
+                                          );
+                                        }}
+                                        className={`border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${bankPriorityClass(value, normalizeBankPriority(activity.priority) === value)}`}
+                                      >
+                                        {label}
+                                      </button>
+                                    ))}
                                   </div>
 
                                   <textarea
@@ -3677,7 +3757,14 @@ export function TasksBoard() {
             ) : viewMode === "reports" ? (
               <TasksReports
                 members={board.members}
-                activities={activeActivities}
+                activities={sortActivitiesByPriority(
+                  activityPriorityFilter === "all"
+                    ? activeActivities
+                    : activeActivities.filter(
+                        (activity) =>
+                          normalizeBankPriority(activity.priority) === activityPriorityFilter,
+                      ),
+                )}
                 bank={board.bank || []}
                 onOpenActivity={openActivityFromReport}
                 onOpenBankItem={openBankItemFromReport}
@@ -3685,7 +3772,14 @@ export function TasksBoard() {
             ) : viewMode === "history" ? (
               <TasksHistory
                 members={board.members}
-                activities={completedActivities}
+                activities={
+                  activityPriorityFilter === "all"
+                    ? completedActivities
+                    : completedActivities.filter(
+                        (activity) =>
+                          normalizeBankPriority(activity.priority) === activityPriorityFilter,
+                      )
+                }
                 selectedMemberId={selectedMemberId}
               >
                 {(filtered) => (
@@ -3752,6 +3846,7 @@ export function TasksBoard() {
                 </div>
 
                 {viewMode !== "bank" ? (
+                  <>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
                       {t.common.status}
@@ -3803,6 +3898,43 @@ export function TasksBoard() {
                     );
                   })}
                 </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+                    {t.tasks.bankPriority}
+                  </span>
+                  {(
+                    [
+                      ["all", t.tasks.bankPriorityAll],
+                      ["urgent", t.tasks.bankPriorityUrgent],
+                      ["medium", t.tasks.bankPriorityMedium],
+                      ["low", t.tasks.bankPriorityLow],
+                    ] as const
+                  ).map(([value, label]) => {
+                    const active = activityPriorityFilter === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setActivityPriorityFilter(value)}
+                        className={`border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                          value === "all"
+                            ? active
+                              ? "border-[color:var(--accent)] bg-[#fff1f4] text-[color:var(--accent)]"
+                              : "border-[color:var(--line)] bg-white text-[color:var(--ink)]"
+                            : bankPriorityClass(value, active)
+                        }`}
+                      >
+                        {label}
+                        <span
+                          className={`ml-1.5 ${active ? "opacity-80" : "text-[color:var(--muted)]"}`}
+                        >
+                          ({activityPriorityCounts[value]})
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                  </>
                 ) : null}
 
                 {viewMode === "bank" ? (
@@ -4368,7 +4500,9 @@ export function TasksBoard() {
                     {filteredActivities.length === 0 ? (
                       <div className="border border-[color:var(--line)] bg-white p-8 text-center">
                         <p className="text-[color:var(--muted)]">
-                          No hay actividades abiertas en esta vista.
+                          {activityPriorityFilter === "all"
+                            ? "No hay actividades abiertas en esta vista."
+                            : t.tasks.activityFilterEmpty}
                         </p>
                         {completedActivities.length > 0 ? (
                           <button
@@ -4480,6 +4614,30 @@ export function TasksBoard() {
                 className="w-full resize-y border border-[color:var(--line)] px-3 py-2.5 text-sm outline-none focus:border-[color:var(--accent)]"
               />
             </label>
+
+            <div className="space-y-2">
+              <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
+                {t.tasks.bankPriority}
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    ["urgent", t.tasks.bankPriorityUrgent],
+                    ["medium", t.tasks.bankPriorityMedium],
+                    ["low", t.tasks.bankPriorityLow],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setNewPriority(value)}
+                    className={`border px-3 py-2 text-xs font-semibold ${bankPriorityClass(value, newPriority === value)}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <div className="space-y-2">
               <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
