@@ -133,6 +133,10 @@ export type AdminDictionary = {
     bankPriorityMedium: string;
     bankPriorityLow: string;
     bankFilterEmpty: string;
+    bankPrint: string;
+    bankPrintReady: string;
+    bankPrintBlocked: string;
+    bankPrintEmpty: string;
     bankCollaborators: string;
     bankCollaboratorsHint: string;
     bankAlsoWith: string;

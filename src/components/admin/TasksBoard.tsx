@@ -323,6 +323,22 @@ function RemovableAssigneeAvatar({
   );
 }
 
+function bankPriorityClass(priority: BankPriority, filled: boolean) {
+  if (priority === "urgent") {
+    return filled
+      ? "border-transparent bg-[#dc2626] text-white"
+      : "border-[#dc2626] bg-white text-[#dc2626]";
+  }
+  if (priority === "low") {
+    return filled
+      ? "border-transparent bg-[#16a34a] text-white"
+      : "border-[#16a34a] bg-white text-[#15803d]";
+  }
+  return filled
+    ? "border-[#ca8a04] bg-[#facc15] text-[#1c1917]"
+    : "border-[#ca8a04] bg-[#fef9c3] text-[#854d0e]";
+}
+
 const emptyMemberForm = {
   name: "",
   role: "",
@@ -335,7 +351,7 @@ const emptyMemberForm = {
 export function TasksBoard() {
   const router = useRouter();
   const toast = useToast();
-  const { t } = useAdminLanguage();
+  const { t, locale } = useAdminLanguage();
   const taskStatuses = useMemo(() => getTaskStatuses(t), [t]);
   const statusColors = useMemo(() => getTaskStatusColors(t), [t]);
   const [board, setBoard] = useState<TasksBoard>(emptyBoard());
@@ -942,6 +958,129 @@ export function TasksBoard() {
     if (priority === "urgent") return t.tasks.bankPriorityUrgent;
     if (priority === "low") return t.tasks.bankPriorityLow;
     return t.tasks.bankPriorityMedium;
+  }
+
+  function printBankIdeas() {
+    const pending = pendingBankAll;
+    const converted = convertedBankAll;
+    if (!pending.length && !converted.length) {
+      toast.error(t.tasks.bankPrintEmpty);
+      return;
+    }
+
+    const escapeHtml = (value: string) =>
+      value
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+
+    const ideaIsOpen = (item: TaskBankItem) => {
+      if (item.visibility !== "private") return true;
+      return isPrivateContentVisible(
+        "bank",
+        item.id,
+        Boolean(item.title.trim() || item.notes.trim()),
+      );
+    };
+
+    const peopleLine = (item: TaskBankItem) => {
+      const owner = board.members.find((member) => member.id === item.ownerId);
+      const extras = (item.suggestedAssigneeIds || [])
+        .filter((id) => id && id !== item.ownerId)
+        .map((id) => board.members.find((member) => member.id === id)?.name)
+        .filter((name): name is string => Boolean(name));
+      const ownerLabel = owner?.name || t.tasks.bankNoOwner;
+      const extra = extras.length ? ` · ${t.tasks.bankAlsoWith}: ${extras.join(", ")}` : "";
+      return `${t.tasks.bankFor}: ${ownerLabel}${extra}`;
+    };
+
+    const ideaHtml = (item: TaskBankItem) => {
+      const open = ideaIsOpen(item);
+      const title = open ? item.title.trim() : t.tasks.privateIdea;
+      const notes = open ? item.notes.trim() : "";
+      const priority = normalizeBankPriority(item.priority);
+      return `<article class="idea idea-${priority}">
+        <p class="badge">${escapeHtml(bankPriorityLabel(priority))}</p>
+        <h3>${escapeHtml(title)}</h3>
+        ${notes ? `<p class="notes">${escapeHtml(notes)}</p>` : ""}
+        <p class="meta">${escapeHtml(peopleLine(item))}</p>
+      </article>`;
+    };
+
+    const groups = (["urgent", "medium", "low"] as const)
+      .map((priority) => {
+        const items = pending.filter((item) => normalizeBankPriority(item.priority) === priority);
+        if (!items.length) return "";
+        return `<h2 class="group-${priority}">${escapeHtml(bankPriorityLabel(priority))} (${items.length})</h2>${items.map(ideaHtml).join("")}`;
+      })
+      .join("");
+
+    const convertedHtml = converted.length
+      ? `<h2>${escapeHtml(t.tasks.bankConverted)} (${converted.length})</h2>${converted.map(ideaHtml).join("")}`
+      : "";
+
+    const scope = selectedMember
+      ? `${t.tasks.bankFor}: ${selectedMember.name}`
+      : t.tasks.filterAllTeam;
+    const printedOn = new Date().toLocaleDateString(locale === "es" ? "es-CO" : "en-US", {
+      dateStyle: "long",
+    });
+
+    const html = `<!DOCTYPE html>
+<html lang="${locale}">
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(t.tasks.bankTitle)} — ${escapeHtml(scope)}</title>
+  <style>
+    body { font-family: Georgia, "Times New Roman", serif; color: #1a1a1a; margin: 0; padding: 28px; }
+    h1 { font-size: 26px; margin: 0 0 4px; }
+    .scope { margin: 0 0 20px; color: #555; font-family: Arial, Helvetica, sans-serif; font-size: 13px; }
+    h2 { font-family: Arial, Helvetica, sans-serif; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; margin: 28px 0 8px; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+    .idea { break-inside: avoid; padding: 12px 0 14px; border-bottom: 1px solid #eee; }
+    .idea h3 { font-size: 16px; margin: 4px 0; }
+    .badge { display: inline-block; font-family: Arial, Helvetica, sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; margin: 0; padding: 2px 8px; }
+    .idea-urgent .badge { color: #fff; background: #dc2626; }
+    .idea-medium .badge { color: #1c1917; background: #facc15; }
+    .idea-low .badge { color: #fff; background: #16a34a; }
+    h2.group-urgent { color: #dc2626; border-bottom-color: #dc2626; }
+    h2.group-medium { color: #a16207; border-bottom-color: #eab308; }
+    h2.group-low { color: #15803d; border-bottom-color: #16a34a; }
+    .notes { white-space: pre-wrap; font-size: 14px; line-height: 1.45; margin: 6px 0; }
+    .meta { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #555; margin: 6px 0 0; }
+    @media print {
+      body { padding: 0; }
+      @page { margin: 14mm; }
+    }
+  </style>
+</head>
+<body>
+  <h1>${escapeHtml(t.tasks.bankTitle)}</h1>
+  <p class="scope">${escapeHtml(scope)} · ${escapeHtml(printedOn)} · ${pending.length} ${escapeHtml(t.tasks.bankPending.toLowerCase())}</p>
+  ${groups}
+  ${convertedHtml}
+</body>
+</html>`;
+
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, "_blank");
+    if (!win) {
+      URL.revokeObjectURL(url);
+      toast.error(t.tasks.bankPrintBlocked);
+      return;
+    }
+    window.setTimeout(() => {
+      try {
+        win.focus();
+        win.print();
+      } catch {
+        // La ventana queda abierta para imprimir a mano.
+      }
+    }, 400);
+    window.setTimeout(() => URL.revokeObjectURL(url), 120000);
+    toast.success(t.tasks.bankPrintReady);
   }
 
   function toggleId(ids: string[], memberId: string) {
@@ -3669,15 +3808,26 @@ export function TasksBoard() {
                 {viewMode === "bank" ? (
                   <div className="space-y-5">
                     <div className="border border-[color:var(--line)] bg-white p-5 md:p-6">
-                      <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--ink)]">
-                        {t.tasks.bankTitle}
-                      </h2>
-                      <p className="mt-1 text-sm text-[color:var(--muted)]">
-                        {t.tasks.bankWhatToCreate}
-                        {selectedMember
-                          ? ` ${t.tasks.bankFor}: ${selectedMember.name}.`
-                          : ""}
-                      </p>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[color:var(--ink)]">
+                            {t.tasks.bankTitle}
+                          </h2>
+                          <p className="mt-1 text-sm text-[color:var(--muted)]">
+                            {t.tasks.bankWhatToCreate}
+                            {selectedMember
+                              ? ` ${t.tasks.bankFor}: ${selectedMember.name}.`
+                              : ""}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={printBankIdeas}
+                          className="border border-[color:var(--line)] px-3 py-2 text-xs font-semibold text-[color:var(--ink)]"
+                        >
+                          {t.tasks.bankPrint}
+                        </button>
+                      </div>
 
                       <form onSubmit={(e) => void addBankItem(e)} className="mt-5 grid gap-3">
                         {selectedMemberId === "all" ? (
@@ -3750,11 +3900,7 @@ export function TasksBoard() {
                                   };
                                   setBankPriority(value);
                                 }}
-                                className={`border px-3 py-2 text-xs font-semibold ${
-                                  bankPriority === value
-                                    ? "border-[color:var(--accent)] bg-[#fff1f4] text-[color:var(--accent)]"
-                                    : "border-[color:var(--line)]"
-                                }`}
+                                className={`border px-3 py-2 text-xs font-semibold ${bankPriorityClass(value, bankPriority === value)}`}
                               >
                                 {label}
                               </button>
@@ -3840,13 +3986,11 @@ export function TasksBoard() {
                               type="button"
                               onClick={() => setBankPriorityFilter(value)}
                               className={`border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                                active
-                                  ? value === "urgent"
-                                    ? "border-transparent bg-[color:var(--accent)] text-white"
-                                    : value === "low"
-                                      ? "border-[color:var(--line)] bg-[color:var(--mist)] text-[color:var(--ink)]"
-                                      : "border-[color:var(--accent)] bg-[#fff1f4] text-[color:var(--accent)]"
-                                  : "border-[color:var(--line)] bg-white text-[color:var(--ink)]"
+                                value === "all"
+                                  ? active
+                                    ? "border-[color:var(--accent)] bg-[#fff1f4] text-[color:var(--accent)]"
+                                    : "border-[color:var(--line)] bg-white text-[color:var(--ink)]"
+                                  : bankPriorityClass(value, active)
                               }`}
                             >
                               {label}
@@ -3974,11 +4118,7 @@ export function TasksBoard() {
                                             };
                                             setEditingBankPriority(value);
                                           }}
-                                          className={`border px-3 py-2 text-xs font-semibold ${
-                                            editingBankPriority === value
-                                              ? "border-[color:var(--accent)] bg-[#fff1f4] text-[color:var(--accent)]"
-                                              : "border-[color:var(--line)]"
-                                          }`}
+                                          className={`border px-3 py-2 text-xs font-semibold ${bankPriorityClass(value, editingBankPriority === value)}`}
                                         >
                                           {label}
                                         </button>
@@ -4029,13 +4169,7 @@ export function TasksBoard() {
                                         {item.title}
                                       </p>
                                       <span
-                                        className={`mt-1 inline-block px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                                          item.priority === "urgent"
-                                            ? "bg-[color:var(--accent)] text-white"
-                                            : item.priority === "low"
-                                              ? "bg-[color:var(--mist)] text-[color:var(--muted)]"
-                                              : "bg-[#fff1f4] text-[color:var(--accent)]"
-                                        }`}
+                                        className={`mt-1 inline-block border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${bankPriorityClass(normalizeBankPriority(item.priority), true)}`}
                                       >
                                         {bankPriorityLabel(normalizeBankPriority(item.priority))}
                                       </span>

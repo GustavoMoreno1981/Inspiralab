@@ -938,11 +938,21 @@ export function TasksAssistant({
                           </span>
                         ) : null}
                         <span className="mt-0.5 block text-xs text-[color:var(--muted)]">
-                          {normalizeBankPriority(item.priority) === "urgent"
-                            ? t.tasks.bankPriorityUrgent
-                            : normalizeBankPriority(item.priority) === "low"
-                              ? t.tasks.bankPriorityLow
-                              : t.tasks.bankPriorityMedium}
+                          <span
+                            className={
+                              normalizeBankPriority(item.priority) === "urgent"
+                                ? "font-semibold text-[#dc2626]"
+                                : normalizeBankPriority(item.priority) === "low"
+                                  ? "font-semibold text-[#15803d]"
+                                  : "font-semibold text-[#a16207]"
+                            }
+                          >
+                            {normalizeBankPriority(item.priority) === "urgent"
+                              ? t.tasks.bankPriorityUrgent
+                              : normalizeBankPriority(item.priority) === "low"
+                                ? t.tasks.bankPriorityLow
+                                : t.tasks.bankPriorityMedium}
+                          </span>
                           {" · "}
                           {owner
                             ? `${t.tasks.bankFor}: ${owner.name}`

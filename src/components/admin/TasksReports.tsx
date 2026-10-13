@@ -660,12 +660,22 @@ export function TasksReports({
                     {item.title || t.tasks.privateIdea}
                   </button>
                   <span className="text-xs text-[color:var(--muted)]">
-                    {bankPriorityLabel(item.priority, {
-                      urgent: t.tasks.bankPriorityUrgent,
-                      medium: t.tasks.bankPriorityMedium,
-                      low: t.tasks.bankPriorityLow,
-                    })}
-                    {ownerName ? ` · ${t.tasks.bankFor}: ${ownerName}` : ""}
+                    <span
+                      className={`mr-1 inline-block px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                        normalizeBankPriority(item.priority) === "urgent"
+                          ? "bg-[#dc2626] text-white"
+                          : normalizeBankPriority(item.priority) === "low"
+                            ? "bg-[#16a34a] text-white"
+                            : "bg-[#facc15] text-[#1c1917]"
+                      }`}
+                    >
+                      {bankPriorityLabel(item.priority, {
+                        urgent: t.tasks.bankPriorityUrgent,
+                        medium: t.tasks.bankPriorityMedium,
+                        low: t.tasks.bankPriorityLow,
+                      })}
+                    </span>
+                    {ownerName ? `${t.tasks.bankFor}: ${ownerName}` : ""}
                   </span>
                 </li>
               ))}
