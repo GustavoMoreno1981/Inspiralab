@@ -17,6 +17,7 @@ import {
   type TasksBoard,
   type TeamMember,
   normalizeVisibility,
+  normalizeBankPriority,
   canViewPrivateItem,
   isPrivateItem,
 } from "./types";
@@ -266,6 +267,7 @@ function normalizeBank(items: unknown): TaskBankItem[] {
         suggestedAssigneeIds: Array.isArray(item.suggestedAssigneeIds)
           ? item.suggestedAssigneeIds.map(String)
           : [],
+        priority: normalizeBankPriority(item.priority),
         convertedActivityId:
           typeof item.convertedActivityId === "string" ? item.convertedActivityId : null,
         createdAt: item.createdAt || new Date().toISOString(),
@@ -525,6 +527,7 @@ async function readTasksSupabaseRaw(): Promise<StoredBoard> {
           notes: row.notes,
           ownerId: row.owner_id || row.created_by_id || "",
           suggestedAssigneeIds: row.suggested_assignee_ids,
+          priority: row.priority,
           convertedActivityId: row.converted_activity_id,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
@@ -905,6 +908,7 @@ async function writeTasksSupabaseRaw(board: StoredBoard) {
     notes: item.notes || "",
     owner_id: item.ownerId || "",
     suggested_assignee_ids: item.suggestedAssigneeIds || [],
+    priority: normalizeBankPriority(item.priority),
     converted_activity_id: item.convertedActivityId || null,
     created_at: item.createdAt || new Date().toISOString(),
     updated_at: item.updatedAt || new Date().toISOString(),
@@ -918,12 +922,22 @@ async function writeTasksSupabaseRaw(board: StoredBoard) {
       .upsert(bankRows, { onConflict: "id" });
     if (
       bankError &&
-      (bankError.code === "PGRST204" ||
-        String(bankError.message || "").includes("visibility") ||
-        String(bankError.message || "").includes("created_by_id"))
+      String(bankError.message || "").includes("priority")
     ) {
       ({ error: bankError } = await supabase.from("task_bank").upsert(
-        bankRows.map(({ visibility: _v, created_by_id: _c, ...rest }) => rest),
+        bankRows.map(({ priority: _priority, ...rest }) => rest),
+        { onConflict: "id" },
+      ));
+    }
+    if (
+      bankError &&
+      (bankError.code === "PGRST204" ||
+        String(bankError.message || "").includes("visibility") ||
+        String(bankError.message || "").includes("created_by_id") ||
+        String(bankError.message || "").includes("priority"))
+    ) {
+      ({ error: bankError } = await supabase.from("task_bank").upsert(
+        bankRows.map(({ visibility: _v, created_by_id: _c, priority: _priority, ...rest }) => rest),
         { onConflict: "id" },
       ));
     }

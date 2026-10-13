@@ -18,6 +18,7 @@ import {
   type ActivityDateExtension,
   type Task,
   type Subtask,
+  type BankPriority,
   type TaskBankItem,
   type TaskNote,
   type ReviewMessage,
@@ -28,7 +29,10 @@ import {
   type TeamMember,
   type ItemVisibility,
   countPendingBankByMember,
+  ideaBelongsToMemberBank,
+  normalizeBankPriority,
   resolveBankItemOwnerId,
+  sortBankItems,
 } from "@/lib/tasks/types";
 import {
   latestReviewResponse,
@@ -241,6 +245,48 @@ function MemberAvatar({
   );
 }
 
+function BankCollaboratorPicker({
+  members,
+  selectedIds,
+  onToggle,
+  label,
+  hint,
+}: {
+  members: TeamMember[];
+  selectedIds: string[];
+  onToggle: (memberId: string) => void;
+  label: string;
+  hint: string;
+}) {
+  if (!members.length) return null;
+  return (
+    <div className="space-y-2">
+      <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">{label}</span>
+      <p className="text-xs text-[color:var(--muted)]">{hint}</p>
+      <div className="grid grid-cols-2 gap-2">
+        {members.map((member) => {
+          const active = selectedIds.includes(member.id);
+          return (
+            <button
+              key={member.id}
+              type="button"
+              onClick={() => onToggle(member.id)}
+              className={`flex items-center gap-2 border px-3 py-2 text-left ${
+                active
+                  ? "border-[color:var(--accent)] bg-[#fff1f4]"
+                  : "border-[color:var(--line)]"
+              }`}
+            >
+              <MemberAvatar name={member.name} photo={member.photo} />
+              <span className="text-sm font-semibold">{member.name}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function RemovableAssigneeAvatar({
   member,
   canRemove,
@@ -318,9 +364,13 @@ export function TasksBoard() {
   const [bankTitle, setBankTitle] = useState("");
   const [bankNotes, setBankNotes] = useState("");
   const [bankOwnerId, setBankOwnerId] = useState("");
+  const [bankPriority, setBankPriority] = useState<BankPriority>("medium");
+  const [bankCollaboratorIds, setBankCollaboratorIds] = useState<string[]>([]);
   const [editingBankId, setEditingBankId] = useState<string | null>(null);
   const [editingBankTitle, setEditingBankTitle] = useState("");
   const [editingBankNotes, setEditingBankNotes] = useState("");
+  const [editingBankPriority, setEditingBankPriority] = useState<BankPriority>("medium");
+  const [editingBankCollaboratorIds, setEditingBankCollaboratorIds] = useState<string[]>([]);
   const [viewingBankId, setViewingBankId] = useState<string | null>(null);
   const [convertingBankId, setConvertingBankId] = useState<string | null>(null);
   const [expandedActivityId, setExpandedActivityId] = useState<string | null>(null);
@@ -473,6 +523,7 @@ export function TasksBoard() {
           ? data.bank.map((item) => ({
               ...item,
               visibility: normalizeVisibility(item.visibility),
+              priority: normalizeBankPriority(item.priority),
               createdById: item.createdById || item.ownerId || "",
             }))
           : [],
@@ -523,15 +574,15 @@ export function TasksBoard() {
   const filteredBank = useMemo(() => {
     const items = board.bank || [];
     if (selectedMemberId === "all") return items;
-    return items.filter((item) => item.ownerId === selectedMemberId);
+    return items.filter((item) => ideaBelongsToMemberBank(item, selectedMemberId));
   }, [board.bank, selectedMemberId]);
 
   const pendingBank = useMemo(
-    () => filteredBank.filter((item) => !item.convertedActivityId),
+    () => sortBankItems(filteredBank.filter((item) => !item.convertedActivityId)),
     [filteredBank],
   );
   const convertedBank = useMemo(
-    () => filteredBank.filter((item) => Boolean(item.convertedActivityId)),
+    () => sortBankItems(filteredBank.filter((item) => Boolean(item.convertedActivityId))),
     [filteredBank],
   );
   /** Ideas pendientes del banco por integrante (para las tarjetas). */
@@ -540,9 +591,8 @@ export function TasksBoard() {
     return countPendingBankByMember(board.bank || [], board.members);
   }, [bankPendingCountByMemberOverride, board.bank, board.members]);
   const pendingBankTotal = useMemo(
-    () =>
-      Object.values(pendingBankCountByMember).reduce((sum, n) => sum + n, 0),
-    [pendingBankCountByMember],
+    () => (board.bank || []).filter((item) => !item.convertedActivityId).length,
+    [board.bank],
   );
   /** Actividades abiertas (no al 100 %) por integrante — para las tarjetas. */
   const activeActivityCountByMember = useMemo(() => {
@@ -801,6 +851,20 @@ export function TasksBoard() {
     return sessionMemberId || fallbackId;
   }
 
+  function bankPriorityLabel(priority: BankPriority) {
+    if (priority === "urgent") return t.tasks.bankPriorityUrgent;
+    if (priority === "low") return t.tasks.bankPriorityLow;
+    return t.tasks.bankPriorityMedium;
+  }
+
+  function toggleId(ids: string[], memberId: string) {
+    return ids.includes(memberId) ? ids.filter((id) => id !== memberId) : [...ids, memberId];
+  }
+
+  function audienceIds(ownerId: string, collaboratorIds: string[]) {
+    return Array.from(new Set([ownerId, ...collaboratorIds.filter((id) => id && id !== ownerId)]));
+  }
+
   function resetNewPrivateForm() {
     setNewVisibility("public");
     setNewPrivateSetup(createEmptyPrivateSetup());
@@ -1004,7 +1068,8 @@ export function TasksBoard() {
       title: bankTitle.trim(),
       notes: bankNotes.trim(),
       ownerId,
-      suggestedAssigneeIds: [ownerId],
+      suggestedAssigneeIds: audienceIds(ownerId, bankCollaboratorIds),
+      priority: bankPriority,
       convertedActivityId: null,
       createdAt: now,
       updatedAt: now,
@@ -1028,6 +1093,8 @@ export function TasksBoard() {
       resetBankPrivateForm();
       setBankTitle("");
       setBankNotes("");
+      setBankPriority("medium");
+      setBankCollaboratorIds([]);
     }
   }
 
@@ -1036,12 +1103,18 @@ export function TasksBoard() {
     setEditingBankId(item.id);
     setEditingBankTitle(item.title);
     setEditingBankNotes(item.notes);
+    setEditingBankPriority(normalizeBankPriority(item.priority));
+    setEditingBankCollaboratorIds(
+      (item.suggestedAssigneeIds || []).filter((id) => id && id !== item.ownerId),
+    );
   }
 
   function cancelEditBankItem() {
     setEditingBankId(null);
     setEditingBankTitle("");
     setEditingBankNotes("");
+    setEditingBankPriority("medium");
+    setEditingBankCollaboratorIds([]);
   }
 
   async function saveBankItemEdit(id: string) {
@@ -1059,6 +1132,8 @@ export function TasksBoard() {
                 ...item,
                 title: editingBankTitle.trim(),
                 notes: editingBankNotes.trim(),
+                priority: editingBankPriority,
+                suggestedAssigneeIds: audienceIds(item.ownerId, editingBankCollaboratorIds),
                 updatedAt: now,
               }
             : item,
@@ -3524,6 +3599,46 @@ export function TasksBoard() {
                         </label>
                         <div className="space-y-2">
                           <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
+                            {t.tasks.bankPriority}
+                          </span>
+                          <div className="flex flex-wrap gap-2">
+                            {(
+                              [
+                                ["urgent", t.tasks.bankPriorityUrgent],
+                                ["medium", t.tasks.bankPriorityMedium],
+                                ["low", t.tasks.bankPriorityLow],
+                              ] as const
+                            ).map(([value, label]) => (
+                              <button
+                                key={value}
+                                type="button"
+                                onClick={() => setBankPriority(value)}
+                                className={`border px-3 py-2 text-xs font-semibold ${
+                                  bankPriority === value
+                                    ? "border-[color:var(--accent)] bg-[#fff1f4] text-[color:var(--accent)]"
+                                    : "border-[color:var(--line)]"
+                                }`}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <BankCollaboratorPicker
+                          members={board.members.filter(
+                            (member) =>
+                              member.id !==
+                              (selectedMemberId !== "all" ? selectedMemberId : bankOwnerId),
+                          )}
+                          selectedIds={bankCollaboratorIds}
+                          onToggle={(memberId) =>
+                            setBankCollaboratorIds((prev) => toggleId(prev, memberId))
+                          }
+                          label={t.tasks.bankCollaborators}
+                          hint={t.tasks.bankCollaboratorsHint}
+                        />
+                        <div className="space-y-2">
+                          <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
                             {t.common.visibility}
                           </span>
                           <div className="flex gap-2">
@@ -3639,6 +3754,46 @@ export function TasksBoard() {
                                       className="w-full border border-[color:var(--line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)]"
                                     />
                                   </label>
+                                  <div className="space-y-2">
+                                    <span className="text-xs font-semibold uppercase text-[color:var(--muted)]">
+                                      {t.tasks.bankPriority}
+                                    </span>
+                                    <div className="flex flex-wrap gap-2">
+                                      {(
+                                        [
+                                          ["urgent", t.tasks.bankPriorityUrgent],
+                                          ["medium", t.tasks.bankPriorityMedium],
+                                          ["low", t.tasks.bankPriorityLow],
+                                        ] as const
+                                      ).map(([value, label]) => (
+                                        <button
+                                          key={value}
+                                          type="button"
+                                          onClick={() => setEditingBankPriority(value)}
+                                          className={`border px-3 py-2 text-xs font-semibold ${
+                                            editingBankPriority === value
+                                              ? "border-[color:var(--accent)] bg-[#fff1f4] text-[color:var(--accent)]"
+                                              : "border-[color:var(--line)]"
+                                          }`}
+                                        >
+                                          {label}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <BankCollaboratorPicker
+                                    members={board.members.filter(
+                                      (member) => member.id !== item.ownerId,
+                                    )}
+                                    selectedIds={editingBankCollaboratorIds}
+                                    onToggle={(memberId) =>
+                                      setEditingBankCollaboratorIds((prev) =>
+                                        toggleId(prev, memberId),
+                                      )
+                                    }
+                                    label={t.tasks.bankCollaborators}
+                                    hint={t.tasks.bankCollaboratorsHint}
+                                  />
                                   <div className="flex flex-wrap gap-2">
                                     <button
                                       type="button"
@@ -3664,8 +3819,19 @@ export function TasksBoard() {
                                       <p className="font-[family-name:var(--font-display)] text-base font-bold text-[color:var(--ink)]">
                                         {item.title}
                                       </p>
+                                      <span
+                                        className={`mt-1 inline-block px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                                          item.priority === "urgent"
+                                            ? "bg-[color:var(--accent)] text-white"
+                                            : item.priority === "low"
+                                              ? "bg-[color:var(--mist)] text-[color:var(--muted)]"
+                                              : "bg-[#fff1f4] text-[color:var(--accent)]"
+                                        }`}
+                                      >
+                                        {bankPriorityLabel(normalizeBankPriority(item.priority))}
+                                      </span>
                                       {item.visibility === "private" ? (
-                                        <span className="mt-1 inline-block px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-[#1e293b] text-white">
+                                        <span className="mt-1 ml-2 inline-block px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-[#1e293b] text-white">
                                           {t.common.private}
                                         </span>
                                       ) : null}
@@ -3676,6 +3842,18 @@ export function TasksBoard() {
                                       ) : null}
                                       <p className="mt-2 text-xs text-[color:var(--muted)]">
                                         {owner ? `${t.tasks.bankFor}: ${owner.name}` : t.tasks.bankNoOwner}
+                                        {(() => {
+                                          const extraNames = (item.suggestedAssigneeIds || [])
+                                            .filter((id) => id && id !== item.ownerId)
+                                            .map(
+                                              (id) =>
+                                                board.members.find((member) => member.id === id)
+                                                  ?.name,
+                                            )
+                                            .filter((name): name is string => Boolean(name));
+                                          if (!extraNames.length) return null;
+                                          return ` · ${t.tasks.bankAlsoWith}: ${extraNames.join(", ")}`;
+                                        })()}
                                       </p>
                                     </div>
                                     <div className="flex flex-wrap gap-2">
@@ -3885,7 +4063,13 @@ export function TasksBoard() {
         open={assistantOpen}
         members={board.members}
         activities={board.activities}
-        bank={board.bank || []}
+        bank={
+          selectedMemberId === "all"
+            ? board.bank || []
+            : (board.bank || []).filter((item) =>
+                ideaBelongsToMemberBank(item, selectedMemberId),
+              )
+        }
         saving={saving}
         defaultAssigneeId={
           selectedMemberId !== "all" ? selectedMemberId : sessionMemberId || undefined

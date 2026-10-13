@@ -175,6 +175,62 @@ export function resolveBankItemOwnerId(
   return item.ownerId || item.createdById || "";
 }
 
+/** Urgente va primero, luego intermedio y al final bajo. */
+export type BankPriority = "urgent" | "medium" | "low";
+
+const BANK_PRIORITY_RANK: Record<BankPriority, number> = {
+  urgent: 0,
+  medium: 1,
+  low: 2,
+};
+
+export function normalizeBankPriority(value: unknown): BankPriority {
+  if (value === "urgent" || value === "low" || value === "medium") return value;
+  return "medium";
+}
+
+export function compareBankPriority(a: BankPriority, b: BankPriority): number {
+  return BANK_PRIORITY_RANK[normalizeBankPriority(a)] - BANK_PRIORITY_RANK[normalizeBankPriority(b)];
+}
+
+/** Dueño y colaboradores que deben ver la idea en su banco. */
+export function bankIdeaMemberIds(
+  item: Pick<TaskBankItem, "ownerId" | "createdById" | "suggestedAssigneeIds">,
+  memberIds: Set<string>,
+): string[] {
+  const ids: string[] = [];
+  const push = (id: string) => {
+    if (!id || ids.includes(id) || !memberIds.has(id)) return;
+    ids.push(id);
+  };
+  push(item.ownerId);
+  for (const id of item.suggestedAssigneeIds || []) push(id);
+  if (!ids.length) {
+    const fallback = resolveBankItemOwnerId(item, memberIds);
+    if (fallback) ids.push(fallback);
+  }
+  return ids;
+}
+
+export function ideaBelongsToMemberBank(
+  item: Pick<TaskBankItem, "ownerId" | "suggestedAssigneeIds">,
+  memberId: string,
+): boolean {
+  if (!memberId) return false;
+  if (item.ownerId === memberId) return true;
+  return (item.suggestedAssigneeIds || []).includes(memberId);
+}
+
+export function sortBankItems<T extends Pick<TaskBankItem, "priority" | "createdAt">>(
+  items: T[],
+): T[] {
+  return items.slice().sort((a, b) => {
+    const byPriority = compareBankPriority(a.priority, b.priority);
+    if (byPriority !== 0) return byPriority;
+    return a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0;
+  });
+}
+
 export function countPendingBankByMember(
   bank: TaskBankItem[],
   members: Pick<TeamMember, "id">[],
@@ -183,9 +239,9 @@ export function countPendingBankByMember(
   const counts: Record<string, number> = {};
   for (const item of bank) {
     if (item.convertedActivityId) continue;
-    const ownerId = resolveBankItemOwnerId(item, memberIds);
-    if (!ownerId) continue;
-    counts[ownerId] = (counts[ownerId] || 0) + 1;
+    for (const memberId of bankIdeaMemberIds(item, memberIds)) {
+      counts[memberId] = (counts[memberId] || 0) + 1;
+    }
   }
   return counts;
 }
@@ -197,7 +253,10 @@ export type TaskBankItem = {
   notes: string;
   /** Integrante dueño del ítem del banco (quien se seleccionó). */
   ownerId: string;
+  /** Dueño más colaboradores. La idea aparece en el banco de cada uno. */
   suggestedAssigneeIds: string[];
+  /** urgente primero, intermedio, bajo. */
+  priority: BankPriority;
   convertedActivityId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -376,13 +435,18 @@ export function isPrivateItem(item: {
 }
 
 export function canViewPrivateItem(
-  item: { visibility?: ItemVisibility; createdById?: string; ownerId?: string },
+  item: {
+    visibility?: ItemVisibility;
+    createdById?: string;
+    ownerId?: string;
+    suggestedAssigneeIds?: string[];
+  },
   viewerMemberId: string,
 ): boolean {
   if (!isPrivateItem(item)) return true;
   if (!viewerMemberId) return false;
-  const owner = item.createdById || item.ownerId || "";
-  return owner === viewerMemberId;
+  if (item.createdById === viewerMemberId || item.ownerId === viewerMemberId) return true;
+  return (item.suggestedAssigneeIds || []).includes(viewerMemberId);
 }
 
 /** Oculta título y contenido sensible hasta desbloquear con la clave. */

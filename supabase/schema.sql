@@ -71,6 +71,7 @@ create table if not exists public.task_bank (
   notes text not null default '',
   owner_id text not null default '',
   suggested_assignee_ids text[] not null default '{}',
+  priority text not null default 'medium' check (priority in ('urgent', 'medium', 'low')),
   converted_activity_id text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

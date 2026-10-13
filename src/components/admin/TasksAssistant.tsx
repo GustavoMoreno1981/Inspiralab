@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  compareBankPriority,
   createId,
   deriveTaskStatusFromSubtasks,
   getActivityProgress,
+  normalizeBankPriority,
   type Activity,
   type ItemVisibility,
   type Subtask,
@@ -227,7 +229,15 @@ export function TasksAssistant({
     () =>
       (bank || [])
         .filter((item) => !item.convertedActivityId)
-        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)),
+        .slice()
+        .sort((a, b) => {
+          const byPriority = compareBankPriority(
+            normalizeBankPriority(a.priority),
+            normalizeBankPriority(b.priority),
+          );
+          if (byPriority !== 0) return byPriority;
+          return a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0;
+        }),
     [bank],
   );
 
@@ -928,6 +938,12 @@ export function TasksAssistant({
                           </span>
                         ) : null}
                         <span className="mt-0.5 block text-xs text-[color:var(--muted)]">
+                          {normalizeBankPriority(item.priority) === "urgent"
+                            ? t.tasks.bankPriorityUrgent
+                            : normalizeBankPriority(item.priority) === "low"
+                              ? t.tasks.bankPriorityLow
+                              : t.tasks.bankPriorityMedium}
+                          {" · "}
                           {owner
                             ? `${t.tasks.bankFor}: ${owner.name}`
                             : t.tasks.bankNoOwner}
