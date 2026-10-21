@@ -222,6 +222,14 @@ export function AdminAlarms({
     return () => window.removeEventListener("keydown", onKey);
   }, [filter]);
 
+  const taskAlerts = useMemo(
+    () => taskNotifications.filter((item) => item.reason !== "pending_review"),
+    [taskNotifications],
+  );
+  const pendingReviewAlarms = useMemo(
+    () => taskAlarms.filter((item) => item.reason === "pending_review"),
+    [taskAlarms],
+  );
   const doneAlarms = useMemo(
     () => taskAlarms.filter((item) => item.reason === "done"),
     [taskAlarms],
@@ -284,7 +292,7 @@ export function AdminAlarms({
         </div>
       </div>
 
-      <div className={`grid gap-5 ${showBudget ? "lg:grid-cols-2" : ""}`}>
+      <div className={`grid gap-5 ${showBudget ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}>
         <div className="border border-[color:var(--line)] bg-white">
           <div className="flex items-center justify-between gap-2 border-b border-[color:var(--line)] px-4 py-3">
             <h3 className="font-semibold">{t.alarms.tasks}</h3>
@@ -293,41 +301,16 @@ export function AdminAlarms({
             </Link>
           </div>
 
-          {taskNotifications.length === 0 && doneAlarms.length === 0 ? (
+          {taskAlerts.length === 0 ? (
             <p className="px-4 py-6 text-sm text-[color:var(--muted)]">
               {t.alarms.noTaskNotifications}
             </p>
-          ) : taskNotifications.length > 0 ? (
-            <ul className="divide-y divide-[color:var(--line)]">
-              {taskNotifications.map((alarm) => (
+          ) : (
+            <ul className="max-h-80 divide-y divide-[color:var(--line)] overflow-y-auto">
+              {taskAlerts.map((alarm) => (
                 <TaskAlarmRow key={alarm.activityId} alarm={alarm} t={t} />
               ))}
             </ul>
-          ) : null}
-
-          {doneAlarms.length > 0 && (
-            <div className="border-t border-[color:var(--line)]">
-              <p className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
-                {t.alarms.levels.done}: {doneAlarms.length}
-              </p>
-              <ul className="max-h-72 divide-y divide-[color:var(--line)] overflow-y-auto">
-                {doneAlarms.map((alarm) => (
-                  <TaskAlarmRow key={alarm.activityId} alarm={alarm} t={t} />
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {pendingReviewCount > 0 && (
-            <div className="border-t border-[color:var(--line)] px-4 py-3">
-              <button
-                type="button"
-                onClick={() => setFilter("pending_review")}
-                className="text-xs font-semibold uppercase tracking-wide text-[color:var(--accent)] hover:underline"
-              >
-                {formatAdmin(t.alarms.pendingReviewLink, { count: pendingReviewCount })}
-              </button>
-            </div>
           )}
 
           {counts.blue > 0 && (
@@ -354,6 +337,44 @@ export function AdminAlarms({
                   ))}
               </ul>
             </div>
+          )}
+        </div>
+
+        <div className="border border-[color:var(--line)] bg-white">
+          <div className="flex items-center justify-between gap-2 border-b border-[color:var(--line)] px-4 py-3">
+            <h3 className="font-semibold">{t.alarms.reasons.pending_review}</h3>
+            <Link href="/admin/tareas" className="text-xs font-semibold text-[color:var(--accent)]">
+              {t.alarms.goToTasks}
+            </Link>
+          </div>
+
+          {pendingReviewAlarms.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-[color:var(--muted)]">{t.alarms.bellEmpty}</p>
+          ) : (
+            <ul className="max-h-80 divide-y divide-[color:var(--line)] overflow-y-auto">
+              {pendingReviewAlarms.map((alarm) => (
+                <TaskAlarmRow key={alarm.activityId} alarm={alarm} t={t} />
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="border border-[color:var(--line)] bg-white">
+          <div className="flex items-center justify-between gap-2 border-b border-[color:var(--line)] px-4 py-3">
+            <h3 className="font-semibold">{t.alarms.doneTasks}</h3>
+            <Link href="/admin/tareas" className="text-xs font-semibold text-[color:var(--accent)]">
+              {t.alarms.goToTasks}
+            </Link>
+          </div>
+
+          {doneAlarms.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-[color:var(--muted)]">{t.alarms.noDoneTasks}</p>
+          ) : (
+            <ul className="max-h-80 divide-y divide-[color:var(--line)] overflow-y-auto">
+              {doneAlarms.map((alarm) => (
+                <TaskAlarmRow key={alarm.activityId} alarm={alarm} t={t} />
+              ))}
+            </ul>
           )}
         </div>
 

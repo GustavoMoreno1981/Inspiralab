@@ -142,9 +142,7 @@ export function NotificationBell({
         >
           <div className="border-b border-[color:var(--line)] px-4 py-3">
             <p className="font-semibold text-[color:var(--ink)]">{t.alarms.bell}</p>
-            <p className="text-xs text-[color:var(--muted)]">
-              {t.alarms.reasons.pending_review} · {t.alarms.reasons.done}
-            </p>
+            <p className="text-xs text-[color:var(--muted)]">{t.alarms.reasons.pending_review}</p>
           </div>
 
           {loading ? (

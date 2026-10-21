@@ -172,15 +172,13 @@ export function getTaskNotifications(
   );
 }
 
-/** Avisos de la campana: pendiente por revisión y actividad terminada. */
+/** Avisos de la campana: actividades pendientes por revisión. */
 export function getBellNotifications(
   board: TasksBoard,
   t: AdminDictionary,
   from = todayLocal(),
 ) {
-  return getTaskAlarms(board, t, from).filter(
-    (item) => item.reason === "pending_review" || item.reason === "done",
-  );
+  return getTaskAlarms(board, t, from).filter((item) => item.reason === "pending_review");
 }
 
 export function getBudgetAlarm(

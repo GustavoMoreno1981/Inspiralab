@@ -565,6 +565,8 @@ export type AdminDictionary = {
     budget: string;
     goToAccounting: string;
     noTaskNotifications: string;
+    doneTasks: string;
+    noDoneTasks: string;
     pendingReviewLink: string;
     pausedViewAll: string;
     unassigned: string;
