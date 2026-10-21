@@ -189,14 +189,14 @@ export function AdminAlarms({
   }, [taskAlarms]);
 
   const pendingReviewCount = useMemo(
-    () => taskAlarms.filter((item) => item.reason === "pending_review").length,
+    () => taskAlarms.filter((item) => item.status === "pending_review").length,
     [taskAlarms],
   );
 
   const filteredAlarms = useMemo(() => {
     if (!filter) return [];
     if (filter === "pending_review") {
-      return taskAlarms.filter((item) => item.reason === "pending_review");
+      return taskAlarms.filter((item) => item.status === "pending_review");
     }
     return taskAlarms.filter((item) => item.level === filter);
   }, [filter, taskAlarms]);
@@ -226,8 +226,16 @@ export function AdminAlarms({
     () => taskNotifications.filter((item) => item.reason !== "pending_review"),
     [taskNotifications],
   );
+  const overdueAlarms = useMemo(
+    () => taskAlerts.filter((item) => item.reason === "overdue"),
+    [taskAlerts],
+  );
+  const dueSoonAlarms = useMemo(
+    () => taskAlerts.filter((item) => item.reason === "due_soon"),
+    [taskAlerts],
+  );
   const pendingReviewAlarms = useMemo(
-    () => taskAlarms.filter((item) => item.reason === "pending_review"),
+    () => taskAlarms.filter((item) => item.status === "pending_review"),
     [taskAlarms],
   );
   const doneAlarms = useMemo(
@@ -301,16 +309,31 @@ export function AdminAlarms({
             </Link>
           </div>
 
-          {taskAlerts.length === 0 ? (
+          {overdueAlarms.length === 0 && dueSoonAlarms.length === 0 ? (
             <p className="px-4 py-6 text-sm text-[color:var(--muted)]">
               {t.alarms.noTaskNotifications}
             </p>
           ) : (
-            <ul className="max-h-80 divide-y divide-[color:var(--line)] overflow-y-auto">
-              {taskAlerts.map((alarm) => (
-                <TaskAlarmRow key={alarm.activityId} alarm={alarm} t={t} />
-              ))}
-            </ul>
+            <>
+              {overdueAlarms.length > 0 && (
+                <ul className="max-h-64 divide-y divide-[color:var(--line)] overflow-y-auto overscroll-contain">
+                  {overdueAlarms.map((alarm) => (
+                    <TaskAlarmRow key={alarm.activityId} alarm={alarm} t={t} />
+                  ))}
+                </ul>
+              )}
+              {dueSoonAlarms.length > 0 && (
+                <ul
+                  className={`max-h-64 divide-y divide-[color:var(--line)] overflow-y-auto overscroll-contain ${
+                    overdueAlarms.length > 0 ? "border-t border-[color:var(--line)]" : ""
+                  }`}
+                >
+                  {dueSoonAlarms.map((alarm) => (
+                    <TaskAlarmRow key={alarm.activityId} alarm={alarm} t={t} />
+                  ))}
+                </ul>
+              )}
+            </>
           )}
 
           {counts.blue > 0 && (
@@ -351,7 +374,7 @@ export function AdminAlarms({
           {pendingReviewAlarms.length === 0 ? (
             <p className="px-4 py-6 text-sm text-[color:var(--muted)]">{t.alarms.bellEmpty}</p>
           ) : (
-            <ul className="max-h-80 divide-y divide-[color:var(--line)] overflow-y-auto">
+            <ul className="max-h-64 divide-y divide-[color:var(--line)] overflow-y-auto overscroll-contain">
               {pendingReviewAlarms.map((alarm) => (
                 <TaskAlarmRow key={alarm.activityId} alarm={alarm} t={t} />
               ))}
@@ -370,7 +393,7 @@ export function AdminAlarms({
           {doneAlarms.length === 0 ? (
             <p className="px-4 py-6 text-sm text-[color:var(--muted)]">{t.alarms.noDoneTasks}</p>
           ) : (
-            <ul className="max-h-80 divide-y divide-[color:var(--line)] overflow-y-auto">
+            <ul className="max-h-64 divide-y divide-[color:var(--line)] overflow-y-auto overscroll-contain">
               {doneAlarms.map((alarm) => (
                 <TaskAlarmRow key={alarm.activityId} alarm={alarm} t={t} />
               ))}

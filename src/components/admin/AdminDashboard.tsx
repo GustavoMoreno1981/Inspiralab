@@ -321,13 +321,6 @@ export function AdminDashboard() {
           {canAccounting ? t.dashboard.fullAccess : t.dashboard.limitedAccess}
         </p>
 
-        <AdminAlarms
-          tasksBoard={tasksBoard}
-          accounting={accounting}
-          loading={opsLoading}
-          showBudget={canAccounting}
-        />
-
         <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {modules.includes("sitio") && (
             <Link
@@ -462,6 +455,13 @@ export function AdminDashboard() {
             </Link>
           )}
         </div>
+
+        <AdminAlarms
+          tasksBoard={tasksBoard}
+          accounting={accounting}
+          loading={opsLoading}
+          showBudget={canAccounting}
+        />
 
         <AdminDailyBriefing board={tasksBoard} loading={opsLoading} />
       </main>
