@@ -352,7 +352,12 @@ export function AdminAlarms({
                     <li key={alarm.activityId} className="flex items-start gap-2 text-sm">
                       <SemaphoreDot level="blue" label={levelLabels.blue.label} size="sm" />
                       <span>
-                        <span className="font-semibold">{alarm.title}</span>
+                        <Link
+                          href={`/admin/tareas?actividad=${encodeURIComponent(alarm.activityId)}`}
+                          className="font-semibold text-[color:var(--ink)] underline-offset-2 hover:text-[color:var(--accent)] hover:underline"
+                        >
+                          {alarm.title.trim() || t.private.lockedPrivate}
+                        </Link>
                         {" — "}
                         {alarm.assignees.map((m) => m.name).join(", ") || t.alarms.unassigned}
                       </span>
@@ -542,9 +547,12 @@ function TaskAlarmRow({
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="font-semibold text-[color:var(--ink)]">
+            <Link
+              href={`/admin/tareas?actividad=${encodeURIComponent(alarm.activityId)}`}
+              className="font-semibold text-[color:var(--ink)] underline-offset-2 hover:text-[color:var(--accent)] hover:underline"
+            >
               {alarm.title.trim() || t.private.lockedPrivate}
-            </p>
+            </Link>
             {badge && (
               <span className="border border-[color:var(--line)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">
                 {badge}

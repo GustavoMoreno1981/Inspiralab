@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   PHONE_COUNTRY_CODES,
   createId,
@@ -352,6 +352,7 @@ const emptyMemberForm = {
 
 export function TasksBoard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const toast = useToast();
   const { t, locale } = useAdminLanguage();
   const taskStatuses = useMemo(() => getTaskStatuses(t), [t]);
@@ -380,6 +381,7 @@ export function TasksBoard() {
   });
   const deletedIdsRef = useRef<{ activities: string[]; bank: string[] }>({ activities: [], bank: [] });
   const focusTargetRef = useRef<string | null>(null);
+  const openedActivityQueryRef = useRef<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
@@ -634,13 +636,29 @@ export function TasksBoard() {
   }, [load]);
 
   useEffect(() => {
+    const activityId = searchParams.get("actividad");
+    if (!activityId || loading) return;
+    if (openedActivityQueryRef.current === activityId) return;
+    const activity = board.activities.find((item) => item.id === activityId);
+    openedActivityQueryRef.current = activityId;
+    if (!activity) return;
+    setTab("tasks");
+    setViewMode(isActivityFullyComplete(activity) ? "history" : "list");
+    setSelectedMemberId("all");
+    setSelectedStatus("all");
+    setActivityPriorityFilter("all");
+    setExpandedActivityId(activityId);
+    focusTargetRef.current = `activity-${activityId}`;
+  }, [searchParams, loading, board.activities]);
+
+  useEffect(() => {
     const targetId = focusTargetRef.current;
     if (!targetId) return;
     const node = document.getElementById(targetId);
     if (!node) return;
     focusTargetRef.current = null;
     node.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [viewMode, expandedActivityId, viewingBankId, selectedMemberId]);
+  }, [viewMode, expandedActivityId, viewingBankId, selectedMemberId, loading]);
 
   const completedActivities = useMemo(
     () => board.activities.filter((activity) => isActivityFullyComplete(activity)),

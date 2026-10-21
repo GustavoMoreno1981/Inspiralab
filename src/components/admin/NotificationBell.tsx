@@ -154,7 +154,7 @@ export function NotificationBell({
               {items.map((alarm) => (
                 <li key={notificationKey(alarm)}>
                   <Link
-                    href="/admin/tareas"
+                    href={`/admin/tareas?actividad=${encodeURIComponent(alarm.activityId)}`}
                     onClick={() => setOpen(false)}
                     className="flex items-start gap-2 px-4 py-3 hover:bg-[color:var(--mist)]"
                   >
