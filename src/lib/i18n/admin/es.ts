@@ -561,10 +561,14 @@ export const adminEs: AdminDictionary = {
   },
   alarms: {
     title: "Alarmas",
-    subtitle: "Tareas vencidas, por vencer, pendientes por revisión y tope del presupuesto.",
+    subtitle:
+      "Tareas vencidas, por vencer, pendientes por revisión, terminadas y tope del presupuesto.",
     attentionPending: "{count} pendiente(s) de atención.",
     allClear: "Todo en orden por ahora.",
     loading: "Cargando alarmas...",
+    bell: "Notificaciones",
+    bellEmpty: "No hay actividades pendientes por revisión ni terminadas.",
+    bellSeeAlarms: "Ver alarmas",
     tasks: "Tareas",
     goToTasks: "Ir a tareas",
     budget: "Presupuesto",

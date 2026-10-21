@@ -3,12 +3,19 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { AdminAlarms } from "@/components/admin/AdminAlarms";
+import { AdminDailyBriefing } from "@/components/admin/AdminDailyBriefing";
 import { AdminFooter } from "@/components/admin/AdminFooter";
 import { AdminLanguageSwitcher } from "@/components/admin/AdminLanguageSwitcher";
-import { AdminOpsPanel } from "@/components/admin/AdminOpsPanel";
 import { AdminPasswordsModal } from "@/components/admin/AdminPasswords";
+import { NotificationBell } from "@/components/admin/NotificationBell";
 import { useAdminLanguage } from "@/lib/i18n/AdminLanguageContext";
+import {
+  emptyBoard as emptyAccountingBoard,
+  type AccountingBoard,
+} from "@/lib/accounting/types";
 import type { AdminModule, SessionRole } from "@/lib/auth/session";
+import { emptyBoard as emptyTasksBoard, type TasksBoard } from "@/lib/tasks/types";
 
 function SettingsIcon() {
   return (
@@ -148,6 +155,9 @@ export function AdminDashboard() {
   const [me, setMe] = useState<MeResponse | null>(null);
   const [passwordsOpen, setPasswordsOpen] = useState(false);
   const [bitacoraUrl, setBitacoraUrl] = useState("");
+  const [tasksBoard, setTasksBoard] = useState<TasksBoard | null>(null);
+  const [accounting, setAccounting] = useState<AccountingBoard>(emptyAccountingBoard());
+  const [opsLoading, setOpsLoading] = useState(true);
 
   useEffect(() => {
     void fetch("/api/auth/me", { cache: "no-store" })
@@ -196,6 +206,35 @@ export function AdminDashboard() {
     "tareas",
   ];
   const canAccounting = modules.includes("contabilidad");
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      const tasksPromise = fetch("/api/tasks", { cache: "no-store" });
+      const accountingPromise = canAccounting
+        ? fetch("/api/accounting", { cache: "no-store" })
+        : Promise.resolve(null);
+
+      const [tasksRes, accountingRes] = await Promise.all([tasksPromise, accountingPromise]);
+      if (cancelled) return;
+
+      if (tasksRes.ok) {
+        setTasksBoard((await tasksRes.json()) as TasksBoard);
+      } else {
+        setTasksBoard(emptyTasksBoard());
+      }
+
+      if (accountingRes?.ok) {
+        setAccounting((await accountingRes.json()) as AccountingBoard);
+      }
+
+      setOpsLoading(false);
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [canAccounting]);
   const canBilling = modules.includes("cuentas-cobro");
   const canTalleres =
     modules.includes("talleres") || modules.includes("sitio");
@@ -262,6 +301,7 @@ export function AdminDashboard() {
                 <SettingsIcon />
               </button>
             )}
+            <NotificationBell tasksBoard={tasksBoard} loading={opsLoading} />
             <button
               type="button"
               onClick={() => void logout()}
@@ -280,6 +320,13 @@ export function AdminDashboard() {
         <p className="mt-3 max-w-xl text-base text-[color:var(--muted)]">
           {canAccounting ? t.dashboard.fullAccess : t.dashboard.limitedAccess}
         </p>
+
+        <AdminAlarms
+          tasksBoard={tasksBoard}
+          accounting={accounting}
+          loading={opsLoading}
+          showBudget={canAccounting}
+        />
 
         <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {modules.includes("sitio") && (
@@ -416,7 +463,7 @@ export function AdminDashboard() {
           )}
         </div>
 
-        <AdminOpsPanel canAccounting={canAccounting} />
+        <AdminDailyBriefing board={tasksBoard} loading={opsLoading} />
       </main>
       <AdminFooter />
       {isAdmin && (

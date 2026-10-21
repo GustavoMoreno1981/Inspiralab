@@ -222,16 +222,21 @@ export function AdminAlarms({
     return () => window.removeEventListener("keydown", onKey);
   }, [filter]);
 
+  const doneAlarms = useMemo(
+    () => taskAlarms.filter((item) => item.reason === "done"),
+    [taskAlarms],
+  );
+
   if (loading) {
     return (
-      <section className="mt-10 border border-[color:var(--line)] bg-white p-5">
+      <section id="alarmas" className="mt-10 scroll-mt-6 border border-[color:var(--line)] bg-white p-5">
         <p className="text-sm text-[color:var(--muted)]">{t.alarms.loading}</p>
       </section>
     );
   }
 
   return (
-    <section className="mt-10 space-y-5">
+    <section id="alarmas" className="mt-10 scroll-mt-6 space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="font-[family-name:var(--font-display)] text-2xl font-bold text-[color:var(--ink)]">
@@ -288,16 +293,29 @@ export function AdminAlarms({
             </Link>
           </div>
 
-          {taskNotifications.length === 0 ? (
+          {taskNotifications.length === 0 && doneAlarms.length === 0 ? (
             <p className="px-4 py-6 text-sm text-[color:var(--muted)]">
               {t.alarms.noTaskNotifications}
             </p>
-          ) : (
+          ) : taskNotifications.length > 0 ? (
             <ul className="divide-y divide-[color:var(--line)]">
               {taskNotifications.map((alarm) => (
                 <TaskAlarmRow key={alarm.activityId} alarm={alarm} t={t} />
               ))}
             </ul>
+          ) : null}
+
+          {doneAlarms.length > 0 && (
+            <div className="border-t border-[color:var(--line)]">
+              <p className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+                {t.alarms.levels.done}: {doneAlarms.length}
+              </p>
+              <ul className="max-h-72 divide-y divide-[color:var(--line)] overflow-y-auto">
+                {doneAlarms.map((alarm) => (
+                  <TaskAlarmRow key={alarm.activityId} alarm={alarm} t={t} />
+                ))}
+              </ul>
+            </div>
           )}
 
           {pendingReviewCount > 0 && (
@@ -459,7 +477,9 @@ function TaskAlarmRow({
       ? "border-l-[#dc2626]"
       : alarm.level === "yellow"
         ? "border-l-[#ca8a04]"
-        : "border-l-transparent";
+        : alarm.level === "green"
+          ? "border-l-[#16a34a]"
+          : "border-l-transparent";
 
   const badge =
     alarm.reason === "pending_review"
@@ -478,7 +498,9 @@ function TaskAlarmRow({
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="font-semibold text-[color:var(--ink)]">{alarm.title}</p>
+            <p className="font-semibold text-[color:var(--ink)]">
+              {alarm.title.trim() || t.private.lockedPrivate}
+            </p>
             {badge && (
               <span className="border border-[color:var(--line)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">
                 {badge}

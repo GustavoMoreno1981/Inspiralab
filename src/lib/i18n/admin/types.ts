@@ -557,6 +557,9 @@ export type AdminDictionary = {
     attentionPending: string;
     allClear: string;
     loading: string;
+    bell: string;
+    bellEmpty: string;
+    bellSeeAlarms: string;
     tasks: string;
     goToTasks: string;
     budget: string;
